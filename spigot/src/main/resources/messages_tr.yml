@@ -1,0 +1,1131 @@
+# ReportSystem Türkçe Mesajlar
+# Renk kodları: & (örnek: yeşil için &a)
+# Yer tutucular %placeholder% ile işaretlenir
+
+# ======================
+# Ön Ekler
+# ======================
+prefix:
+  general: "&8[&6Rapor&8]"
+  success: "&8[&a✓&8]"
+  error: "&8[&c✗&8]"
+  info: "&8[&b!&8]"
+  warning: "&8[&e⚠&8]"
+
+# ======================
+# Genel Mesajlar
+# ======================
+general:
+  no-permission: "%prefix_error% &cBu komutu kullanmak için yetkiniz yok!"
+  player-not-found: "%prefix_error% &c'&e%player%&c' adlı oyuncu bulunamadı!"
+  player-offline: "%prefix_error% &c%player% &7çevrimiçi değil!"
+  invalid-syntax: "%prefix_error% &cKullanım: &e%usage%"
+  only-players: "%prefix_error% &cBu komut sadece oyuncular tarafından kullanılabilir!"
+  cooldown: "%prefix_warning% &eTekrar rapor oluşturmak için &6%time% &ebeklemelisiniz!"
+  rate-limit: "%prefix_error% &cÇok fazla rapor oluşturuyorsunuz! &eLütfen 1 dakika bekleyin. &7(Limit: &f%limit% &7rapor/dakika)"
+  teleported: "%prefix_success% &a%player% &7adlı oyuncuya ışınlandınız!"
+
+  # Hata mesajları
+  error:
+    general: "%prefix_error% &cBir hata oluştu!"
+    contact-staff: "&7Lütfen bir yetkiliyle iletişime geçin."
+    database: "%prefix_error% &cVeritabanı hatası oluştu!"
+    unknown: "%prefix_error% &cBilinmeyen bir hata oluştu!"
+    details: "&7Hata: %error%"
+
+# ======================
+# Rapor Mesajları
+# ======================
+reports:
+  success: "%prefix_success% &aRapor başarıyla oluşturuldu! &7(ID: #%id%)"
+  cannot-report-self: "%prefix_error% &cKendinizi rapor edemezsiniz!"
+  cannot-report-immune: "%prefix_error% &cBu oyuncu rapor edilemez!"
+  cannot-report-offline: "%prefix_error% &c%player% &7çevrimdışı! Sadece çevrimiçi oyuncular rapor edilebilir."
+  already-recording: "%prefix_error% &c%player% &7zaten kaydediliyor! Kaydı bitene kadar tekrar rapor edemezsiniz."
+  reason-too-short: "%prefix_error% &cSebep en az &e%min% &ckarakter olmalıdır!"
+  reason-too-long: "%prefix_error% &cSebep &e%max% &ckarakteri geçemez!"
+  limit-reached: "%prefix_error% &c&e%player% &cadlı oyuncuyu daha fazla rapor edemezsiniz! &7(Limit: &f%limit%&7)"
+
+  # Yeni limit mesajları (PENDING bazlı)
+  limit-pending: "%prefix_error% &cBu oyuncu için zaten &e%count% &cbekleyen raporunuz var! &7(Maksimum: &f%limit%&7)"
+  create-failed: "%prefix_error% &cRapor oluşturulurken bir hata oluştu!"
+  contact-staff: "&7Lütfen bir yetkiliyle iletişime geçin."
+  unexpected-error: "%prefix_error% &cRapor oluşturulurken beklenmeyen bir hata oluştu!"
+  limit-wait: "&7Önceki raporlar incelenip kapatıldıktan sonra yeni rapor oluşturabilirsiniz."
+
+  # Rapor hataları
+  error:
+    create-failed: "%prefix_error% &cRapor oluşturulurken bir hata oluştu!"
+    update-failed: "%prefix_error% &cRapor güncellenirken bir hata oluştu!"
+    delete-failed: "%prefix_error% &cRapor silinirken bir hata oluştu!"
+    not-found: "%prefix_error% &cRapor bulunamadı!"
+    load-failed: "%prefix_error% &cRaporlar yüklenirken bir hata oluştu!"
+
+  # Rapor durumu mesajları
+  status:
+    accepted: "%prefix_success% &aRapor #%id% kabul edildi."
+    rejected: "%prefix_info% &cRapor #%id% reddedildi."
+    closed: "%prefix_info% &7Rapor #%id% kapatıldı."
+    updated: "%prefix_success% &aRapor durumu güncellendi."
+
+    # Durum isimleri (GUI için)
+    name:
+      pending: "Beklemede"
+      accepted: "Kabul Edildi"
+      rejected: "Reddedildi"
+      closed: "Kapatıldı"
+
+  # Bildirimler
+  notify:
+    staff: |
+      &8&m
+      %prefix_general% &eYeni Rapor!
+      &7Oyuncu: &c%reported%
+      &7Rapor Eden: &e%reporter%
+      &7Sebep: &f%reason%
+      &7Sunucu: &b%server%
+      &7ID: &f#%id%
+      &8&m
+
+    title: "&6Yeni Rapor"
+    subtitle: "&e%reporter% &7➜ &c%reported%"
+    actionbar: "&e⚠ Yeni rapor: &c%reported% &7(#%id%)"
+
+  # Liste mesajları
+  list:
+    header: "&8&m          &r &6Rapor Listesi &7(Sayfa %page%/%max%) &8&m          "
+    format: "&7#%id% &8| &e%reporter% &7➜ &c%reported% &8| &f%reason%"
+    footer: "&8&m                                                  "
+    empty: "%prefix_info% &7Hiç rapor bulunamadı."
+    no-permission-view: "%prefix_error% &cBu raporu görüntüleme yetkiniz yok!"
+
+# ======================
+# Replay Mesajları
+# ======================
+replay:
+  starting: "%prefix_info% &eReplay başlatılıyor..."
+  started: "%prefix_success% &aReplay başladı! Ana karakterin yanına ışınlandınız."
+  stopped: "%prefix_info% &cReplay durduruldu."
+  not-found: "%prefix_error% &cBu rapor için replay kaydı bulunamadı!"
+  data-empty: "%prefix_error% &cReplay verisi boş! Kayıt bozulmuş olabilir."
+  already-watching: "%prefix_error% &cZaten bir replay izliyorsunuz! Önce mevcut replay'i durdurun."
+  completed: "%prefix_success% &a✓ Replay tamamlandı!"
+
+  # Title messages
+  title-started: "&6✦ REPLAY BAŞLADI ✦"
+  subtitle-started: "&7%player% &8- &7Rapor #%report_id%"
+  title-completed: "&6Replay Bitti"
+  subtitle-completed: "&7%player% oyuncusunun kaydı sona erdi"
+
+  # Error messages
+  error-database: "%prefix_error% &cReplay yüklenirken veritabanı hatası oluştu!"
+  error-read: "%prefix_error% &cReplay verisi okunurken hata oluştu!"
+  error-corrupt: "&7Replay verisi bozuk olabilir. Hata: %error%"
+  error-class: "%prefix_error% &cReplay sınıfı bulunamadı!"
+  error-version: "&7Plugin versiyonu uyumsuz olabilir. Hata: %error%"
+  error-unexpected: "%prefix_error% &cReplay başlatılırken beklenmeyen bir hata oluştu!"
+  already-watching: "%prefix_error% &cZaten bir replay izliyorsunuz!"
+  teleported: "&aReplay başlatıldı! Ana karakterin yanına ışınlandınız."
+
+  # Nametag prefixes
+  nametag-recorded-player: "&c&l[İZLENEN] "
+
+  recording:
+    started: "%prefix_info% &eOyuncu hareketleri kaydediliyor..."
+    stopped: "%prefix_info% &7Kayıt durduruldu."
+    failed: "%prefix_error% &cKayıt başlatılamadı!"
+    no-report-id: "%prefix_error% &cRapor ID'si alınamadı, kayıt iptal edildi!"
+
+  # Replay hataları
+  error:
+    data-empty: "%prefix_error% &cReplay verisi boş! Kayıt bozulmuş olabilir."
+    data-corrupt: "%prefix_error% &cReplay verisi okunurken hata oluştu!"
+    data-corrupt-detail: "&7Replay verisi bozuk olabilir. Hata: %error%"
+    class-not-found: "%prefix_error% &cReplay sınıfı bulunamadı!"
+    class-not-found-detail: "&7Plugin versiyonu uyumsuz olabilir. Hata: %error%"
+    unexpected: "%prefix_error% &cReplay başlatılırken beklenmeyen bir hata oluştu!"
+    unexpected-detail: "&7Hata: %error%"
+    database: "%prefix_error% &cReplay yüklenirken veritabanı hatası oluştu!"
+    database-detail: "&7Hata: %error%"
+    load-failed: "%prefix_error% &cReplay yüklenemedi!"
+
+  controls:
+    paused: "&eDuraklatıldı"
+    resumed: "&aDevam ediyor"
+    speed-changed: "&7Hız: &e%speed%x"
+    forward: "&7İleri sar &e%seconds%s"
+    rewind: "&7Geri sar &e%seconds%s"
+    jump-disabled: "%prefix_error% &c✗ Zaman atlama özelliği henüz aktif değil!"
+
+# ======================
+# Ceza Mesajları
+# ======================
+punishments:
+  ban:
+    success: "%prefix_success% &e%player% &aadlı oyuncu yasaklandı!"
+    already-banned: "%prefix_error% &cOyuncu zaten yasaklı!"
+    not-banned: "%prefix_error% &cOyuncu yasaklı değil!"
+    unbanned: "%prefix_success% &e%player% &aadlı oyuncunun yasağı kaldırıldı!"
+    offline: "%prefix_error% &c%player% &7çevrimiçi değil! Animasyonlu ban için oyuncunun online olması gerekiyor."
+    enter-reason: "&6Ban sebebini girin (varsayılan: %default%)"
+    animated-started: "&a⚡ &lANIMATED BAN BAŞLATILDI!"
+    animated-target: "&7Hedef: &c%player%"
+    animated-duration: "&7Süre: &e%duration%"
+    animated-reason: "&7Sebep: &f%reason%"
+    animated-message: "&4Tanrıların gazabı başlıyor..."
+
+  mute:
+    success: "%prefix_success% &e%player% &aadlı oyuncu susturuldu!"
+    already-muted: "%prefix_error% &cOyuncu zaten susturulmuş!"
+    not-muted: "%prefix_error% &cOyuncu susturulmamış!"
+    unmuted: "%prefix_success% &e%player% &aadlı oyuncunun susturulması kaldırıldı!"
+    enter-reason: "&6Mute sebebini girin (varsayılan: %default%)"
+
+  kick:
+    success: "%prefix_success% &e%player% &7sunucudan atıldı!"
+    offline: "%prefix_error% &c%player% &7çevrimiçi değil!"
+    enter-reason: "&6Kick sebebini girin (varsayılan: %default%)"
+    player-message: |
+      &c&lSUNUCUDAN ATILDINIZ!
+
+      &7Sebep: &f%reason%
+      &7Yetkili: &f%staff%
+
+  warn:
+    success: "%prefix_success% &e%player% &7uyarıldı!"
+    offline: "%prefix_error% &c%player% &7çevrimiçi değil!"
+    enter-reason: "&6Uyarı mesajını girin (varsayılan: %default%)"
+    player-message: |
+
+      &6&l⚠ UYARI ⚠
+      &eYetkili tarafından uyarıldınız!
+
+      &7Sebep: &f%reason%
+      &7Yetkili: &f%staff%
+      &eKuralları ihlal etmeye devam ederseniz ceza alabilirsiniz!
+
+
+  # Genel ceza mesajları
+  applied: "%prefix_success% &aCeza başarıyla uygulandı."
+  failed: "%prefix_error% &cCeza uygulanamadı."
+  removed: "%prefix_success% &aCeza kaldırıldı."
+  history-empty: "%prefix_info% &7Bu oyuncunun ceza geçmişi temiz."
+  duration-invalid: "%prefix_error% &cGeçersiz süre formatı!"
+
+# ======================
+# GUI Mesajları
+# ======================
+gui:
+  # Ortak
+  common:
+    close: "&cKapat"
+    back: "&aGeri"
+    next-page: "&aSonraki Sayfa"
+    previous-page: "&eÖnceki Sayfa"
+    confirm: "&aOnayla"
+    cancel: "&cİptal"
+    loading: "&7Yükleniyor..."
+    refresh: "&bYenile"
+
+  # Rapor GUI
+  report:
+    title: "&8Rapor Et > %player%"
+    select-reason: "&eBir sebep seçin:"
+    custom-reason: "&bÖzel Sebep"
+    quick-reasons: "&6Hızlı Sebepler"
+    online: "&aOnline"
+    offline: "&cOffline"
+    enter-reason: "&6Rapor sebebini yazın:"
+    cancel-instruction: "&7Yazın veya &e'iptal' &7yazarak çıkın."
+    creating: "&7Rapor oluşturuluyor..."
+    create-error: "&cRapor oluşturulurken bir hata oluştu!"
+
+  # Rapor Oluşturma GUI
+  report-create:
+    reasons:
+      cheating: "Hile"
+      chat-abuse: "Sohbet İhlali"
+      griefing: "Griefing"
+      bug-abuse: "Bug İstismarı"
+      teaming: "Takım Oluşturma"
+
+  # Rapor Listesi GUI
+  report-list:
+    title: "&8Raporlar &7(%page%/%max_page%)"
+    loading-error: "&cRaporlar yüklenirken bir hata oluştu!"
+
+    # Report item
+    report-item:
+      name: "&e#%id% &8- &f%reported%"
+      labels:
+        reporter: "Rapor Eden:"
+        reason: "Sebep:"
+        server: "Sunucu:"
+        date: "Tarih:"
+        status: "Durum:"
+        total-reports: "Toplam Rapor:"
+        overwatch: "Overwatch:"
+        click: "▸ Detayları görüntülemek için tıkla"
+
+    # Empty list
+    empty-list:
+      name: "&cRapor Bulunamadı"
+      lore:
+        - ""
+        - "&7Filtrenize uygun"
+        - "&7rapor bulunamadı."
+        - ""
+        - "&eFiltreyi değiştirmeyi"
+        - "&7veya daha sonra tekrar kontrol etmeyi deneyin."
+
+    # Navigation
+    navigation:
+      previous:
+        name: "&e« Önceki Sayfa"
+        lore: "&7Sayfa %prev_page%'a git"
+      page-info:
+        name: "&fSayfa &e%page%&f/&e%max_page%"
+        lore:
+          - ""
+          - "&7Toplam rapor: &f%total%"
+          - "&7Gösterilen: &f%showing%"
+          - ""
+          - "&eSayfaya atlamak için tıkla"
+      next:
+        name: "&aSonraki Sayfa »"
+        lore: "&7Sayfa %next_page%'a git"
+
+    # Filters
+    filter:
+      all:
+        name: "&fTüm Raporlar"
+        lore:
+          - "&7Tüm raporları göster"
+          - ""
+          - "Durum: %selected%"
+      pending:
+        name: "&eBekleyen Raporlar"
+        lore:
+          - "&7Çözülmemiş raporları göster"
+          - ""
+          - "&7Sayı: &f%count%"
+          - "Durum: %selected%"
+      accepted:
+        name: "&aKabul Edilen Raporlar"
+        lore:
+          - "&7Kabul edilmiş raporları göster"
+          - ""
+          - "&7Sayı: &f%count%"
+          - "Durum: %selected%"
+      rejected:
+        name: "&cReddedilen Raporlar"
+        lore:
+          - "&7Reddedilmiş raporları göster"
+          - ""
+          - "&7Sayı: &f%count%"
+          - "Durum: %selected%"
+      mine:
+        name: "&bRaporlarım"
+        lore:
+          - "&7Oluşturduğunuz raporları göster"
+          - ""
+          - "&7Sayı: &f%count%"
+          - "Durum: %selected%"
+      assigned:
+        name: "&dBana Atananlar"
+        lore:
+          - "&7Size atanan raporları göster"
+          - ""
+          - "&7Sayı: &f%count%"
+          - "Durum: %selected%"
+      selected: "&a✔ Seçili"
+      not-selected: "&7✖ Seçili değil"
+
+    # Sort
+    sort:
+      name: "&6Sıralama Seçenekleri"
+      lore:
+        - ""
+        - "&7Şu an: &e%sort_method%"
+        - ""
+        - "&8▪ &fEn Yeni"
+        - "&8▪ &fEn Eski"
+        - "&8▪ &fÖncelik"
+        - "&8▪ &fOyuncu İsmi"
+        - ""
+        - "&eDeğiştirmek için tıkla"
+      newest: "&bEn Yeni"
+      oldest: "&7En Eski"
+      priority: "&cÖncelik"
+      player-name: "&aOyuncu İsmi"
+
+    # Actions
+    actions:
+      refresh:
+        name: "&a↻ Yenile"
+        lore:
+          - "&7Rapor listesini yenile"
+          - ""
+          - "&8Son yenileme: %last_refresh%"
+      search:
+        name: "&b🔍 Ara"
+        lore:
+          - "&7Belirli oyuncular veya"
+          - "&7anahtar kelimeler ara"
+          - ""
+          - "&eŞu an: &f%search_query%"
+          - ""
+          - "&eAramak için tıkla"
+      stats:
+        name: "&a📊 İstatistikler"
+        lore:
+          - ""
+          - "&8▪ &7Toplam: &f%total%"
+          - "&8▪ &7Bekleyen: &e%pending%"
+          - "&8▪ &7Kabul Edilen: &a%accepted%"
+          - "&8▪ &7Reddedilen: &c%rejected%"
+          - ""
+          - "&8▪ &7Bu hafta: &f%weekly%"
+          - "&8▪ &7Bugün: &f%daily%"
+      settings:
+        name: "&c⚙ Ayarlar"
+        lore:
+          - "&7Rapor listesi"
+          - "&7ayarlarını yapılandır"
+          - ""
+          - "&eAçmak için tıkla"
+
+  # Rapor Detay GUI
+  report-detail:
+    title: "&8Rapor #%id%"
+    player-head-name: "&c⚡ %reported%"
+
+    # Bilgi etiketleri
+    labels:
+      report-id: "Rapor ID:"
+      reporter: "Raporlayan:"
+      reason: "Sebep:"
+      date: "Tarih:"
+      server: "Sunucu:"
+      total-reports: "Toplam Rapor:"
+      status: "Durum:"
+      times: "kez"
+      unknown: "Bilinmiyor"
+
+    # Butonlar
+    buttons:
+      replay-available:
+        name: "&d▶ Replay İzle"
+        lore:
+          - ""
+          - "&7Olayın kaydını izle"
+          - ""
+          - "&a✓ Replay mevcut"
+          - "&e▶ Tıkla ve izle!"
+
+      replay-unavailable:
+        name: "&7Replay Yok"
+        lore:
+          - ""
+          - "&7Bu rapor için kayıt bulunamadı"
+          - ""
+          - "&c✗ Replay mevcut değil"
+
+      accept:
+        name: "&a✓ Raporu Onayla"
+        lore:
+          - ""
+          - "&7Raporu haklı bul ve onayla"
+          - ""
+          - "&e▶ Tıkla ve onayla!"
+
+      reject:
+        name: "&c✗ Raporu Reddet"
+        lore:
+          - ""
+          - "&7Raporu haksız bul ve reddet"
+          - ""
+          - "&e▶ Tıkla ve reddet!"
+
+      ban:
+        name: "&4⚔ Yasakla (Ban)"
+        lore:
+          - ""
+          - "&7Oyuncuyu sunucudan yasakla"
+          - ""
+          - "&6Süreli veya kalıcı ban"
+          - "&e▶ Süre seçmek için tıkla!"
+
+      mute:
+        name: "&6🔇 Sustur (Mute)"
+        lore:
+          - ""
+          - "&7Oyuncuyu sustur"
+          - "&7Sohbete yazmasını engelle"
+          - ""
+          - "&e▶ Süre seçmek için tıkla!"
+
+      kick:
+        name: "&c👢 Sunucudan At (Kick)"
+        lore:
+          - ""
+          - "&7Oyuncuyu sunucudan at"
+          - "&7Tekrar girebilir"
+          - ""
+          - "&e▶ Direkt atmak için tıkla!"
+
+      warn:
+        name: "&e⚠ Uyar (Warn)"
+        lore:
+          - ""
+          - "&7Oyuncuya uyarı ver"
+          - "&7Ceza puanı ekler"
+          - ""
+          - "&e▶ Uyarı vermek için tıkla!"
+
+      teleport:
+        name: "&b🌀 Oyuncuya Işınlan"
+        lore:
+          - ""
+          - "&7Raporlanan oyuncuya ışınlan"
+          - ""
+          - "&e▶ Işınlanmak için tıkla!"
+
+      back:
+        name: "&c◀ Geri Dön"
+        lore:
+          - "&7Rapor listesine dön"
+
+  # Replay Kontrol GUI
+  replay-control:
+    title: "&8Replay Kontrolleri"
+    play: "&aOynat"
+    pause: "&eDuraklat"
+    stop: "&cDurdur"
+    speed: "&bHız: &f%speed%x"
+    info: "&6Replay Bilgileri"
+    teleport: "&dZaman Atlama"
+
+  # Ceza GUI
+  punishment:
+    title: "&8Cezalandır > %player%"
+    ban: "&cOyuncuyu Yasakla"
+    mute: "&6Oyuncuyu Sustur"
+    kick: "&eOyuncuyu At"
+    warn: "&7Oyuncuyu Uyar"
+    history: "&bCeza Geçmişi"
+
+  # Ceza Seçim GUI
+  punishment-selection:
+    title: "&8Ceza Seç > %player%"
+    select-type: "&eYapılacak işlemi seçin:"
+    applying: "&7Ceza uygulanıyor..."
+    applied: "&a✓ %type% cezası uygulandı!"
+    accepted-no-punishment: "&a✓ Rapor ceza verilmeden kabul edildi."
+
+# ======================
+# Komut Mesajları
+# ======================
+commands:
+  report:
+    usage: "/report <oyuncu> [sebep]"
+    description: "Bir oyuncuyu rapor et"
+
+  reports:
+    usage: "/reports [sayfa]"
+    description: "Raporları görüntüle"
+
+  reportsystem:
+    usage: "/reportsystem <reload|info|stats>"
+    description: "Plugin yönetimi"
+    reloaded: "%prefix_success% &aKonfigürasyon yeniden yüklendi!"
+
+    help:
+      header: "&6=== ReportSystem Komutları ==="
+      reload: "&e/reportsystem reload &7- Konfigürasyonu yeniden yükle"
+      stats: "&e/reportsystem stats &7- İstatistikleri göster"
+      info: "&e/reportsystem info &7- Plugin bilgilerini göster"
+      debug: "&e/reportsystem debug <true/false> &7- Debug modunu aç/kapat"
+      testnotif: "&e/reportsystem testnotif &7- Toast bildirim testi"
+      checkadv: "&e/reportsystem checkadv &7- Advancement durumunu kontrol et"
+
+    info:
+      header: "&6=== ReportSystem Bilgileri ==="
+      version: "&eVersiyon: &f%version%"
+      developer: "&eGeliştirici: &f%developer%"
+      mode: "&eMod: &f%mode%"
+      database: "&eVeritabanı: &f%database%"
+      replay: "&eReplay Sistemi: &f%replay%"
+      active: "Aktif"
+      inactive: "Deaktif"
+      bungeecord: "BungeeCord"
+      standalone: "Standalone"
+
+    stats:
+      header: "&6=== ReportSystem İstatistikleri ==="
+      active-recordings: "&eAktif Kayıtlar: &f%count%"
+      active-replays: "&eAktif Replay İzleyicileri: &f%count%"
+      total-reports: "&eToplam Rapor: &f%count%"
+      pending-reports: "&eBekleyen Rapor: &f%count%"
+      database-error: "&cVeritabanı istatistikleri alınamadı!"
+
+    debug:
+      usage: "&cKullanım: /reportsystem debug <true/false>"
+      enabled: "&aDebug modu: &aAktif"
+      disabled: "&aDebug modu: &cDeaktif"
+
+    testnotif:
+      sending: "&aToast bildirimi test ediliyor..."
+      sent: "&aToast gönderildi! Sağ üst köşeyi kontrol et."
+      failed: "&cAdvancementNotification sistemi başlatılamadı!"
+      title: "Test Bildirimi"
+      message: "Bu bir test toast bildirimidir"
+
+    checkadv:
+      header: "&6=== Advancement Durumu ==="
+      loaded: "&a✓ Advancement yüklü: &freportsystem:notification"
+      working: "&aToast bildirimleri çalışacak!"
+      not-found: "&c✗ Advancement bulunamadı!"
+      datapack-loaded: "&eDatapack yüklü ama advancement tanınmıyor."
+      need-restart: "&eSunucuyu restart etmelisin!"
+      fallback: "&7Fallback olarak Title kullanılacak."
+      datapack-exists: "&a✓ Datapack klasörü mevcut"
+      json-exists: "&a✓ notification.json dosyası mevcut"
+      json-missing: "&c✗ notification.json dosyası bulunamadı!"
+      datapack-missing: "&c✗ Datapack klasörü bulunamadı!"
+
+# ======================
+# Overwatch Mesajları
+# ======================
+overwatch:
+  prefix: "&8[&6⚖&8]"
+
+  # NPC Mesajları
+  npc:
+    no-permission: "%overwatch_prefix% &cBu NPC'yi kullanma yetkiniz yok!"
+
+    # Hologram
+    hologram:
+      title: "&6&l⚖ OVERWATCH ⚖"
+      weekly-reviewed: "&7Bu hafta incelenen: &e%count%"
+      total-punished: "&7Toplam ceza alan: &c%count%"
+      pending-queue: "&7Bekleyen rapor: &a%count%"
+      click-prompt: "&a&lSağ Tıkla!"
+      loading: "&7Yükleniyor..."
+
+  # İnceleme Mesajları
+  review:
+    loading: "%overwatch_prefix% &7Rapor yükleniyor... &e#%id%"
+    replay-started: "%overwatch_prefix% &aReplay başladı! İncelemeye başlayabilirsiniz."
+    replay-failed: "%overwatch_prefix% &7Replay başlatılamadı!"
+    replay-completed: "%overwatch_prefix% &7Replay tamamlandı! Lütfen kararını ver."
+    no-reports: "%overwatch_prefix% &7Şu anda incelenecek rapor yok!"
+    try-later: "&7Daha sonra tekrar deneyin."
+    completed: "%overwatch_prefix% &aİnceleme tamamlandı! &e+%xp% XP &8| %rank% &7Seviye %level%"
+    verdict-submitted: "%overwatch_prefix% &7Replay tamamlandı! Lütfen kararını ver."
+
+  # Karar Mesajları
+  verdict:
+    header: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    title: "&6&l⚖ OVERWATCH - KARAR GÖNDERİLDİ ⚖"
+    report-id: "&7Rapor: &e#%id%"
+    your-verdict: "&7Kararın: %verdict%"
+    category: "&7Kategori: &e%category%"
+    review-time: "&7İnceleme Süresi: &b%time% saniye"
+    thank-you: "&a&lTeşekkürler! İnceleme kaydedildi."
+    footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    cancelled: "%overwatch_prefix% &eİnceleme iptal edildi. Rapor tekrar kuyruğa eklendi."
+
+    # Verdict types (for display)
+    types:
+      guilty: "&c&lSUÇLU"
+      innocent: "&a&lMASUM"
+      skip: "&e&lATLANDI"
+
+    # Category names (for display)
+    categories:
+      combat: "Savaş Hileleri"
+      movement: "Hareket Hileleri"
+      visual: "Görsel Hileler"
+      other: "Diğer"
+      none: "Yok"
+
+    # Voting stats format (used in /reports command)
+    voting-stats:
+      format: "%guilty% suçlu, %innocent% masum"
+      format-with-skip: "%guilty% suçlu, %innocent% masum, %skip% atlandı"
+      guilty: "suçlu"
+      innocent: "masum"
+      skip: "atlandı"
+
+  # Komut Mesajları
+  commands:
+    player-only: "%overwatch_prefix% &cBu komutu sadece oyuncular kullanabilir!"
+    unknown-command: "%overwatch_prefix% &cBilinmeyen komut! &7/overwatch help"
+    usage: "%overwatch_prefix% &cBilinmeyen komut! &7/overwatch help"
+    usage-npc: "%overwatch_prefix% &cKullanım: /overwatch npc <create|delete|list>"
+    usage-npc-delete: "%overwatch_prefix% &cKullanım: /overwatch npc delete <npcId>"
+    usage-npc-delete-tip: "&7Kullanılabilir NPC'leri görmek için: &e/overwatch npc list"
+    usage-addqueue: "%overwatch_prefix% &cKullanım: /overwatch addqueue <reportId> [priority]"
+    addqueue-usage: "%overwatch_prefix% &cKullanım: /overwatch addqueue <reportId> [priority]"
+    player-not-found: "%overwatch_prefix% &cOyuncu bulunamadı: %player%"
+    invalid-number: "%overwatch_prefix% &cGeçersiz sayı!"
+    queue-added: "%overwatch_prefix% &7Rapor #%id% kuyruğa eklendi!"
+    queue-priority: "&7Öncelik: &e%priority%"
+    no-permission: "%overwatch_prefix% &cBu komutu kullanma yetkiniz yok!"
+    no-permission-admin: "%overwatch_prefix% &cBu komutu kullanma yetkiniz yok!"
+
+    npc:
+      usage: "%overwatch_prefix% &cKullanım: /overwatch npc <create|delete|list>"
+      unknown: "%overwatch_prefix% &cBilinmeyen NPC komutu! &7/overwatch npc help"
+      created: "%overwatch_prefix% &7NPC başarıyla oluşturuldu!"
+      created-id: "&7NPC ID: &e%id%"
+      created-location: "&7Konum: &e%world% %x%, %y%, %z%"
+      create-failed: "%overwatch_prefix% &cNPC oluşturulamadı!"
+      deleted: "%overwatch_prefix% &7NPC başarıyla silindi! &8(ID: %id%)"
+      delete-failed: "%overwatch_prefix% &cNPC silinemedi! NPC bulunamadı veya hata oluştu."
+      delete-usage: "%overwatch_prefix% &cKullanım: /overwatch npc delete <npcId>"
+      delete-help: "&7Kullanılabilir NPC'leri görmek için: &e/overwatch npc list"
+      list-empty: "%overwatch_prefix% &cBu sunucuda hiç NPC yok!"
+      list-help: "&7NPC oluşturmak için: &e/overwatch npc create"
+      list-header: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      list-title: "&6&l⚖ OVERWATCH NPC'LERİ ⚖"
+      list-number: "&e%num%. &7NPC ID: &f%id%..."
+      list-world: "&7Dünya: &e%world%"
+      list-location: "&7Konum: &e%x%, %y%, %z%"
+      list-delete: "&cSilmek için: &e/overwatch npc delete %id%"
+      list-footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    addqueue-success: "%overwatch_prefix% &7Rapor #%id% kuyruğa eklendi!"
+    addqueue-priority: "&7Öncelik: &e%priority%"
+
+    # Yardım
+    help:
+      header: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      title: "&6&l⚖ OVERWATCH KOMUTLARI ⚖"
+      footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      cmd-menu: "&e/overwatch &7- Ana menüyü aç"
+      cmd-stats: "&e/overwatch stats [oyuncu] &7- İstatistikleri görüntüle"
+      cmd-leaderboard: "&e/overwatch leaderboard &7- Liderlik tablosunu görüntüle"
+      main: "&e/overwatch &7- Ana menüyü aç"
+      stats: "&e/overwatch stats [oyuncu] &7- İstatistikleri görüntüle"
+      leaderboard: "&e/overwatch leaderboard &7- Liderlik tablosunu görüntüle"
+      admin-title: "&c&lADMİN KOMUTLARI:"
+      admin-header: "&c&lADMİN KOMUTLARI:"
+      admin-npc-create: "&e/overwatch npc create &7- NPC oluştur"
+      admin-npc-delete: "&e/overwatch npc delete <id> &7- NPC sil"
+      admin-npc-list: "&e/overwatch npc list &7- NPC'leri listele"
+      admin-addqueue: "&e/overwatch addqueue <reportId> [priority] &7- Raporu kuyruğa ekle"
+      npc-create: "&e/overwatch npc create &7- NPC oluştur"
+      npc-delete: "&e/overwatch npc delete <id> &7- NPC sil"
+      npc-list: "&e/overwatch npc list &7- NPC'leri listele"
+      addqueue: "&e/overwatch addqueue <reportId> [priority] &7- Raporu kuyruğa ekle"
+
+    # Tutorial
+    tutorial:
+      header: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      title: "&6&l⚖ OVERWATCH SİSTEMİ - NASIL ÇALIŞIR? ⚖"
+      footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      step1: "&e1. &7NPC'ye tıklayarak &6'İzlemeye Başla'&7yı seç"
+      step2: "&e2. &7Sistem sana rastgele bir &crapor replay'i &7gösterir"
+      step3: "&e3. &7Replay'i izle ve oyuncunun &chile &7kullanıp kullanmadığına karar ver"
+      step4: "&e4. &7Replay bitince oylama GUI'si açılır:"
+      step4-guilty: "&c&l✘ SUÇLU &7- Oyuncu hile kullanıyor"
+      step4-innocent: "&a&l✔ MASUM &7- Oyuncu temiz"
+      step4-skip: "&e&l⊗ ATLA &7- Emin değilim / Yeterli kanıt yok"
+      rewards-header: "&6&lÖDÜLLER:"
+      rewards-review: "&7• Her inceleme için &e15 XP &7kazan &8(Atla: 5 XP)"
+      rewards-level: "&7• Seviye atla ve rütbeni yükselt!"
+      rewards-leaderboard: "&7• Lider tablosunda yüksel!"
+      consensus-header: "&6&lOYLAMA SİSTEMİ:"
+      consensus-desc1: "&7Her rapor birden fazla incelemeci tarafından görülür."
+      consensus-desc2: "&7Adminler oylamaları görerek nihai kararı verir!"
+      important: "&a&lÖNEMLİ: &7Adil ve dürüst ol! Rastgele oy verme."
+
+  # GUI Mesajları
+  gui:
+    # Ana Menü
+    menu:
+      title: "&6&l⚖ OVERWATCH ⚖"
+      start-review:
+        name: "&6&lİzlemeye Başla"
+        lore-desc1: "&7İncelemek için bekleyen"
+        lore-desc2: "&7raporlardan birini izle"
+        lore-pending: "&eBekleyen: &a%count% &7rapor"
+        lore-click: "&a&l► Tıkla ve izlemeye başla!"
+      stats:
+        name: "&b&lİstatistiklerim"
+        lore-level: "&7Seviye: &e%level%"
+        lore-rank: "&7Rütbe: %rank_color%%rank%"
+        lore-xp: "&7XP: &6%xp%"
+        lore-total: "&7Toplam İnceleme: &e%total%"
+        lore-guilty: "&aSuçlu: &c%guilty%"
+        lore-innocent: "&2Masum: &a%innocent%"
+        lore-skip: "&7Atlandı: &e%skip%"
+        lore-no-stats1: "&7Henüz inceleme yapmadınız!"
+        lore-no-stats2: "&eİlk incelemenizi yapın"
+        lore-no-stats3: "&eve XP kazanmaya başlayın!"
+        lore-click: "&e&l► Tıkla ve detayları gör!"
+      leaderboard:
+        name: "&e&lLiderlik Tablosu"
+        lore-desc1: "&7En çok inceleme yapan"
+        lore-desc2: "&7oyuncuları görüntüle"
+        lore-click: "&6&l► Tıkla ve sıralamayı gör!"
+      tutorial:
+        name: "&a&lNasıl Çalışır?"
+        lore-header: "&7&nOverwatch Sistemi Nasıl Çalışır?"
+        lore-step1: "&e1. &7Rapor izlemeye başla"
+        lore-step2: "&e2. &7Replay'i izle ve karar ver"
+        lore-step3: "&e3. &7Suçlu/Masum/Atla oyla"
+        lore-step4: "&e4. &7XP kazan ve seviye atla!"
+        lore-consensus-header: "&6Oylama: &7Birden fazla"
+        lore-consensus-desc1: "&7incelemeci oylar ve adminler"
+        lore-consensus-desc2: "&7oylamaları görüp karar verir."
+        lore-click: "&a&l► Tıkla ve daha fazla öğren!"
+
+    # Karar GUI
+    verdict:
+      title: "&6&l⚖ OVERWATCH - KARAR VER ⚖"
+      report-info:
+        name: "&6&lRAPOR BİLGİSİ &8#%id%"
+        lore-reported: "&7Raporlanan: &c%reported%"
+        lore-reporter: "&7Raporlayan: &e%reporter%"
+        lore-reason: "&7Sebep: &f%reason%"
+        lore-server: "&7Sunucu: &b%server%"
+      guilty:
+        name: "&c&l✘ SUÇLU"
+        lore-desc1: "&7Oyuncu &chile kullanıyor&7!"
+        lore-desc2: "&cBu oyuncu açıkça hile"
+        lore-desc3: "&ckullanıyor ve cezalandırılmalı."
+        lore-click: "&e&l► Kategorini seçmek için tıkla!"
+      innocent:
+        name: "&a&l✔ MASUM"
+        lore-desc1: "&7Oyuncu &atemiz&7!"
+        lore-desc2: "&aBu oyuncu hile kullanmıyor."
+        lore-desc3: "&aYanlış rapor veya şüphe yok."
+        lore-click: "&a&l► Tıkla ve onayla!"
+      skip:
+        name: "&e&l⊗ ATLA"
+        lore-desc1: "&7Emin değilim / Yeterli kanıt yok"
+        lore-desc2: "&eKarar vermek için yeterli"
+        lore-desc3: "&ekanıt yok veya emin değilim."
+        lore-note: "&7&oNot: Atlamak daha az XP kazandırır"
+        lore-click: "&e&l► Tıkla ve atla!"
+      back:
+        name: "&c&lGeri Dön"
+        lore: "&7Ana menüye dön"
+      category-title: "&c&lHİLE KATEGORİSİNİ SEÇ"
+      category-combat:
+        name: "&c&lCOMBAT HACKS"
+        lore-desc1: "&7KillAura, Velocity, AutoClicker,"
+        lore-desc2: "&7Reach, Criticals vb."
+      category-movement:
+        name: "&e&lMOVEMENT HACKS"
+        lore-desc1: "&7Fly, Speed, Jesus, Glide,"
+        lore-desc2: "&7NoFall, Spider vb."
+      category-visual:
+        name: "&b&lVISUAL HACKS"
+        lore-desc1: "&7XRay, ESP, Tracers, Wallhack,"
+        lore-desc2: "&7ChestESP, Freecam vb."
+      category-other:
+        name: "&7&lOTHER"
+        lore-desc1: "&7Diğer hile türleri veya"
+        lore-desc2: "&7kategoriye girmeyen hileler."
+      category-back:
+        name: "&c&lGeri"
+
+    # İstatistik GUI
+    stats:
+      title: "&6&l%player% - İstatistikler"
+
+      # No stats messages
+      no-stats:
+        name: "&c&lİstatistik Yok"
+        lore-desc1: "&7Bu oyuncu henüz"
+        lore-desc2: "&7hiç inceleme yapmamış!"
+      no-stats-name: "&c&lİstatistik Yok"
+      no-stats-lore1: "&7Bu oyuncu henüz"
+      no-stats-lore2: "&7hiç inceleme yapmamış!"
+      back: "&c&lGeri Dön"
+
+      # Player head
+      player-head:
+        name: "&b&l%player%"
+        lore-rank: "&7Rütbe: %rank_color%&l%rank%"
+        lore-level: "&7Seviye: &e%level%"
+        lore-xp: "&7XP: &6%xp% &8/ &6%next_xp%"
+        lore-progress: "%progress_bar%"
+
+      # Simple message versions (for code compatibility)
+      player-name: "&b&l%player%"
+      rank-lore: "&7Rütbe: %rank_color%&l%rank%"
+      level-lore: "&7Seviye: &e%level%"
+      xp-lore: "&7XP: &6%xp% &8/ &6%next_xp%"
+
+      # Total reviews
+      total-reviews:
+        name: "&6&lToplam İnceleme"
+        lore-desc1: "&7Toplam incelediğin"
+        lore-desc2: "&7rapor sayısı"
+        lore-count: "&e&l%count% &7rapor"
+      total-name: "&6&lToplam İnceleme"
+      total-desc1: "&7Toplam incelediğin"
+      total-desc2: "&7rapor sayısı"
+      total-count: "&e&l%count% &7rapor"
+
+      # Guilty verdicts
+      guilty-verdicts:
+        name: "&c&lSuçlu Kararları"
+        lore-desc1: "&7Suçlu bulduğun"
+        lore-desc2: "&7oyuncu sayısı"
+        lore-count: "&c&l%count% &7suçlu"
+        lore-percentage: "&8(&c%percentage%%&8)"
+      guilty-name: "&c&lSuçlu Kararları"
+      guilty-desc1: "&7Suçlu bulduğun"
+      guilty-desc2: "&7oyuncu sayısı"
+      guilty-count: "&c&l%count% &7suçlu"
+      guilty-percent: "&8(&c%percent%%&8)"
+
+      # Innocent verdicts
+      innocent-verdicts:
+        name: "&a&lMasum Kararları"
+        lore-desc1: "&7Temiz bulduğun"
+        lore-desc2: "&7oyuncu sayısı"
+        lore-count: "&a&l%count% &7masum"
+        lore-percentage: "&8(&a%percentage%%&8)"
+      innocent-name: "&a&lMasum Kararları"
+      innocent-desc1: "&7Temiz bulduğun"
+      innocent-desc2: "&7oyuncu sayısı"
+      innocent-count: "&a&l%count% &7masum"
+      innocent-percent: "&8(&a%percent%%&8)"
+
+      # Skip verdicts
+      skip-verdicts:
+        name: "&e&lAtlanan Kararlar"
+        lore-desc: "&7Atladığın rapor sayısı"
+        lore-count: "&e&l%count% &7atlandı"
+        lore-percentage: "&8(&e%percentage%%&8)"
+      skip-name: "&e&lAtlanan Kararlar"
+      skip-desc: "&7Atladığın rapor sayısı"
+      skip-count: "&e&l%count% &7atlandı"
+      skip-percent: "&8(&e%percent%%&8)"
+
+      # Accuracy
+      accuracy:
+        name: "&6&lDoğruluk Oranı"
+        lore-desc1: "&7Diğer incelemecilerle"
+        lore-desc2: "&7uyum oranın"
+        lore-accuracy: "&6&l%accuracy%% &7doğruluk"
+      accuracy-name: "&6&lDoğruluk Oranı"
+      accuracy-desc1: "&7Diğer incelemecilerle"
+      accuracy-desc2: "&7uyum oranın"
+      accuracy-value: "&6&l%accuracy%% &7doğruluk"
+
+      # Review time
+      review-time:
+        name: "&b&lİnceleme Süresi"
+        lore-desc: "&7Toplam inceleme süresi"
+        lore-total: "&e&l%hours%sa %minutes%dk %seconds%sn"
+        lore-average: "&7Ortalama: &e%avg_seconds% saniye"
+      time-name: "&b&lİnceleme Süresi"
+      time-desc: "&7Toplam inceleme süresi"
+      time-total: "&e&l%hours%sa %minutes%dk %seconds%sn"
+      time-average: "&7Ortalama: &e%avg_seconds% saniye"
+
+      # Dates
+      dates:
+        name: "&d&lTarihler"
+        lore-first: "&7İlk inceleme:"
+        lore-first-date: "&e%first_date%"
+        lore-last: "&7Son inceleme:"
+        lore-last-date: "&e%last_date%"
+      dates-name: "&d&lTarihler"
+      dates-first: "&7İlk inceleme:"
+      dates-first-value: "&e%date%"
+      dates-last: "&7Son inceleme:"
+      dates-last-value: "&e%date%"
+
+      # XP system
+      xp-system:
+        name: "&a&lXP Sistemi"
+        lore-header: "&7XP kazanma detayları:"
+        lore-guilty-innocent: "&a✔ Suçlu/Masum: &e+15 XP"
+        lore-skip: "&e⊗ Atla: &e+5 XP"
+        lore-next-level: "&7Bir sonraki seviye:"
+        lore-needed: "&6%needed% XP &7gerekiyor"
+      xp-name: "&a&lXP Sistemi"
+      xp-desc: "&7XP kazanma detayları:"
+      xp-guilty: "&a✔ Suçlu/Masum: &e+15 XP"
+      xp-skip: "&e⊗ Atla: &e+5 XP"
+      xp-next: "&7Bir sonraki seviye:"
+      xp-needed: "&6%xp% XP &7gerekiyor"
+
+      # Rank info
+      rank-info:
+        name: "&b&lRütbeler"
+        lore-header: "&7Rütbe Sistemi:"
+        lore-diamond: "%diamond_status%&bDIAMOND &7- 2500+ XP"
+        lore-gold: "%gold_status%&6GOLD &7- 1000+ XP"
+        lore-silver: "%silver_status%&7SILVER &7- 500+ XP"
+        lore-bronze: "%bronze_status%&cBRONZE &7- 0+ XP"
+      ranks-name: "&b&lRütbeler"
+      ranks-system: "&7Rütbe Sistemi:"
+      ranks-diamond: "&bDIAMOND &7- 2500+ XP"
+      ranks-gold: "&6GOLD &7- 1000+ XP"
+      ranks-silver: "&7SILVER &7- 500+ XP"
+      ranks-bronze: "&cBRONZE &7- 0+ XP"
+
+      back: "&c&lGeri Dön"
+
+    # Liderlik Tablosu GUI
+    leaderboard:
+      title: "&6&l⚖ LİDERLİK TABLOSU ⚖"
+
+      # Rank prefixes
+      rank-1: "&6&l#1 "
+      rank-2: "&7&l#2 "
+      rank-3: "&c&l#3 "
+      rank-n: "&e#%rank% "
+
+      # Decorative
+      separator: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
+
+      # Empty state
+      empty-name: "&c&lBoş Liderlik Tablosu"
+      empty-lore: "&7Henüz hiç inceleme yapılmamış!"
+      empty:
+        name: "&c&lBoş Liderlik Tablosu"
+        lore: "&7Henüz hiç inceleme yapılmamış!"
+
+      # Player entry
+      # Simple message versions (for code compatibility)
+      rank: "&7Rütbe: %rank_color%&l%rank%"
+      level: "&7Seviye: &e%level% &8(&6%xp% XP&8)"
+      stats-title: "&6&lİSTATİSTİKLER:"
+      total: "&7Toplam İnceleme: &e%total%"
+      guilty: "&7  &c✘ Suçlu: &c%guilty%"
+      innocent: "&7  &a✔ Masum: &a%innocent%"
+      skip: "&7  &e⊗ Atlandı: &e%skip%"
+      accuracy: "&7Doğruluk: &6%accuracy%%"
+      time: "&7Toplam Süre: &b%hours%sa %minutes%dk"
+      average: "&7Ortalama: &b%avg_seconds% saniye"
+      badge-1: "&6&l✦ EN İYİ İNCELEMECİ ✦"
+      badge-2: "&7&l★ İKİNCİ EN İYİ ★"
+      badge-3: "&c&l♦ ÜÇÜNCÜ EN İYİ ♦"
+
+      player-entry:
+        name: "%rank_prefix%%player%"
+        lore-header: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
+        lore-rank: "&7Rütbe: %rank_color%&l%rank%"
+        lore-level: "&7Seviye: &e%level% &8(&6%xp% XP&8)"
+        lore-stats-header: "&6&lİSTATİSTİKLER:"
+        lore-total: "&7Toplam İnceleme: &e%total%"
+        lore-guilty: "&7  &c✘ Suçlu: &c%guilty%"
+        lore-innocent: "&7  &a✔ Masum: &a%innocent%"
+        lore-skip: "&7  &e⊗ Atlandı: &e%skip%"
+        lore-accuracy: "&7Doğruluk: &6%accuracy%%"
+        lore-time: "&7Toplam Süre: &b%hours%sa %minutes%dk"
+        lore-average: "&7Ortalama: &b%avg_seconds% saniye"
+        lore-footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
+        lore-badge-first: "&6&l✦ EN İYİ İNCELEMECİ ✦"
+        lore-badge-second: "&7&l★ İKİNCİ EN İYİ ★"
+        lore-badge-third: "&c&l♦ ÜÇÜNCÜ EN İYİ ♦"
+      # Info item
+      info-name: "&e&lBilgilendirme"
+      info-lore1: "&7Liderlik tablosu en çok"
+      info-lore2: "&7inceleme yapan oyuncuları gösterir."
+      info-sorting: "&eSıralama: &7Toplam İnceleme Sayısı"
+      info:
+        name: "&e&lBilgilendirme"
+        lore-desc1: "&7Liderlik tablosu en çok"
+        lore-desc2: "&7inceleme yapan oyuncuları gösterir."
+        lore-sorting: "&eSıralama: &7Toplam İnceleme Sayısı"
+
+      # Back button
+      back: "&c&lGeri Dön"
+
+# ======================
+# Diğer Mesajlar
+# ======================
+misc:
+  duration:
+    permanent: "Kalıcı"
+    format: "%time%"
+
+  time:
+    years: "yıl"
+    months: "ay"
+    weeks: "hafta"
+    days: "gün"
+    hours: "saat"
+    minutes: "dakika"
+    seconds: "saniye"
+
+# ======================
+# Discord Webhook Mesajları
+# ======================
+webhook:
+  # Discord'da bot kullanıcı adı
+  username: "Rapor Sistemi"
+
+  # Alt bilgi metni
+  footer: "Rapor Sistemi • Gelişmiş Webhook Sistemi ile Güçlendirilmiştir"
+
+  # Kalıcı süre metni
+  permanent: "Kalıcı"
+
+  # Yeni rapor bildirimi
+  new-report:
+    title: "🔴 Yeni Rapor Oluşturuldu"
+    description: "Yeni bir oyuncu raporu gönderildi ve inceleme bekliyor."
+
+  # Rapor kapatma bildirimi
+  report-closed:
+    title: "📋 Rapor Kapatıldı"
+    description: "Bir rapor yetkili tarafından incelendi ve kapatıldı."
+
+  # Rapor kabul edildi ve ceza verildi bildirimi (birleştirilmiş)
+  report-punished:
+    title: "Rapor Kabul Edildi ve Oyuncu Cezalandırıldı"
+    description: "Bir rapor kabul edildi ve bildirilen oyuncuya ceza uygulandı."
+
+  # Ceza bildirimi (tek başına)
+  punishment:
+    title: "Oyuncu Cezalandırıldı"
+    description: "Bir oyuncu moderasyon ekibi tarafından cezalandırıldı."
+
+  # Alan adları
+  field:
+    report-id: "Rapor ID"
+    reporter: "Raporlayan"
+    reported-player: "Bildirilen Oyuncu"
+    player: "Oyuncu"
+    reason: "Sebep"
+    status: "Durum"
+    server: "Sunucu"
+    closed-by: "Kapatan"
+    response: "Yetkili Yanıtı"
+    punishment-type: "Ceza Türü"
+    punished-by: "Cezayı Veren"
+    duration: "Süre"
+    total-reports: "Toplam Rapor"
+    overwatch-votes: "Overwatch Oyları"
+
+  # Overwatch oy terimleri
+  overwatch-votes:
+    guilty: "suçlu"
+    innocent: "masum"
+    skip: "atlandı"
+
+  # Buton etiketleri
+  button:
+    view-report: "Raporu Görüntüle"
+    view-details: "Detayları Görüntüle"
+    help: "Yardım ve Rehber"
+
+  # Ceza türü isimleri
+  punishment-type:
+    ban: "Yasaklama"
+    kick: "Atma"
+    mute: "Susturma"
+    warn: "Uyarı"

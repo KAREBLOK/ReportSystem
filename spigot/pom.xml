@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.reportsystem</groupId>
+        <artifactId>reportsystem-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>spigot-plugin</artifactId>
+    <name>Spigot Plugin Module</name>
+    <packaging>jar</packaging>
+
+    <repositories>
+        <!-- JitPack Repository -->
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Common modül -->
+        <dependency>
+            <groupId>com.reportsystem</groupId>
+            <artifactId>common</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Paper API -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>1.21-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- PacketEvents API -->
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-api</artifactId>
+            <version>2.9.3</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- PacketEvents Spigot -->
+        <dependency>
+            <groupId>com.github.retrooper</groupId>
+            <artifactId>packetevents-spigot</artifactId>
+            <version>2.9.3</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- NPC Lib -->
+        <dependency>
+            <groupId>io.github.juliarn</groupId>
+            <artifactId>npc-lib-bukkit</artifactId>
+            <version>3.0.0-beta13</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>ReportSystem-Spigot-${project.version}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                    <artifactSet>
+                        <excludes>
+                            <!-- SQLite'ı exclude et - sunucu zaten içeriyor -->
+                            <exclude>org.xerial:sqlite-jdbc</exclude>
+                            <!-- PacketEvents'i exclude et - ayrı plugin olarak kurulacak -->
+                            <exclude>com.github.retrooper.packetevents:*</exclude>
+                            <exclude>com.github.retrooper:packetevents-*</exclude>
+                            <exclude>io.github.retrooper:packetevents-*</exclude>
+                        </excludes>
+                    </artifactSet>
+                    <relocations>
+                        <!-- NPC Lib -->
+                        <relocation>
+                            <pattern>com.github.juliarn.npc</pattern>
+                            <shadedPattern>com.reportsystem.spigot.libs.npc</shadedPattern>
+                        </relocation>
+                        <!-- Caffeine (NPC lib dependency) -->
+                        <relocation>
+                            <pattern>com.github.benmanes.caffeine</pattern>
+                            <shadedPattern>com.reportsystem.spigot.libs.caffeine</shadedPattern>
+                        </relocation>
+                        <!-- HikariCP -->
+                        <relocation>
+                            <pattern>com.zaxxer.hikari</pattern>
+                            <shadedPattern>com.reportsystem.spigot.libs.hikari</shadedPattern>
+                        </relocation>
+                        <!-- MySQL Connector -->
+                        <relocation>
+                            <pattern>com.mysql</pattern>
+                            <shadedPattern>com.reportsystem.spigot.libs.mysql</shadedPattern>
+                        </relocation>
+                    </relocations>
+                    <filters>
+                        <filter>
+                            <artifact>*:*</artifact>
+                            <excludes>
+                                <exclude>META-INF/*.SF</exclude>
+                                <exclude>META-INF/*.DSA</exclude>
+                                <exclude>META-INF/*.RSA</exclude>
+                                <exclude>META-INF/MANIFEST.MF</exclude>
+                                <exclude>META-INF/LICENSE*</exclude>
+                                <exclude>META-INF/NOTICE*</exclude>
+                            </excludes>
+                        </filter>
+                    </filters>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+    </build>
+</project>

@@ -1,0 +1,95 @@
+# Report List GUI Configuration
+# Used for /reports command
+# NOTE: Text content (names, lores) are now in messages_*.yml files
+# This file only contains layout and visual settings
+
+size: 54
+
+# Report item display
+report-item:
+  # Material based on status
+  materials:
+    PENDING: PAPER
+    ACCEPTED: LIME_DYE
+    REJECTED: RED_DYE
+
+  # Enchant effect for new reports
+  enchant-new: true
+
+  # Status colors
+  status-colors:
+    PENDING: "&e"
+    ACCEPTED: "&a"
+    REJECTED: "&c"
+    CLOSED: "&7"
+
+  # Status translations
+  status-names:
+    PENDING: "Beklemede"
+    ACCEPTED: "Kabul Edildi"
+    REJECTED: "Reddedildi"
+    CLOSED: "Kapatıldı"
+
+# Empty list
+empty-list:
+  material: BARRIER
+  slot: 22
+
+# Navigation
+navigation:
+  # Previous page
+  previous:
+    slot: 48
+    material: ARROW
+
+  # Page info
+  page-info:
+    slot: 49
+    material: BOOK
+
+  # Next page
+  next:
+    slot: 50
+    material: ARROW
+
+# Sort options (not implemented yet)
+sort:
+  slot: 16
+  material: COMPARATOR
+
+# Actions (bottom row)
+actions:
+  # Refresh
+  refresh:
+    slot: 45
+    material: SUNFLOWER
+
+  # Search (not implemented yet)
+  search:
+    slot: 46
+    material: COMPASS
+
+  # Statistics (not implemented yet)
+  stats:
+    slot: 52
+    material: EMERALD
+
+  # Settings (not implemented yet)
+  settings:
+    slot: 53
+    material: REDSTONE
+
+# Background
+background:
+  # Border
+  border:
+    enabled: true
+    material: GRAY_STAINED_GLASS_PANE
+    name: " "
+    slots: [0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,45,46,47,48,49,50,51,52,53]
+
+  # Top row background
+  top-row:
+    material: BLACK_STAINED_GLASS_PANE
+    name: " "
+    slots: [9,17]

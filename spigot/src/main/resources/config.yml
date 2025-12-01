@@ -1,0 +1,444 @@
+# ReportSystem Spigot Configuration
+# Wiki: https://github.com/yourname/ReportSystem/wiki
+# Discord: https://discord.gg/yourserver
+
+# ======================
+# License Settings
+# ======================
+license:
+  # Lisans anahtarınızı buraya girin
+  # Lisans satın almak için: https://kareblok.tc
+  # Format: KB-XXXX-XXXX-XXXX
+  #
+  # BungeeCord Kullanıcıları:
+  # Aynı lisansı birden fazla sunucuda (Faction, Skyblock, PvP vb.) kullanabilirsiniz.
+  # Lisansınızın max_servers ayarını admin panelden kontrol edin.
+  license-key: "KB-XXXX-XXXX-XXXX"
+
+  # API URL (değiştirmeyin)
+  api-url: "https://kareblok.tc"
+
+# ======================
+# Telemetry Settings
+# ======================
+telemetry:
+  # Telemetri sistemini etkinleştir/devre dışı bırak
+  # Bu sistem sunucu istatistiklerini toplar (oyuncu sayısı, rapor sayısı, TPS vb.)
+  # Veriler anonim olarak toplanır ve sadece geliştirme için kullanılır
+  # İstediğiniz zaman kapatabilirsiniz
+  enabled: true
+
+# ======================
+# General Settings
+# ======================
+general:
+  # Enable debug mode (shows detailed logs)
+  debug: false
+
+  # Language file to use (messages_en.yml, messages_tr.yml, etc.)
+  language: "en"
+
+  # Date format for timestamps
+  date-format: "dd/MM/yyyy HH:mm:ss"
+
+  # Enable update checker
+  check-updates: true
+
+# ======================
+# Database Settings
+# ======================
+database:
+  # Database type: 'sqlite' or 'mysql'
+  # For BungeeCord networks, use 'mysql'
+  type: mysql
+
+  # MySQL settings (only if type is mysql)
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "reportsystem"
+    username: "root"
+    password: "CHANGE_THIS_PASSWORD"
+
+    # Connection pool settings
+    pool:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+# ======================
+# BungeeCord Settings
+# ======================
+bungeecord:
+  # Enable BungeeCord support
+  enabled: true
+
+  # Server display name (for GUIs)
+  # Leave empty to use actual server name
+  display-name: ""
+
+# ======================
+# Report Settings
+# ======================
+reports:
+  # Require target player to be online
+  # If true, players can only report online players
+  # If false, offline players can also be reported
+  require-online: true
+
+  # Cooldown between reports (seconds)
+  # Set to 0 to disable
+  cooldown: 60
+
+  # Global rate limit (reports per minute)
+  # Even users with cooldown bypass permission are limited to this
+  # Set to -1 to disable
+  # Example: If set to 5, a player can create maximum 5 reports per minute
+  global-rate-limit: 5
+
+  # Maximum reports per player (same reporter to same reported player)
+  # Set to -1 to disable
+  # Example: If set to 3, a player can only report the same person 3 times
+  max-reports-per-player: 3
+
+  # Minimum reason length
+  min-reason-length: 10
+
+  # Maximum reason length
+  max-reason-length: 100
+
+  # Auto-close reports after X days
+  # Set to -1 to disable
+  auto-close-days: 30
+
+  # Report categories
+  categories:
+    - "Hile"
+    - "Hakaret/Küfür"
+    - "Spam"
+    - "Griefing"
+    - "Bug Abuse"
+    - "Diğer"
+
+  # Notifications
+  notifications:
+    # Send notification to staff when report created
+    notify-staff: true
+
+    # Play sound for staff notifications
+    sound-enabled: true
+    sound: "BLOCK_NOTE_BLOCK_PLING"
+
+    # Send title to staff
+    title-enabled: true
+
+    # Send action bar to staff
+    actionbar-enabled: false
+
+
+# ======================
+# Replay Settings
+# ======================
+replay:
+  # Enable replay system
+  enabled: true
+
+  # Auto-record on report
+  auto-record: true
+
+  # Recording duration (seconds)
+  recording-duration: 45
+
+  # Maximum concurrent recordings
+  max-recordings: 10
+
+  # Maximum replay file size (MB)
+  # Set to -1 to disable (unlimited size)
+  max-file-size: -1
+
+  # Auto-delete replays after X days
+  # Set to -1 to disable
+  auto-delete-days: 7
+
+  # Replay quality settings
+  quality:
+    # Ticks per second (20 = full quality, 10 = half quality)
+    tps: 20
+
+    # Record nearby players
+    record-nearby-players: true
+
+    # Nearby player radius
+    nearby-radius: 50
+
+    # Record inventory changes
+    record-inventory: true
+
+    # Record chat messages
+    record-chat: true
+
+    # Record block changes
+    record-blocks: true
+
+  # Nearby Player Tracking Settings
+  # Controls how nearby players are recorded during replay
+  nearby-player-tracking:
+    # Enable enhanced nearby player tracking
+    enabled: true
+
+    # Tracking interval (ticks)
+    # Lower = smoother movement, higher CPU usage
+    # Recommended: 2-3 ticks (100-150ms) for smooth movement
+    interval-ticks: 2
+
+    # Maximum tracking distance (blocks)
+    # Players within this range will be tracked
+    distance: 48
+
+    # Movement threshold (blocks)
+    # Minimum distance for movement to be recorded
+    # Lower = more accurate, more data
+    movement-threshold: 0.01
+
+    # Use PlayerMoveEvent for instant tracking
+    # If true, uses event-based tracking (more accurate but higher CPU)
+    # If false, only periodic tracking is used
+    use-move-event: false
+
+    # What to track for nearby players
+    track:
+      # Equipment changes (armor, items)
+      equipment: true
+
+      # Animations (swing, damage)
+      animations: true
+
+      # Sneaking state
+      sneaking: true
+
+      # Sprinting state
+      sprinting: true
+
+      # Block break/place (expensive, not recommended)
+      blocks: false
+
+      # Item usage (bow, shield, food)
+      item-use: false
+
+  # NPC settings
+  npc:
+    # NPC view distance
+    view-distance: 50
+
+    # Show player nametag
+    show-nametag: true
+
+    # NPC glow color (when selected)
+    glow-color: "YELLOW"
+
+# ======================
+# Punishment Settings
+# ======================
+punishments:
+  # Use global punishment system (BungeeCord)
+  use-global: true
+
+  # Default punishment reasons
+  default-reasons:
+    ban:
+      - "Hile kullanımı"
+      - "Uygunsuz davranış"
+      - "Ban kaçağı"
+      - "Reklam"
+    mute:
+      - "Hakaret/Küfür"
+      - "Spam"
+      - "Caps Lock"
+      - "Reklam"
+    kick:
+      - "AFK"
+      - "Uyarı"
+      - "Yeniden giriş"
+
+  # Punishment durations (for quick select)
+  durations:
+    - "5m"
+    - "30m"
+    - "1h"
+    - "1d"
+    - "7d"
+    - "30d"
+    - "permanent"
+
+# ======================
+# Performance Settings
+# ======================
+performance:
+  # Async database operations
+  async-database: true
+
+  # Cache settings
+  cache:
+    # Cache reports in memory
+    enabled: true
+
+    # Maximum cached reports
+    max-size: 100
+
+    # Cache expiry (minutes)
+    expiry: 10
+
+# ======================
+# Overwatch Settings
+# ======================
+# CS:GO-style community review system
+# Trusted players review reports and vote on verdicts
+overwatch:
+  # Enable Overwatch system
+  enabled: true
+
+  # Minimum reviewers required for consensus
+  # A report needs this many reviews before action is taken
+  min-reviewers: 3
+
+  # Consensus threshold (percentage)
+  # If this percentage of reviewers vote GUILTY, auto-punishment is applied
+  # Example: 70.0 means if 70% or more vote guilty, player gets banned
+  consensus-threshold: 70.0
+
+  # Auto-ban duration (days)
+  # Duration for automatic bans when consensus is reached
+  auto-ban-duration-days: 30
+
+  # NPC settings
+  npc:
+    # Hologram update interval (seconds)
+    # How often NPC holograms update statistics
+    hologram-update-interval: 30
+
+  # Queue settings
+  queue:
+    # Auto-add reports to queue
+    # If true, new reports are automatically added to Overwatch queue
+    auto-add-reports: false
+
+    # Default priority for auto-added reports
+    default-priority: 0
+
+    # Maximum queue size
+    # If queue exceeds this, oldest reports are removed
+    # Set to -1 for unlimited
+    max-queue-size: 100
+
+  # Reviewer settings
+  reviewer:
+    # Allow skip voting
+    # If false, reviewers must choose GUILTY or INNOCENT
+    allow-skip: true
+
+    # Cooldown between reviews (seconds)
+    # Set to 0 to disable
+    review-cooldown: 10
+
+  # XP and Ranking
+  xp:
+    # XP rewards
+    guilty-innocent-xp: 15
+    skip-xp: 5
+
+    # XP required for ranks
+    bronze-xp: 0
+    silver-xp: 500
+    gold-xp: 1000
+    diamond-xp: 2500
+
+    # XP per level
+    xp-per-level: 100
+
+  # Reward Commands (executed when player completes a review)
+  # Available placeholders: %player%, %verdict%, %xp%, %level%, %rank%
+  # Commands are executed as CONSOLE
+  rewards:
+    enabled: false
+
+    # Commands to run for ANY verdict (guilty, innocent, skip)
+    on-review-complete:
+      - "give %player% diamond 1"
+      - "eco give %player% 100"
+
+    # Commands to run ONLY for GUILTY or INNOCENT verdicts
+    on-guilty-innocent:
+      - "give %player% emerald 1"
+
+    # Commands to run ONLY for SKIP verdicts
+    on-skip:
+      - "give %player% coal 1"
+
+    # Commands to run when player levels up
+    on-level-up:
+      - "broadcast &6[Overwatch] &e%player% &7seviye &e%level% &7oldu!"
+      - "give %player% diamond 5"
+
+    # Commands to run when player reaches a new rank
+    on-rank-up:
+      bronze:
+        - "broadcast &c[Overwatch] &e%player% &c&lBRONZE &7rütbesine ulaştı!"
+      silver:
+        - "broadcast &7[Overwatch] &e%player% &7&lSILVER &7rütbesine ulaştı!"
+        - "give %player% iron_ingot 32"
+      gold:
+        - "broadcast &6[Overwatch] &e%player% &6&lGOLD &7rütbesine ulaştı!"
+        - "give %player% gold_ingot 32"
+      diamond:
+        - "broadcast &b[Overwatch] &e%player% &b&lDIAMOND &7rütbesine ulaştı!"
+        - "give %player% diamond 64"
+
+# ======================
+# Discord Webhook Settings
+# ======================
+# Advanced Discord webhook integration with buttons, embeds, and multi-language support
+discord-webhook:
+  # Enable Discord webhook notifications
+  enabled: false
+
+  # Discord webhook URL
+  # How to get: Discord Server Settings → Integrations → Webhooks → Create Webhook
+  # Copy the webhook URL and paste it here
+  # Example: https://discord.com/api/webhooks/123456789/abcdefghijklmnop
+  url: ""
+
+  # Avatar URL for webhook messages
+  # This will be the bot's avatar in Discord
+  avatar-url: "https://i.imgur.com/4M34hi2.png"
+
+  # Web panel URL (optional)
+  # If set, buttons will link to your web panel for viewing reports
+  # Example: https://panel.yourserver.com
+  # Leave empty to disable panel buttons
+  web-panel-url: ""
+
+  # Add interactive buttons to messages
+  # Buttons allow clicking to view reports, access help, etc.
+  add-buttons: true
+
+  # Include server name in embeds
+  # Useful for BungeeCord networks to know which server the report came from
+  include-server-name: true
+
+  # Events to send
+  # Control which events trigger webhook notifications
+  events:
+    # Send notification when new report is created
+    new-report: true
+
+    # Send notification when report is closed (accepted/rejected)
+    report-closed: true
+
+    # Send notification when player is punished
+    punishment: true
+
+  # Debug mode
+  # Shows detailed webhook logs in console
+  debug: false

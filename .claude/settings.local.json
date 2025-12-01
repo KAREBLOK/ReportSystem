@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\xampp\\php\\php.exe\" check_logo_db.php)",
+      "Bash(\"C:\\xampp\\php\\php.exe\" -r \"require ''kullanıcı/config.php''; $pdo->exec(''DROP TABLE IF EXISTS tema_ayarlari''); echo ''tema_ayarlari tablosu silindi.'';\")",
+      "Bash(\"C:\\xampp\\php\\php.exe\" drop_tema_table.php)",
+      "Bash(\"C:\\xampp\\php\\php.exe\" test_logo_system.php)",
+      "Bash(\"C:\\xampp\\php\\php.exe\" -r \"require ''kullanıcı/config.php''; $pdo->exec(\"\"INSERT INTO site_ayarlari (ayar_adi, ayar_degeri) VALUES (''logo_url'', ''/images/logo.png'') ON DUPLICATE KEY UPDATE ayar_adi=''logo_url''\"\"); $pdo->exec(\"\"INSERT INTO site_ayarlari (ayar_adi, ayar_degeri) VALUES (''favicon_url'', ''/images/favicon.png'') ON DUPLICATE KEY UPDATE ayar_adi=''favicon_url''\"\"); echo ''Kayitlar eklendi'';\")",
+      "Bash(\"C:\\xampp\\php\\php.exe\" add_logo_records.php)",
+      "Bash(\"C:\\xampp\\php\\php.exe\" fix_logo_paths.php)",
+      "Bash(\"C:\\xampp\\php\\php.exe\" -r \"require ''kullanıcı/config.php''; $stmt = $pdo->prepare(''UPDATE site_ayarlari SET ayar_degeri = ? WHERE ayar_adi = ?''); $stmt->execute([''/images/logo.png'', ''logo_url'']); $stmt->execute([''/images/favicon.png'', ''favicon_url'']); echo ''Yollar /images/ olarak geri ayarlandı.'';\")",
+      "Bash(\"C:\\Windows\\System32\\drivers\\etc\\hosts\")",
+      "Bash(\"C:\\xampp\\php\\php.exe\" update_logo_paths.php)",
+      "Bash(del \"C:\\xampp\\htdocs\\paralı tema\\public_html\\update_logo_paths.php\")",
+      "Bash(\"C:/xampp/php/php.exe\" -r \"require ''public_html/kullanıcı/config.php''; $tables = $pdo->query(''SHOW TABLES'')->fetchAll(PDO::FETCH_COLUMN); foreach($tables as $t) { if(strpos($t, ''kupon'') !== false || strpos($t, ''satin'') !== false) echo $t.PHP_EOL; }\")",
+      "Bash(\"C:/xampp/php/php.exe\" -r \"require ''''C:/xampp/htdocs/paralı tema/public_html/kullanıcı/config.php''''; $tables = $pdo->query(''''SHOW TABLES'''')->fetchAll(PDO::FETCH_COLUMN); echo implode(PHP_EOL, $tables);\")",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(git config:*)",
+      "Bash(gh auth:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,93 @@
+# ReportSystem BungeeCord Configuration
+
+# ======================
+# Database Settings
+# ======================
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "reportsystem"
+    username: "root"
+    password: "CHANGE_THIS_PASSWORD"
+
+    # Connection pool
+    pool:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+
+# ======================
+# Network Settings
+# ======================
+network:
+  # Staff notification settings
+  notifications:
+    # Broadcast to all servers
+    cross-server: true
+
+    # Only notify staff on specific servers
+    # Leave empty for all servers
+    staff-servers: []
+    # - "hub"
+    # - "staff"
+
+  # Punishment sync
+  punishment-sync:
+    # Sync punishments across all servers
+    enabled: true
+
+    # Broadcast punishment messages
+    broadcast: true
+
+# ======================
+# Report Settings
+# ======================
+reports:
+  # Allow cross-server reports
+  cross-server: true
+
+  # Require player to be online to be reported
+  require-online: false
+
+  # Auto-assign reports to staff
+  auto-assign: false
+
+  # Maximum reports per player (same reporter to same reported player)
+  # Set to -1 to disable
+  # Example: If set to 3, a player can only report the same person 3 times
+  max-reports-per-player: 3
+
+# ======================
+# Discord Integration
+# ======================
+discord:
+  enabled: false
+
+  # Webhook URLs
+  webhooks:
+    reports: ""
+    punishments: ""
+
+  # Embed settings
+  embeds:
+    color: "#FF5555"
+    footer: "ReportSystem"
+    timestamp: true
+
+  # Ping roles
+  ping-roles:
+    - "@Staff"
+    - "@Admin"
+
+# ======================
+# Debug Settings
+# ======================
+debug:
+  # Enable debug logging
+  enabled: false
+
+  # Log database queries
+  log-queries: false
+
+  # Log plugin messages
+  log-messages: false
