@@ -1,0 +1,123 @@
+name: ReportSystem-Spigot
+version: ${project.version}
+main: com.reportsystem.spigot.ReportSystemSpigot
+api-version: '1.21'
+author: BaranMRJ
+website: https://seninsiten.com
+description: Gelişmiş GUI ve Replay sistemine sahip rapor eklentisi
+
+# Bağımlılıklar
+depend: [packetevents]
+softdepend: [PlaceholderAPI, Vault]
+
+# Kütüphaneler
+libraries:
+  - org.xerial:sqlite-jdbc:3.45.1.0
+
+# Komutlar
+commands:
+  report:
+    description: Oyuncu rapor et (GUI açar)
+    usage: /<command> <oyuncu> [sebep]
+    permission: reportsystem.report
+    aliases: [rapor, reportplayer, raporla]
+
+  reports:
+    description: Kayıtlı raporları listeler
+    usage: /<command> [sayfa]
+    aliases: [raporlar, reportlist, raporlistesi]
+    permission: reportsystem.view
+
+  reportsystem:
+    description: ReportSystem admin komutları
+    usage: /<command> <reload|stats|info|debug>
+    aliases: [rs, rsystem, raporsistem]
+    permission: reportsystem.admin
+
+  overwatch:
+    description: Overwatch sistem komutları (CS:GO tarzı rapor inceleme)
+    usage: /<command> [stats|leaderboard|npc]
+    aliases: [ow, overwatchsystem]
+    permission: reportsystem.overwatch
+
+# İzinler
+permissions:
+  # Tüm yetkiler
+  reportsystem.*:
+    description: Tüm ReportSystem yetkileri
+    default: op
+    children:
+      reportsystem.report: true
+      reportsystem.report.others: true
+      reportsystem.view: true
+      reportsystem.view.all: true
+      reportsystem.admin: true
+      reportsystem.notify: true
+      reportsystem.manage: true
+      reportsystem.punish: true
+      reportsystem.delete: true
+      reportsystem.cooldown.bypass: true
+      reportsystem.exempt: true
+      reportsystem.overwatch: true
+      reportsystem.overwatch.admin: true
+
+  # Rapor oluşturma
+  reportsystem.report:
+    description: Rapor oluşturma yetkisi
+    default: true
+
+  reportsystem.report.others:
+    description: Başkalarının adına rapor oluşturma yetkisi
+    default: op
+
+  # Rapor görüntüleme
+  reportsystem.view:
+    description: Kendi raporlarını görüntüleme yetkisi
+    default: true
+
+  reportsystem.view.all:
+    description: Tüm raporları görüntüleme yetkisi
+    default: op
+
+  # Admin
+  reportsystem.admin:
+    description: ReportSystem admin komutları yetkisi
+    default: op
+
+  # Bildirimler
+  reportsystem.notify:
+    description: Rapor bildirimi alma yetkisi
+    default: op
+
+  # Rapor yönetimi
+  reportsystem.manage:
+    description: Raporları kabul/red etme yetkisi
+    default: op
+
+  # Ceza verme
+  reportsystem.punish:
+    description: Ceza verme yetkisi (ban, mute, kick, warn)
+    default: op
+
+  reportsystem.delete:
+    description: Rapor silme yetkisi
+    default: op
+
+  # Bypass
+  reportsystem.cooldown.bypass:
+    description: Rapor cooldown'unu atlama yetkisi
+    default: op
+
+  # Muafiyet
+  reportsystem.exempt:
+    description: Raporlanamaz olma yetkisi
+    default: op
+
+  # Overwatch System
+  reportsystem.overwatch:
+    description: Overwatch sistemini kullanma yetkisi (rapor inceleme)
+    default: op
+
+  reportsystem.overwatch.admin:
+    description: Overwatch admin komutları (NPC yönetimi, kuyruk yönetimi)
+    default: op

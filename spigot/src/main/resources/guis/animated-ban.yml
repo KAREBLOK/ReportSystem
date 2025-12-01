@@ -1,0 +1,102 @@
+# Animated Ban GUI Configuration
+# Used when selecting animated ban duration
+
+title: "&4&l⚡ ANIMATED BAN > %target%"
+size: 54
+
+# Player info
+player-info:
+  slot: 4
+  material: PLAYER_HEAD
+  name: "&4⚡ %target%"
+  lore:
+    - ""
+    - "&7Bu oyuncu animasyonlu"
+    - "&7ban ile cezalandırılacak!"
+    - ""
+    - "&c&lTanrıların gazabı bekliyor..."
+
+# Duration selections
+durations:
+  30-minutes:
+    slot: 19
+    material: CLOCK
+    name: "&e30 Dakika"
+    duration: "30m"
+
+  1-hour:
+    slot: 20
+    material: CLOCK
+    name: "&61 Saat"
+    duration: "1h"
+
+  6-hours:
+    slot: 21
+    material: CLOCK
+    name: "&c6 Saat"
+    duration: "6h"
+
+  1-day:
+    slot: 28
+    material: REDSTONE_BLOCK
+    name: "&c1 Gün"
+    duration: "1d"
+
+  7-days:
+    slot: 29
+    material: REDSTONE_BLOCK
+    name: "&c7 Gün"
+    duration: "7d"
+
+  30-days:
+    slot: 30
+    material: REDSTONE_BLOCK
+    name: "&430 Gün"
+    duration: "30d"
+
+  permanent:
+    slot: 31
+    material: BARRIER
+    name: "&4&l⚠ KALICI BAN"
+    lore:
+      - ""
+      - "&7Oyuncuyu kalıcı olarak"
+      - "&7sunucudan yasakla"
+      - ""
+      - "&4&lTANRILARIN SON CEZASI!"
+      - ""
+      - "&e▶ Tıkla ve kalıcı banla"
+    duration: "permanent"
+
+  custom:
+    slot: 40
+    material: NAME_TAG
+    name: "&bÖzel Süre"
+    lore:
+      - ""
+      - "&7Özel bir süre gir"
+      - "&7(örn: 2h, 15d, 1w)"
+      - ""
+      - "&e▶ Tıkla ve özel süre gir"
+    duration: "custom"
+
+# Control buttons
+controls:
+  cancel:
+    slot: 48
+    material: RED_CONCRETE
+    name: "&c✖ İptal"
+    lore:
+      - "&7Animasyonlu banı iptal et"
+
+  back:
+    slot: 50
+    material: ARROW
+    name: "&e◀ Geri Dön"
+    lore:
+      - "&7Rapor detayına dön"
+
+# Background
+background:
+  material: BLACK_STAINED_GLASS_PANE
+  name: " "

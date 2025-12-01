@@ -1,0 +1,77 @@
+# Report Detail GUI Configuration
+# Used when viewing report details
+#
+# NOTE: All button texts (names and lores) are now defined in messages_*.yml files
+# under "gui.report-detail.buttons.*" to support multi-language.
+# This config file only contains:
+#   - GUI size and layout (slots)
+#   - Material types for each button
+#   - Background settings
+#
+# To change button text, edit messages_tr.yml or messages_en.yml
+
+size: 54
+
+# Player head (report info)
+# Text is defined in messages_*.yml under "gui.report-detail.player-head-name" and "gui.report-detail.labels.*"
+player-head:
+  slot: 4
+
+# Replay button
+# Text is defined in messages_*.yml under "gui.report-detail.buttons.replay-available" and "replay-unavailable"
+replay:
+  slot: 22
+
+  # When replay is available
+  available:
+    material: ENDER_EYE
+
+  # When replay is not available
+  unavailable:
+    material: ENDER_PEARL
+
+# Action buttons (when pending)
+# Text is defined in messages_*.yml under "gui.report-detail.buttons.accept" and "reject"
+actions:
+  accept:
+    slot: 29
+    material: LIME_DYE
+
+  reject:
+    slot: 30
+    material: RED_DYE
+
+# Punishment buttons
+# Text is defined in messages_*.yml under "gui.report-detail.buttons.ban", "mute", "kick", "warn", "teleport"
+punishments:
+  ban:
+    slot: 38
+    material: IRON_AXE
+
+  mute:
+    slot: 39
+    material: BARRIER
+
+  kick:
+    slot: 40
+    material: LEATHER_BOOTS
+
+  warn:
+    slot: 41
+    material: PAPER
+
+  teleport:
+    slot: 42
+    material: ENDER_PEARL
+
+# Navigation
+# Text is defined in messages_*.yml under "gui.report-detail.buttons.back"
+navigation:
+  back:
+    slot: 49
+    material: ARROW
+
+# Background
+background:
+  material: GRAY_STAINED_GLASS_PANE
+  name: " "

@@ -1,0 +1,76 @@
+# Replay Teleport GUI Configuration
+# Time jump interface for replays
+
+title: "&8Zaman Atlama"
+size: 27
+
+# Info
+info:
+  slot: 4
+  material: CLOCK
+  name: "&6🕐 Zaman Seçimi"
+  lore:
+    - ""
+    - "&7Replay'de istediğin bir"
+    - "&7zamana atla"
+    - ""
+    - "&7Toplam Süre: &f%duration%"
+
+# Time selections
+times:
+  start:
+    slot: 10
+    material: LIME_DYE
+    name: "&a⏮ Başlangıç"
+    lore:
+      - "&7Replay'in başına dön"
+
+  25-percent:
+    slot: 11
+    material: YELLOW_DYE
+    name: "&e25%"
+    lore:
+      - "&7Sürenin %25'ine atla"
+
+  50-percent:
+    slot: 12
+    material: ORANGE_DYE
+    name: "&650%"
+    lore:
+      - "&7Sürenin %50'sine atla"
+
+  75-percent:
+    slot: 13
+    material: RED_DYE
+    name: "&c75%"
+    lore:
+      - "&7Sürenin %75'ine atla"
+
+  end:
+    slot: 14
+    material: GRAY_DYE
+    name: "&7⏭ Son"
+    lore:
+      - "&7Replay'in sonuna git"
+
+  custom:
+    slot: 16
+    material: NAME_TAG
+    name: "&bÖzel Zaman"
+    lore:
+      - "&7Chat'e saniye cinsinden"
+      - "&7bir değer yaz"
+
+# Control
+controls:
+  back:
+    slot: 22
+    material: ARROW
+    name: "&e◀ Geri Dön"
+    lore:
+      - "&7Kontrol paneline dön"
+
+# Background
+background:
+  material: GRAY_STAINED_GLASS_PANE
+  name: " "

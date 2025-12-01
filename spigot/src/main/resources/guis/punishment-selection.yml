@@ -1,0 +1,82 @@
+# Punishment Selection GUI Configuration
+# Used when staff needs to select a punishment type
+
+title: "&4Ceza Seç - &c%player%"
+size: 36
+
+# Background
+background:
+  material: RED_STAINED_GLASS_PANE
+  name: " "
+
+# Items
+items:
+  # Player info (top center)
+  player-info:
+    slot: 4
+    material: PLAYER_HEAD
+    name: "&c%player%"
+    lore:
+      - "&7Sebep: &e%reason%"
+      - ""
+      - "&a✓ Rapor onaylandı!"
+      - "&7Şimdi ceza seçebilirsiniz."
+
+  # Punishment options
+  ban:
+    slot: 11
+    material: IRON_AXE
+    name: "&4⚔ Yasakla (Ban)"
+    lore:
+      - "&7Oyuncuyu sunucudan yasakla"
+      - ""
+      - "&7Süreli veya kalıcı ban atabilirsiniz"
+      - "&eTıkla ve süre seç!"
+
+  mute:
+    slot: 12
+    material: BARRIER
+    name: "&6🔇 Sustur (Mute)"
+    lore:
+      - "&7Oyuncuyu sustur"
+      - ""
+      - "&7Sohbete yazmasını engelle"
+      - "&eTıkla ve süre seç!"
+
+  kick:
+    slot: 14
+    material: LEATHER_BOOTS
+    name: "&c👢 Sunucudan At (Kick)"
+    lore:
+      - "&7Oyuncuyu sunucudan at"
+      - ""
+      - "&7Tekrar girebilir"
+      - "&eTıkla ve at!"
+
+  warn:
+    slot: 15
+    material: PAPER
+    name: "&e⚠ Uyar (Warn)"
+    lore:
+      - "&7Oyuncuya uyarı ver"
+      - ""
+      - "&7Ceza puanı ekler"
+      - "&eTıkla ve uyar!"
+
+  # Bottom actions
+  no-punishment:
+    slot: 30
+    material: LIME_DYE
+    name: "&a✔ Ceza Verme"
+    lore:
+      - "&7Raporu kabul et ama"
+      - "&7ceza verme."
+      - ""
+      - "&eTıkla!"
+
+  back:
+    slot: 32
+    material: ARROW
+    name: "&eGeri Dön"
+    lore:
+      - "&7Önceki menüye dön"
