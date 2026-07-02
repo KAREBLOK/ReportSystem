@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Dekoratif blok etkileşimleri (jukebox, flower pot, lectern, armor stand)
  */
 public class DecorationAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum DecorationType {
         JUKEBOX_INSERT,     // Jukebox'a müzik diski koyma

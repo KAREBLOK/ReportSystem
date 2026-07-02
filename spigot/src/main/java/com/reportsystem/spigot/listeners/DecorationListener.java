@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.DecorationAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -63,7 +64,7 @@ public class DecorationListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Jukebox: " + decorationType.name());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Jukebox: " + decorationType.name());
         }
     }
 
@@ -98,7 +99,7 @@ public class DecorationListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Flower pot: " + decorationType.name());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Flower pot: " + decorationType.name());
         }
     }
 
@@ -122,7 +123,7 @@ public class DecorationListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Lectern book taken");
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Lectern book taken");
         }
     }
 
@@ -160,7 +161,7 @@ public class DecorationListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Armor stand: " + decorationType.name());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Armor stand: " + decorationType.name());
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.EquipmentAction;
 import com.reportsystem.common.replay.actions.EquipmentAction.ItemData;
 import com.reportsystem.spigot.recording.RecordingManager;
@@ -43,7 +44,7 @@ public class EquipmentListener implements Listener {
      */
     private ItemData convertToItemData(ItemStack itemStack) {
         if (itemStack == null || itemStack.getType().isAir()) {
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Item is null or air");
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item is null or air");
             return null;
         }
 
@@ -72,7 +73,7 @@ public class EquipmentListener implements Listener {
             // İksir meta kontrolü
             if (meta instanceof org.bukkit.inventory.meta.PotionMeta) {
                 org.bukkit.inventory.meta.PotionMeta potionMeta = (org.bukkit.inventory.meta.PotionMeta) meta;
-                plugin.getLogger().info("[EQUIPMENT-DEBUG] Potion type detected: " + itemStack.getType().name());
+                ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Potion type detected: " + itemStack.getType().name());
 
                 // İksir tipini lore'a ekle
                 if (lore == null) {
@@ -93,7 +94,7 @@ public class EquipmentListener implements Listener {
         // ItemStack'i serialize et
         byte[] itemData = ItemSerializer.itemStackToBytes(itemStack);
 
-        plugin.getLogger().info("[EQUIPMENT-DEBUG] Converting item: " + itemStack.getType().name() +
+        ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Converting item: " + itemStack.getType().name() +
                 " x" + itemStack.getAmount());
 
         return new ItemData(
@@ -117,20 +118,20 @@ public class EquipmentListener implements Listener {
         if (session != null) {
             int newSlot = event.getNewSlot();
 
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Item held change for " + player.getName() +
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item held change for " + player.getName() +
                     " - New slot: " + newSlot);
 
             // Bir tick bekle, çünkü item henüz değişmemiş olabilir
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 ItemStack newItem = player.getInventory().getItem(newSlot);
 
-                plugin.getLogger().info("[EQUIPMENT-DEBUG] Item in slot " + newSlot + ": " +
+                ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item in slot " + newSlot + ": " +
                         (newItem != null ? newItem.getType().name() : "NULL"));
 
                 ItemData itemData = convertToItemData(newItem);
                 session.addAction(new EquipmentAction(EquipmentAction.EquipmentSlot.MAIN_HAND, itemData));
 
-                plugin.getLogger().info("[EQUIPMENT-DEBUG] Recorded main hand change: " +
+                ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Recorded main hand change: " +
                         (itemData != null ? itemData.getMaterial() : "EMPTY"));
             }, 1L);
         }
@@ -144,14 +145,14 @@ public class EquipmentListener implements Listener {
         RecordingSession session = recordingManager.getSession(player.getUniqueId());
 
         if (session != null) {
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Hand swap for " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Hand swap for " + player.getName());
 
             // Swap sonrası durumu kaydet - 2 tick bekle
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 ItemStack mainHand = player.getInventory().getItemInMainHand();
                 ItemStack offHand = player.getInventory().getItemInOffHand();
 
-                plugin.getLogger().info("[EQUIPMENT-DEBUG] After swap - Main: " +
+                ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] After swap - Main: " +
                         (mainHand != null ? mainHand.getType().name() : "NULL") +
                         ", Off: " + (offHand != null ? offHand.getType().name() : "NULL"));
 
@@ -161,7 +162,7 @@ public class EquipmentListener implements Listener {
                 session.addAction(new EquipmentAction(EquipmentAction.EquipmentSlot.MAIN_HAND, mainHandData));
                 session.addAction(new EquipmentAction(EquipmentAction.EquipmentSlot.OFF_HAND, offHandData));
 
-                plugin.getLogger().info("[EQUIPMENT-DEBUG] Recorded hand swap");
+                ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Recorded hand swap");
             }, 2L);
         }
     }
@@ -190,7 +191,7 @@ public class EquipmentListener implements Listener {
         RecordingSession session = recordingManager.getSession(player.getUniqueId());
 
         if (session != null) {
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Item pickup by " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item pickup by " + player.getName());
 
             // Item alındıktan sonra equipment'ı güncelle
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
@@ -207,7 +208,7 @@ public class EquipmentListener implements Listener {
         RecordingSession session = recordingManager.getSession(player.getUniqueId());
 
         if (session != null) {
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Item drop by " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item drop by " + player.getName());
 
             // Item atıldıktan sonra equipment'ı güncelle
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
@@ -223,7 +224,7 @@ public class EquipmentListener implements Listener {
 
         if (session != null) {
             ItemStack brokenItem = event.getBrokenItem();
-            plugin.getLogger().info("[EQUIPMENT-DEBUG] Item break by " + player.getName() +
+            ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Item break by " + player.getName() +
                     " - Item: " + brokenItem.getType().name());
 
             // Item kırıldıktan sonra equipment'ı güncelle
@@ -237,7 +238,7 @@ public class EquipmentListener implements Listener {
      * Tüm equipment'ı kaydeder
      */
     private void recordAllEquipment(Player player, RecordingSession session) {
-        plugin.getLogger().info("[EQUIPMENT-DEBUG] Recording all equipment for " + player.getName());
+        ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] Recording all equipment for " + player.getName());
 
         // Ana el
         ItemStack mainHand = player.getInventory().getItemInMainHand();
@@ -266,6 +267,6 @@ public class EquipmentListener implements Listener {
         ItemData bootsData = convertToItemData(boots);
         session.addAction(new EquipmentAction(EquipmentAction.EquipmentSlot.BOOTS, bootsData));
 
-        plugin.getLogger().info("[EQUIPMENT-DEBUG] All equipment recorded");
+        ReportSystemSpigot.getInstance().debug("[EQUIPMENT-DEBUG] All equipment recorded");
     }
 }

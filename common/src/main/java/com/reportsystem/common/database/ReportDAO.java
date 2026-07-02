@@ -27,9 +27,18 @@ public interface ReportDAO {
     int closeOldReports(long cutoffTime) throws SQLException;
     void close() throws SQLException;
 
+    // Filtrelenmiş sorgular
+    List<Report> getReportsByStatus(String status);
+    List<Report> getReportsByServer(String serverName);
+    List<Report> getReportsByDateRange(long startTime, long endTime);
+
     // Spam koruması için
     int countReportsByReporterAndReported(String reporterName, String reportedName);
 
     // Oyuncunun toplam rapor sayısı
     int getTotalReportsForPlayer(String playerName);
+
+    // Raporcu geri bildirim sistemi
+    List<Report> getUnnotifiedReportsForReporter(String reporterUuid) throws SQLException;
+    void markReporterNotified(int reportId) throws SQLException;
 }

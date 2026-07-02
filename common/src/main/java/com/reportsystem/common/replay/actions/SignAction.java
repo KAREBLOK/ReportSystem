@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Sign yazma eylemi
  */
 public class SignAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final int x, y, z;
     private final String[] lines; // 4 satır text

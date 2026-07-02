@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.ContainerAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -46,7 +47,7 @@ public class ContainerListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Container opened: " + containerType.name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Container opened: " + containerType.name());
             }
         }
     }
@@ -73,7 +74,7 @@ public class ContainerListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Container closed: " + containerType.name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Container closed: " + containerType.name());
             }
         }
     }

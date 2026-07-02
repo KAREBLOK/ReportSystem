@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.ChatAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -31,7 +32,7 @@ public class ChatRecordingListener implements Listener {
         if (session != null) {
             ChatAction action = new ChatAction(event.getMessage(), false);
             session.addAction(action);
-            plugin.getLogger().info("[RECORDING-DEBUG] Chat recorded: " + event.getMessage());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Chat recorded: " + event.getMessage());
         }
     }
 
@@ -45,7 +46,7 @@ public class ChatRecordingListener implements Listener {
         if (session != null) {
             ChatAction action = new ChatAction(event.getMessage(), true);
             session.addAction(action);
-            plugin.getLogger().info("[RECORDING-DEBUG] Command recorded: " + event.getMessage());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Command recorded: " + event.getMessage());
         }
     }
 }

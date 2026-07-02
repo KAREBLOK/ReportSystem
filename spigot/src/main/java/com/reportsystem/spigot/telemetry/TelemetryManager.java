@@ -26,6 +26,8 @@ public class TelemetryManager {
     private final boolean enabled;
 
     private long serverStartTime;
+    private volatile int cachedChunkCount = 0;
+    private volatile int cachedEntityCount = 0;
 
     public TelemetryManager(ReportSystemSpigot plugin) {
         this.plugin = plugin;
@@ -50,10 +52,22 @@ public class TelemetryManager {
             sendTelemetry();
         }, 20L * 60); // 60 saniye
 
-        // Her 30 dakikada bir heartbeat gönder
+        // Her 5 dakikada bir heartbeat gönder
         Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             sendTelemetry();
-        }, 20L * 60 * 30, 20L * 60 * 30); // 30 dakika
+        }, 20L * 60 * 5, 20L * 60 * 5); // 5 dakika
+
+        // Sync task: chunk ve entity sayılarını ana thread'den topla
+        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            int chunks = 0;
+            int entities = 0;
+            for (org.bukkit.World world : Bukkit.getWorlds()) {
+                chunks += world.getLoadedChunks().length;
+                entities += world.getEntities().size();
+            }
+            cachedChunkCount = chunks;
+            cachedEntityCount = entities;
+        }, 20L * 50, 20L * 60 * 5);
     }
 
     /**
@@ -130,20 +144,43 @@ public class TelemetryManager {
 
         // ReportSystem istatistikleri
         try {
-            int totalReports = plugin.getReportService().getAllReports().size();
+            int totalReports = plugin.getReportService().getReportCount();
             data.put("total_reports", totalReports);
         } catch (Exception e) {
             data.put("total_reports", 0);
         }
 
         try {
-            int activeRecordings = plugin.getRecordingManager().getActiveRecordingCount();
-            data.put("total_recordings", activeRecordings);
+            data.put("active_recordings", plugin.getRecordingManager().getActiveRecordingCount());
         } catch (Exception e) {
-            data.put("total_recordings", 0);
+            data.put("active_recordings", 0);
         }
 
-        data.put("total_replays", 0); // TODO: ReplayDAO'dan çekilebilir
+        try {
+            data.put("active_replays", plugin.getReplayManager().getActiveReplays().size());
+        } catch (Exception e) {
+            data.put("active_replays", 0);
+        }
+
+        // Chunk ve entity sayıları (sync task'ten cached)
+        data.put("loaded_chunks", cachedChunkCount);
+        data.put("entity_count", cachedEntityCount);
+
+        // CPU kullanımı
+        try {
+            java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+                double cpuLoad = ((com.sun.management.OperatingSystemMXBean) osBean).getProcessCpuLoad() * 100;
+                data.put("cpu_usage", Math.round(cpuLoad * 100.0) / 100.0);
+            } else {
+                data.put("cpu_usage", 0.0);
+            }
+        } catch (Exception e) {
+            data.put("cpu_usage", 0.0);
+        }
+
+        // Sunucu saati (0-23)
+        data.put("server_hour", java.time.LocalTime.now().getHour());
 
         // Performans
         try {
@@ -162,10 +199,10 @@ public class TelemetryManager {
 
         // Özellikler
         Map<String, Boolean> features = new HashMap<>();
-        features.put("recording", plugin.getConfig().getBoolean("recording.enabled", true));
+        features.put("recording", plugin.getConfig().getBoolean("replay.enabled", true));
         features.put("replay", plugin.getConfig().getBoolean("replay.enabled", true));
         features.put("overwatch", plugin.getConfig().getBoolean("overwatch.enabled", false));
-        features.put("webhook", plugin.getConfig().getBoolean("webhook.enabled", false));
+        features.put("webhook", plugin.getConfig().getBoolean("discord-webhook.enabled", false));
         features.put("bungeecord", plugin.getConfig().getBoolean("bungeecord.enabled", false));
         data.put("features_enabled", features);
 
@@ -217,6 +254,19 @@ public class TelemetryManager {
             // Minecraft/Bukkit özellikleri ekle
             hwInfo.append(Bukkit.getVersion());
             hwInfo.append(Bukkit.getPort());
+
+            // MAC adresi ekle (JVM args ile spoof edilemez)
+            try {
+                java.util.Enumeration<java.net.NetworkInterface> interfaces = java.net.NetworkInterface.getNetworkInterfaces();
+                while (interfaces.hasMoreElements()) {
+                    java.net.NetworkInterface ni = interfaces.nextElement();
+                    byte[] mac = ni.getHardwareAddress();
+                    if (mac != null && mac.length > 0) {
+                        for (byte b : mac) hwInfo.append(String.format("%02X", b));
+                        break; // İlk geçerli MAC adresini kullan
+                    }
+                }
+            } catch (Exception ignored) {}
 
             // SHA-256 hash oluştur
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");

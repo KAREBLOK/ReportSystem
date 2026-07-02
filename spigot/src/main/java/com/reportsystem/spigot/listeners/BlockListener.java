@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.BlockAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -21,16 +22,10 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
 public class BlockListener implements Listener {
 
     private final RecordingManager recordingManager;
     private final JavaPlugin plugin;
-    private final Map<UUID, Long> lastBreakTime = new HashMap<>();
-    private final Map<UUID, Location> lastBreakLocation = new HashMap<>();
 
     public BlockListener(RecordingManager recordingManager, JavaPlugin plugin) {
         this.recordingManager = recordingManager;
@@ -58,7 +53,7 @@ public class BlockListener implements Listener {
                         10 // Son stage
                 ));
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Block broken: " + block.getType() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Block broken: " + block.getType() +
                         " at " + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
             }
         } catch (Exception e) {
@@ -120,7 +115,7 @@ public class BlockListener implements Listener {
                         blockData
                 ));
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Block placed: " + blockData +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Block placed: " + blockData +
                         " at " + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
             }
         } catch (Exception e) {
@@ -192,7 +187,7 @@ public class BlockListener implements Listener {
                         interactionType
                 ));
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Block interaction: " + interactionType +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Block interaction: " + interactionType +
                         " at " + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
             }
             }
@@ -217,7 +212,7 @@ public class BlockListener implements Listener {
                 interactionType
         ));
 
-        plugin.getLogger().info("[RECORDING-DEBUG] Door interaction: " + interactionType +
+        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Door interaction: " + interactionType +
                 " at " + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
 
         // Komşu çift kapıyı kontrol et (NORTH, SOUTH, EAST, WEST)
@@ -242,7 +237,7 @@ public class BlockListener implements Listener {
                             interactionType
                     ));
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Double door detected: " + interactionType +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Double door detected: " + interactionType +
                             " at " + neighborLoc.getBlockX() + "," + neighborLoc.getBlockY() + "," + neighborLoc.getBlockZ());
                     break; // Sadece bir komşu yeterli
                 }
@@ -250,10 +245,4 @@ public class BlockListener implements Listener {
         }
     }
 
-    @EventHandler
-    public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
-        lastBreakTime.remove(uuid);
-        lastBreakLocation.remove(uuid);
-    }
 }

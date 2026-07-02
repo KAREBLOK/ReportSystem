@@ -91,3 +91,48 @@ debug:
 
   # Log plugin messages
   log-messages: false
+
+# ======================
+# Messages
+# ======================
+messages:
+  ban:
+    kick-temp: "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Süre: &f%duration%\n&7Cezayı veren: &f%staff%"
+    kick-permanent: "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Cezayı veren: &f%staff%"
+    login-blocked-temp: "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Kalan süre: &f%duration%"
+    login-blocked-permanent: "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n\n&8Ban kaldırma başvurusu için: discord.gg/sunucu"
+    login-blocked-provider: "&cBu sunucudan yasaklandınız!"
+  mute:
+    player-message: "&c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n&c          SUSTURULDUNUZ!\n\n&7  Sebep: &f%reason%\n&7  Süre: &f%duration%\n&7  Yetkili: &f%staff%\n&c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+  kick:
+    player-message: "&cSunucudan atıldınız!\n\n&7Sebep: &f%reason%\n&7Atan yetkili: &f%staff%\n\n&aTekrar girebilirsiniz."
+  warn:
+    player-message: "&6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n&6          ⚠ UYARI ⚠\n\n&c  Bir yetkili tarafından uyarıldınız!\n\n&7  Sebep: &f%reason%\n&7  Yetkili: &f%staff%\n\n&c  Kuralları ihlal etmeye devam ederseniz\n&c  daha ağır cezalar alabilirsiniz!\n&6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+  notify:
+    ban-temp: "&c[CEZA] &f%player% &csunucudan %duration% süreliğine yasaklandı!"
+    ban-permanent: "&c[CEZA] &f%player% &csunucudan kalıcı olarak yasaklandı!"
+    mute-temp: "&6[CEZA] &f%player% &6%duration% süreliğine susturuldu!"
+    mute-permanent: "&6[CEZA] &f%player% &6kalıcı olarak susturuldu!"
+    kick: "&e[CEZA] &f%player% &esunucudan atıldı!"
+    warn: "&e[CEZA] &f%player% &euyarı aldı!"
+    reason-line: "&7Sebep: &f%reason%"
+    staff-line: "&7Yetkili: &f%staff%"
+  report:
+    notification: "&8[&6Rapor&8] &7(&e%server%&7) &f%reporter% &7➜ &c%reported%\n&7Sebep: &f%reason% &8(#%id%)"
+    created: "&a✓ Rapor başarıyla oluşturuldu! (ID: #%id%)"
+    limit-reached: "&c✗ %player% adlı oyuncuyu daha fazla rapor edemezsiniz! &7(Limit: %limit%)"
+    error: "&cRapor oluşturulurken bir hata oluştu!"
+    menu-opening: "&aRapor menüsü açılıyor..."
+    player-not-found: "&cOyuncu '%player%' bulunamadı!"
+    cannot-report-self: "&cKendinizi rapor edemezsiniz!"
+    usage: "&cKullanım: /report <oyuncu>"
+    only-players: "Bu komutu sadece oyuncular kullanabilir."
+    server-not-found: "&cHedef sunucu bulunamadı: %server%"
+  punishment:
+    unknown-reason: "Bilinmeyen sebep"
+  duration:
+    permanent: "Kalıcı"
+    days: "gün"
+    hours: "saat"
+    minutes: "dakika"
+    seconds: "saniye"

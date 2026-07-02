@@ -35,7 +35,7 @@ public class NearbyPlayerMoveListener implements Listener {
 
         // Config'den ayarları yükle
         this.enabled = plugin.getConfig().getBoolean("replay.nearby-player-tracking.use-move-event", false);
-        this.trackingDistance = plugin.getConfig().getDouble("replay.nearby-player-tracking.distance", 48.0);
+        this.trackingDistance = plugin.getConfig().getDouble("replay.nearby-player-tracking.distance", 32.0);
         this.movementThreshold = plugin.getConfig().getDouble("replay.nearby-player-tracking.movement-threshold", 0.05);
 
         if (enabled) {

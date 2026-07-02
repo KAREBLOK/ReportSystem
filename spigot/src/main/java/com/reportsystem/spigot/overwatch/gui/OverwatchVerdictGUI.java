@@ -2,8 +2,10 @@ package com.reportsystem.spigot.overwatch.gui;
 
 import com.reportsystem.common.models.Report;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.gui.GUIConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -14,7 +16,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Verdict GUI - Opens after replay ends for reviewer to vote
+ * Verdict GUI - DeluxeMenu inspired clean design
+ * Main Menu Layout (54 slots / 6 rows):
+ *   Row 1: .... REPORT_INFO ....    (slot 4 = report info)
+ *   Row 2: .BBBBBBB.               (slots 10-16 = black glass separator)
+ *   Row 3: .. GUILTY . INNOCENT . SKIP ..  (slots 20, 22, 24)
+ *   Row 4-5: .........              (empty)
+ *   Row 6: .... BACK ....           (slot 49 = back)
+ *
+ * Category Selection Layout:
+ *   Row 1: .... TITLE ....          (slot 4 = category title)
+ *   Row 2: .RRRRRRR.               (slots 10-16 = red glass separator)
+ *   Row 3: . COMBAT . MOVE . VISUAL . OTHER .  (slots 19, 21, 23, 25)
+ *   Row 4-5: .........              (empty)
+ *   Row 6: .... BACK ....           (slot 49 = back)
  */
 public class OverwatchVerdictGUI implements InventoryHolder {
 
@@ -23,6 +38,7 @@ public class OverwatchVerdictGUI implements InventoryHolder {
     private final int reportId;
     private final long reviewStartTime;
     private final Inventory inventory;
+    private final FileConfiguration cfg;
 
     private VerdictState state = VerdictState.MAIN_MENU;
     private String selectedVerdict = null;
@@ -38,8 +54,9 @@ public class OverwatchVerdictGUI implements InventoryHolder {
         this.player = player;
         this.reportId = reportId;
         this.reviewStartTime = reviewStartTime;
+        this.cfg = new GUIConfig(plugin, "overwatch-verdict").getConfig();
 
-        String title = plugin.getMessageManager().getMessage("overwatch.gui.verdict.title");
+        String title = cfg.getString("title", "&8&nOverwatch - Karar Ver");
         this.inventory = Bukkit.createInventory(this, 54, plugin.getMessageManager().colorize(title));
 
         setupMainMenu();
@@ -49,124 +66,115 @@ public class OverwatchVerdictGUI implements InventoryHolder {
         inventory.clear();
         state = VerdictState.MAIN_MENU;
 
-        // Fill with glass panes
-        ItemStack grayGlass = createItem(Material.GRAY_STAINED_GLASS_PANE, " ", null);
-        for (int i = 0; i < 54; i++) {
-            inventory.setItem(i, grayGlass);
+        // Black glass separator (row 2: slots 10-16)
+        ItemStack blackGlass = createItem(Material.BLACK_STAINED_GLASS_PANE, "&7", null);
+        for (int i = 10; i <= 16; i++) {
+            inventory.setItem(i, blackGlass);
         }
 
-        // Report Info (Top row)
+        // Report Info (Slot 4)
         Report report = plugin.getReportService().getReportById(reportId);
         if (report != null) {
             List<String> reportLore = new ArrayList<>();
-            reportLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.report-info.lore-reported")
-                    .replace("%reported%", report.getReportedPlayerName()));
-            reportLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.report-info.lore-reporter")
-                    .replace("%reporter%", report.getReporterName()));
-            reportLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.report-info.lore-reason")
-                    .replace("%reason%", report.getReason()));
-            reportLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.report-info.lore-server")
-                    .replace("%server%", report.getServerName()));
+            reportLore.add("");
+            reportLore.add(cfg.getString("report-info.lore-reported", "").replace("%reported%", report.getReportedPlayerName()));
+            reportLore.add(cfg.getString("report-info.lore-reporter", "").replace("%reporter%", report.getReporterName()));
+            reportLore.add(cfg.getString("report-info.lore-reason", "").replace("%reason%", report.getReason()));
+            reportLore.add(cfg.getString("report-info.lore-server", "").replace("%server%", report.getServerName()));
+            reportLore.add("");
 
-            String infoName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.report-info.name")
-                    .replace("%id%", String.valueOf(reportId));
-            inventory.setItem(4, createItem(Material.PAPER, infoName, reportLore));
+            inventory.setItem(4, createItem(Material.PAPER,
+                    cfg.getString("report-info.name", "").replace("%id%", String.valueOf(reportId)), reportLore));
         }
 
         // GUILTY Button (Slot 20)
         List<String> guiltyLore = new ArrayList<>();
-        guiltyLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.guilty.lore-desc1"));
         guiltyLore.add("");
-        guiltyLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.guilty.lore-desc2"));
-        guiltyLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.guilty.lore-desc3"));
+        guiltyLore.add(cfg.getString("guilty.lore-desc1", ""));
         guiltyLore.add("");
-        guiltyLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.guilty.lore-click"));
-
-        String guiltyName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.guilty.name");
-        inventory.setItem(20, createItem(Material.RED_CONCRETE, guiltyName, guiltyLore));
+        guiltyLore.add(cfg.getString("guilty.lore-desc2", ""));
+        guiltyLore.add(cfg.getString("guilty.lore-desc3", ""));
+        guiltyLore.add("");
+        guiltyLore.add(cfg.getString("guilty.lore-click", ""));
+        inventory.setItem(20, createItem(Material.RED_CONCRETE, cfg.getString("guilty.name", ""), guiltyLore));
 
         // INNOCENT Button (Slot 22)
         List<String> innocentLore = new ArrayList<>();
-        innocentLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.innocent.lore-desc1"));
         innocentLore.add("");
-        innocentLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.innocent.lore-desc2"));
-        innocentLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.innocent.lore-desc3"));
+        innocentLore.add(cfg.getString("innocent.lore-desc1", ""));
         innocentLore.add("");
-        innocentLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.innocent.lore-click"));
-
-        String innocentName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.innocent.name");
-        inventory.setItem(22, createItem(Material.GREEN_CONCRETE, innocentName, innocentLore));
+        innocentLore.add(cfg.getString("innocent.lore-desc2", ""));
+        innocentLore.add(cfg.getString("innocent.lore-desc3", ""));
+        innocentLore.add("");
+        innocentLore.add(cfg.getString("innocent.lore-click", ""));
+        inventory.setItem(22, createItem(Material.GREEN_CONCRETE, cfg.getString("innocent.name", ""), innocentLore));
 
         // SKIP Button (Slot 24)
         List<String> skipLore = new ArrayList<>();
-        skipLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.lore-desc1"));
         skipLore.add("");
-        skipLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.lore-desc2"));
-        skipLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.lore-desc3"));
+        skipLore.add(cfg.getString("skip.lore-desc1", ""));
         skipLore.add("");
-        skipLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.lore-note"));
+        skipLore.add(cfg.getString("skip.lore-desc2", ""));
+        skipLore.add(cfg.getString("skip.lore-desc3", ""));
         skipLore.add("");
-        skipLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.lore-click"));
+        skipLore.add(cfg.getString("skip.lore-note", ""));
+        skipLore.add("");
+        skipLore.add(cfg.getString("skip.lore-click", ""));
+        inventory.setItem(24, createItem(Material.YELLOW_CONCRETE, cfg.getString("skip.name", ""), skipLore));
 
-        String skipName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.skip.name");
-        inventory.setItem(24, createItem(Material.YELLOW_CONCRETE, skipName, skipLore));
-
-        // Back to NPC Button (Slot 49)
-        String backName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.back.name");
+        // Back Button (Slot 49)
         List<String> backLore = new ArrayList<>();
-        backLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.back.lore"));
-        inventory.setItem(49, createItem(Material.BARRIER, backName, backLore));
+        backLore.add(cfg.getString("back.lore", ""));
+        inventory.setItem(49, createItem(Material.ARROW, cfg.getString("back.name", "&8←"), backLore));
     }
 
     private void setupCategorySelection() {
         inventory.clear();
         state = VerdictState.CATEGORY_SELECTION;
 
-        // Fill with glass panes
-        ItemStack redGlass = createItem(Material.RED_STAINED_GLASS_PANE, " ", null);
-        for (int i = 0; i < 54; i++) {
+        // Red glass separator (row 2: slots 10-16)
+        ItemStack redGlass = createItem(Material.RED_STAINED_GLASS_PANE, "&7", null);
+        for (int i = 10; i <= 16; i++) {
             inventory.setItem(i, redGlass);
         }
 
-        // Title
-        String categoryTitle = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-title");
-        inventory.setItem(4, createItem(Material.PAPER, categoryTitle, null));
+        // Title (Slot 4)
+        inventory.setItem(4, createItem(Material.PAPER, cfg.getString("category-title", ""), null));
 
-        // Combat Hacks (Slot 20)
+        // Combat (Slot 19)
         List<String> combatLore = new ArrayList<>();
-        combatLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-combat.lore-desc1"));
-        combatLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-combat.lore-desc2"));
+        combatLore.add("");
+        combatLore.add(cfg.getString("category-combat.lore-desc1", ""));
+        combatLore.add(cfg.getString("category-combat.lore-desc2", ""));
+        combatLore.add("");
+        inventory.setItem(19, createItem(Material.DIAMOND_SWORD, cfg.getString("category-combat.name", ""), combatLore));
 
-        String combatName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-combat.name");
-        inventory.setItem(20, createItem(Material.DIAMOND_SWORD, combatName, combatLore));
-
-        // Movement Hacks (Slot 22)
+        // Movement (Slot 21)
         List<String> movementLore = new ArrayList<>();
-        movementLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-movement.lore-desc1"));
-        movementLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-movement.lore-desc2"));
+        movementLore.add("");
+        movementLore.add(cfg.getString("category-movement.lore-desc1", ""));
+        movementLore.add(cfg.getString("category-movement.lore-desc2", ""));
+        movementLore.add("");
+        inventory.setItem(21, createItem(Material.FEATHER, cfg.getString("category-movement.name", ""), movementLore));
 
-        String movementName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-movement.name");
-        inventory.setItem(22, createItem(Material.FEATHER, movementName, movementLore));
-
-        // Visual Hacks (Slot 24)
+        // Visual (Slot 23)
         List<String> visualLore = new ArrayList<>();
-        visualLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-visual.lore-desc1"));
-        visualLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-visual.lore-desc2"));
+        visualLore.add("");
+        visualLore.add(cfg.getString("category-visual.lore-desc1", ""));
+        visualLore.add(cfg.getString("category-visual.lore-desc2", ""));
+        visualLore.add("");
+        inventory.setItem(23, createItem(Material.ENDER_EYE, cfg.getString("category-visual.name", ""), visualLore));
 
-        String visualName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-visual.name");
-        inventory.setItem(24, createItem(Material.ENDER_EYE, visualName, visualLore));
-
-        // Other (Slot 26)
+        // Other (Slot 25)
         List<String> otherLore = new ArrayList<>();
-        otherLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-other.lore-desc1"));
-        otherLore.add(plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-other.lore-desc2"));
-
-        String otherName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-other.name");
-        inventory.setItem(26, createItem(Material.BARRIER, otherName, otherLore));
+        otherLore.add("");
+        otherLore.add(cfg.getString("category-other.lore-desc1", ""));
+        otherLore.add(cfg.getString("category-other.lore-desc2", ""));
+        otherLore.add("");
+        inventory.setItem(25, createItem(Material.BARRIER, cfg.getString("category-other.name", ""), otherLore));
 
         // Back Button (Slot 49)
-        String backName = plugin.getMessageManager().getMessage("overwatch.gui.verdict.category-back.name");
-        inventory.setItem(49, createItem(Material.ARROW, backName, null));
+        inventory.setItem(49, createItem(Material.ARROW, cfg.getString("category-back.name", "&8←"), null));
     }
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
@@ -204,16 +212,13 @@ public class OverwatchVerdictGUI implements InventoryHolder {
                 selectedVerdict = "GUILTY";
                 setupCategorySelection();
                 break;
-
             case 22: // INNOCENT
                 submitVerdict("INNOCENT", "NONE", "NONE");
                 break;
-
             case 24: // SKIP
                 submitVerdict("SKIP", "NONE", "NONE");
                 break;
-
-            case 49: // Back to NPC
+            case 49: // Back
                 player.closeInventory();
                 new OverwatchMenuGUI(plugin, player).open();
                 break;
@@ -225,19 +230,19 @@ public class OverwatchVerdictGUI implements InventoryHolder {
         String subcategory = null;
 
         switch (slot) {
-            case 20: // Combat
+            case 19: // Combat
                 category = "COMBAT";
                 subcategory = plugin.getMessageManager().getMessage("overwatch.verdict.categories.combat");
                 break;
-            case 22: // Movement
+            case 21: // Movement
                 category = "MOVEMENT";
                 subcategory = plugin.getMessageManager().getMessage("overwatch.verdict.categories.movement");
                 break;
-            case 24: // Visual
+            case 23: // Visual
                 category = "VISUAL";
                 subcategory = plugin.getMessageManager().getMessage("overwatch.verdict.categories.visual");
                 break;
-            case 26: // Other
+            case 25: // Other
                 category = "OTHER";
                 subcategory = plugin.getMessageManager().getMessage("overwatch.verdict.categories.other");
                 break;
@@ -247,7 +252,6 @@ public class OverwatchVerdictGUI implements InventoryHolder {
         }
 
         if (category != null) {
-            // Use localized subcategory, fallback to category if message not found
             if (subcategory == null || subcategory.startsWith("overwatch.verdict.categories.")) {
                 subcategory = category;
             }
@@ -256,89 +260,62 @@ public class OverwatchVerdictGUI implements InventoryHolder {
     }
 
     private void submitVerdict(String verdict, String category, String subcategory) {
-        // Mark as submitted (important for close event handling)
         verdictSubmitted = true;
-
-        // Calculate review duration
         int reviewDuration = (int) ((System.currentTimeMillis() - reviewStartTime) / 1000);
 
-        // Submit to manager
-        plugin.getOverwatchManager().submitVerdict(
-            player,
-            reportId,
-            verdict,
-            category,
-            subcategory,
-            reviewDuration
-        );
+        plugin.getOverwatchManager().submitVerdict(player, reportId, verdict, category, subcategory, reviewDuration);
 
-        // Close GUI
         player.closeInventory();
 
-        // Send feedback
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.header")));
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.title")));
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.header")));
         player.sendMessage("");
 
         player.sendMessage(plugin.getMessageManager().colorize(
-                plugin.getMessageManager().getMessage("overwatch.verdict.report-id")
-                        .replace("%id%", String.valueOf(reportId))));
+                plugin.getMessageManager().getMessage("overwatch.verdict.report-id").replace("%id%", String.valueOf(reportId))));
 
-        // Get localized verdict name
         String verdictDisplay = getLocalizedVerdict(verdict);
         player.sendMessage(plugin.getMessageManager().colorize(
-                plugin.getMessageManager().getMessage("overwatch.verdict.your-verdict")
-                        .replace("%verdict%", verdictDisplay)));
+                plugin.getMessageManager().getMessage("overwatch.verdict.your-verdict").replace("%verdict%", verdictDisplay)));
 
         if (!"NONE".equals(category)) {
-            // Get localized category name
             String categoryDisplay = getLocalizedCategory(category);
             player.sendMessage(plugin.getMessageManager().colorize(
-                    plugin.getMessageManager().getMessage("overwatch.verdict.category")
-                            .replace("%category%", categoryDisplay)));
+                    plugin.getMessageManager().getMessage("overwatch.verdict.category").replace("%category%", categoryDisplay)));
         }
 
         player.sendMessage(plugin.getMessageManager().colorize(
-                plugin.getMessageManager().getMessage("overwatch.verdict.review-time")
-                        .replace("%time%", String.valueOf(reviewDuration))));
+                plugin.getMessageManager().getMessage("overwatch.verdict.review-time").replace("%time%", String.valueOf(reviewDuration))));
         player.sendMessage("");
 
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.thank-you")));
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.footer")));
 
-        // Play sound
         player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                if (plugin.getOverwatchReplayListener() != null
+                        && plugin.getOverwatchReplayListener().hasSavedState(player.getUniqueId())) {
+                    plugin.getOverwatchReplayListener().restoreAndReturn(player);
+                } else {
+                    plugin.getReplayManager().restoreViewerLocation(player);
+                }
+            }
+        }, 40L);
     }
 
-    /**
-     * Get localized verdict display name (includes color codes from messages)
-     */
     private String getLocalizedVerdict(String verdict) {
         String key = "overwatch.verdict.types." + verdict.toLowerCase();
         String localized = plugin.getMessageManager().getMessage(key);
-
-        // If message not found, fallback to uppercase verdict
-        if (localized == null || localized.equals(key)) {
-            return verdict.toUpperCase();
-        }
-
-        return localized;
+        return (localized == null || localized.equals(key)) ? verdict.toUpperCase() : localized;
     }
 
-    /**
-     * Get localized category display name
-     */
     private String getLocalizedCategory(String category) {
         String key = "overwatch.verdict.categories." + category.toLowerCase();
         String localized = plugin.getMessageManager().getMessage(key);
-
-        // If message not found, fallback to category name
-        if (localized == null || localized.equals(key)) {
-            return category;
-        }
-
-        return localized;
+        return (localized == null || localized.equals(key)) ? category : localized;
     }
 
     @Override

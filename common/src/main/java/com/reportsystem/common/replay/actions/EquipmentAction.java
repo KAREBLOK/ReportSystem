@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public class EquipmentAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum EquipmentSlot {
         MAIN_HAND, OFF_HAND, HELMET, CHESTPLATE, LEGGINGS, BOOTS

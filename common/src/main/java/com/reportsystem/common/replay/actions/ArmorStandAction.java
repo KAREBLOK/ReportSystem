@@ -6,6 +6,7 @@ import java.util.Map;
  * Armor Stand yerleştirme ve manipülasyon
  */
 public class ArmorStandAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum ActionType {
         PLACE,

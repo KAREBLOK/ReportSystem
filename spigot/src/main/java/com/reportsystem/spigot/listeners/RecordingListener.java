@@ -1,7 +1,9 @@
 package com.reportsystem.spigot.listeners;
 
 import com.reportsystem.common.replay.actions.DeathAction;
+import com.reportsystem.common.replay.actions.HealthAction;
 import com.reportsystem.common.replay.actions.LocationAction;
+import com.reportsystem.common.replay.actions.PoseAction;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.recording.RecordingSession;
 import org.bukkit.Location;
@@ -31,19 +33,19 @@ public class RecordingListener implements Listener {
             plugin.getLogger().info("[RECORDING] Player rejoined while recording: " + player.getName());
 
             // Kayıt devam ediyor bildirimi
-            player.sendMessage("§e⚠ Hareketleriniz kaydedilmeye devam ediyor!");
+            plugin.getMessageManager().sendMessage(player, "replay.recording.continue-warning");
         }
 
         // Pending replay var mı kontrol et (cross-server replay için)
         Integer pendingReportId = plugin.getPendingReplay(player.getUniqueId());
         if (pendingReportId != null) {
-            plugin.getLogger().info("[REPLAY] Player " + player.getName() +
+            plugin.debug("[REPLAY] Player " + player.getName() +
                     " joined with pending replay for report #" + pendingReportId);
 
             // Kısa bir gecikmeyle replay'i başlat (spawn tamamlansın diye)
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 plugin.getReplayManager().startReplay(pendingReportId, player);
-                player.sendMessage("§a✦ Replay otomatik olarak başlatılıyor...");
+                plugin.getMessageManager().sendMessage(player, "replay.recording.auto-start");
             }, 20L); // 1 saniye gecikme
         }
     }
@@ -82,7 +84,7 @@ public class RecordingListener implements Listener {
                 );
                 session.addAction(deathAction);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Player death recorded: " + deathMessage);
+                plugin.debug("[RECORDING-DEBUG] Player death recorded: " + deathMessage);
             }
 
             plugin.getLogger().info("[RECORDING] Recorded player died: " + player.getName());
@@ -105,18 +107,21 @@ public class RecordingListener implements Listener {
                         " at " + respawnLoc.getWorld().getName() + " " +
                         String.format("%.1f, %.1f, %.1f", respawnLoc.getX(), respawnLoc.getY(), respawnLoc.getZ()));
 
-                // World değişti mi kontrol et
+                // World değişimini logla (worldName'i DEĞİŞTİRME - replay başlangıç dünyasını korumalı)
                 String currentWorld = session.getWorldName();
                 String newWorld = respawnLoc.getWorld().getName();
                 if (!newWorld.equals(currentWorld)) {
-                    plugin.getLogger().info("[RECORDING-DEBUG] World changed on respawn: " +
-                            currentWorld + " -> " + newWorld);
-                    session.setWorldName(newWorld);
+                    plugin.debug("[RECORDING-DEBUG] World changed on respawn: " +
+                            currentWorld + " -> " + newWorld + " (worldName korunuyor: " + currentWorld + ")");
                 }
 
-                // Respawn location'ını LocationAction olarak kaydet
+                // Respawn: konum + ayağa kalk + full can kaydet
                 // 1 tick sonra ekle (oyuncu tam olarak respawn olduktan sonra)
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    // Ayağa kalk (ölüm pozundan çık)
+                    session.addAction(new PoseAction(PoseAction.PoseType.STANDING));
+
+                    // Respawn konumu
                     LocationAction respawnAction = new LocationAction(
                             respawnLoc.getX(),
                             respawnLoc.getY(),
@@ -127,7 +132,16 @@ public class RecordingListener implements Listener {
                     );
                     session.addAction(respawnAction);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Respawn LocationAction recorded: " +
+                    // Full can (respawn sonrası)
+                    session.addAction(new HealthAction(
+                            player.getHealth(),
+                            player.getMaxHealth(),
+                            player.getFoodLevel(),
+                            player.getSaturation(),
+                            player.getAbsorptionAmount()
+                    ));
+
+                    plugin.debug("[RECORDING-DEBUG] Respawn recorded (pose + location + health): " +
                             String.format("%.1f, %.1f, %.1f", respawnLoc.getX(), respawnLoc.getY(), respawnLoc.getZ()));
                 }, 1L); // 1 tick gecikme
             }

@@ -3,6 +3,7 @@ package com.reportsystem.common.replay.actions;
 import java.util.UUID;
 
 public class EntityStateAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum StateType {
         SNEAKING,    // Eğilme

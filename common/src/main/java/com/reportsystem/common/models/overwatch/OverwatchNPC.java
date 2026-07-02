@@ -11,10 +11,18 @@ public class OverwatchNPC {
     private final float pitch;
     private final long createdAt;
     private final String createdBy;
-    private final String displayName; // Custom display name
+    private final String displayName;
+    private final String skinTexture;
+    private final String skinSignature;
 
     public OverwatchNPC(String id, String serverName, String world, double x, double y, double z,
                         float yaw, float pitch, long createdAt, String createdBy, String displayName) {
+        this(id, serverName, world, x, y, z, yaw, pitch, createdAt, createdBy, displayName, null, null);
+    }
+
+    public OverwatchNPC(String id, String serverName, String world, double x, double y, double z,
+                        float yaw, float pitch, long createdAt, String createdBy, String displayName,
+                        String skinTexture, String skinSignature) {
         this.id = id;
         this.serverName = serverName;
         this.world = world;
@@ -26,6 +34,8 @@ public class OverwatchNPC {
         this.createdAt = createdAt;
         this.createdBy = createdBy;
         this.displayName = displayName;
+        this.skinTexture = skinTexture;
+        this.skinSignature = skinSignature;
     }
 
     public String getId() { return id; }
@@ -39,4 +49,6 @@ public class OverwatchNPC {
     public long getCreatedAt() { return createdAt; }
     public String getCreatedBy() { return createdBy; }
     public String getDisplayName() { return displayName; }
+    public String getSkinTexture() { return skinTexture; }
+    public String getSkinSignature() { return skinSignature; }
 }

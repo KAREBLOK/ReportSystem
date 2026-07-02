@@ -1,103 +1,114 @@
 package com.reportsystem.spigot.gui;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.managers.MessageManager;
 import com.reportsystem.spigot.replay.ReplayPlayer;
+import com.reportsystem.spigot.replay.ReplayNPCManager;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
-import java.util.Arrays;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Replay ışınlanma GUI - Belirli zamanlara atlamak için
+ * Replay isinlanma GUI - Replay'deki oyunculara isinlanma
  */
 public class ReplayTeleportGUI extends GUI {
 
     private final ReplayPlayer replayPlayer;
+    private final MessageManager msg;
+    private final GUIConfig guiConfig;
+    // slot -> player UUID mapping (null = main NPC)
+    private final Map<Integer, UUID> slotPlayerMap = new HashMap<>();
 
     public ReplayTeleportGUI(ReportSystemSpigot plugin, Player player, ReplayPlayer replayPlayer) {
         super(plugin, player);
         this.replayPlayer = replayPlayer;
+        this.msg = plugin.getMessageManager();
+        this.guiConfig = new GUIConfig(plugin, "replay-teleport");
     }
 
     @Override
     public void build() {
-        inventory = Bukkit.createInventory(this, 27, ChatColor.DARK_PURPLE + "Zaman Atlama");
+        ReplayNPCManager npcManager = replayPlayer.getNpcManager();
+        Map<UUID, String> nearbyNames = npcManager.getNearbyPlayerProfileNames();
 
-        // Background
-        fillBorder(Material.PURPLE_STAINED_GLASS_PANE);
+        int totalPlayers = 1 + nearbyNames.size();
+        int rows = Math.max(3, (int) Math.ceil((totalPlayers + 2) / 9.0) + 1);
+        if (rows > 6) rows = 6;
+        int size = rows * 9;
 
-        // Zaman atlama seçenekleri
-        inventory.setItem(10, createJumpItem(Material.YELLOW_WOOL, "Başlangıç", 0));
-        inventory.setItem(11, createJumpItem(Material.LIME_WOOL, "25%", 25));
-        inventory.setItem(12, createJumpItem(Material.CYAN_WOOL, "50%", 50));
-        inventory.setItem(13, createJumpItem(Material.BLUE_WOOL, "75%", 75));
-        inventory.setItem(14, createJumpItem(Material.RED_WOOL, "Son", 100));
+        String title = guiConfig.getTitle();
+        inventory = Bukkit.createInventory(this, size, title);
 
-        // İleri/Geri atlama
-        inventory.setItem(19, createSkipItem(Material.PLAYER_HEAD, "⏪ 30 Saniye Geri", -30000));
-        inventory.setItem(20, createSkipItem(Material.PLAYER_HEAD, "⏪ 10 Saniye Geri", -10000));
-        inventory.setItem(23, createSkipItem(Material.PLAYER_HEAD, "10 Saniye İleri ⏩", 10000));
-        inventory.setItem(24, createSkipItem(Material.PLAYER_HEAD, "30 Saniye İleri ⏩", 30000));
+        // Ana NPC (supheli)
+        String mainName = replayPlayer.getReplay().getRecordedPlayer();
+        Location mainLoc = replayPlayer.getLastLocation();
+        inventory.setItem(10, createPlayerHead(mainName, mainLoc, true));
+        slotPlayerMap.put(10, null);
 
-        // Geri dön
-        inventory.setItem(22, createBackButton());
+        // Yakin oyuncular
+        int slot = 11;
+        for (Map.Entry<UUID, String> entry : nearbyNames.entrySet()) {
+            if (slot == 17) slot = 19;
+            if (slot == 26) slot = 28;
+            if (slot >= 44) break;
+            while (slot % 9 == 0 || slot % 9 == 8) slot++;
+
+            Location nearbyLoc = npcManager.getNearbyPlayerLocation(entry.getKey());
+            inventory.setItem(slot, createPlayerHead(entry.getValue(), nearbyLoc, false));
+            slotPlayerMap.put(slot, entry.getKey());
+            slot++;
+        }
+
+        // Kapat butonu
+        int closeSlot = size - 5;
+        inventory.setItem(closeSlot, createCloseButton());
     }
 
-    private ItemStack createJumpItem(Material material, String name, int percentage) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
+    private ItemStack createPlayerHead(String playerName, Location location, boolean isMainTarget) {
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(ChatColor.GOLD + name);
-            long targetTime = (replayPlayer.getTotalTime() * percentage) / 100;
-            meta.setLore(Arrays.asList(
-                    "",
-                    ChatColor.GRAY + "Hedef: " + ChatColor.WHITE + formatDuration(targetTime),
-                    "",
-                    ChatColor.YELLOW + "▶ Tıkla ve atla!"
-            ));
+            meta.setOwner(playerName);
+
+            String locText;
+            if (location != null) {
+                locText = String.format("%.0f, %.0f, %.0f", location.getX(), location.getY(), location.getZ());
+            } else {
+                locText = msg.colorize(guiConfig.getConfigString("items.location-unknown", "&cBilinmiyor"));
+            }
+
+            String key = isMainTarget ? "items.suspect" : "items.player";
+            meta.setDisplayName(msg.colorize(guiConfig.getConfig().getString(key + ".name", "")
+                    .replace("%player%", playerName)));
+            List<String> lore = guiConfig.getConfig().getStringList(key + ".lore");
+            meta.setLore(lore.stream().map(line -> msg.colorize(line
+                    .replace("%player%", playerName)
+                    .replace("%location%", locText)
+            )).collect(Collectors.toList()));
             item.setItemMeta(meta);
         }
         return item;
     }
 
-    private ItemStack createSkipItem(Material material, String name, int millis) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(ChatColor.AQUA + name);
-            meta.setLore(Arrays.asList(
-                    "",
-                    ChatColor.GRAY + "Atla: " + ChatColor.WHITE + (millis / 1000) + " saniye",
-                    "",
-                    ChatColor.YELLOW + "▶ Tıkla!"
-            ));
-            item.setItemMeta(meta);
-        }
-        return item;
-    }
-
-    private ItemStack createBackButton() {
+    private ItemStack createCloseButton() {
         ItemStack item = new ItemStack(Material.BARRIER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(ChatColor.RED + "✖ Kapat");
-            meta.setLore(Arrays.asList(ChatColor.GRAY + "Replay'e geri dön"));
+            meta.setDisplayName(msg.colorize(guiConfig.getConfig().getString("items.close.name", "&c✖ Kapat")));
+            List<String> lore = guiConfig.getConfig().getStringList("items.close.lore");
+            meta.setLore(lore.stream().map(msg::colorize).collect(Collectors.toList()));
             item.setItemMeta(meta);
         }
         return item;
-    }
-
-    private String formatDuration(long millis) {
-        long seconds = millis / 1000;
-        long minutes = seconds / 60;
-        seconds = seconds % 60;
-        return String.format("%02d:%02d", minutes, seconds);
     }
 
     @Override
@@ -106,33 +117,28 @@ public class ReplayTeleportGUI extends GUI {
         ItemStack item = event.getCurrentItem();
         if (item == null) return;
 
-        player.closeInventory();
-
-        // Yüzdelik atlamalar (henüz desteklenmiyor)
-        if (slot == 10) { // Başlangıç
-            player.sendMessage(ChatColor.RED + "✗ Zaman atlama özelliği henüz aktif değil!");
-        } else if (slot == 11) { // 25%
-            player.sendMessage(ChatColor.RED + "✗ Zaman atlama özelliği henüz aktif değil!");
-        } else if (slot == 12) { // 50%
-            player.sendMessage(ChatColor.RED + "✗ Zaman atlama özelliği henüz aktif değil!");
-        } else if (slot == 13) { // 75%
-            player.sendMessage(ChatColor.RED + "✗ Zaman atlama özelliği henüz aktif değil!");
-        } else if (slot == 14) { // Son
-            player.sendMessage(ChatColor.RED + "✗ Zaman atlama özelliği henüz aktif değil!");
+        if (item.getType() == Material.BARRIER) {
+            player.closeInventory();
+            return;
         }
-        // İleri/Geri
-        else if (slot == 19) { // -30s
-            replayPlayer.rewind(30);
-            player.sendMessage(ChatColor.YELLOW + "⏪ 30 saniye geri sarıldı!");
-        } else if (slot == 20) { // -10s
-            replayPlayer.rewind(10);
-            player.sendMessage(ChatColor.YELLOW + "⏪ 10 saniye geri sarıldı!");
-        } else if (slot == 23) { // +10s
-            replayPlayer.forward(10);
-            player.sendMessage(ChatColor.GREEN + "⏩ 10 saniye ileri sarıldı!");
-        } else if (slot == 24) { // +30s
-            replayPlayer.forward(30);
-            player.sendMessage(ChatColor.GREEN + "⏩ 30 saniye ileri sarıldı!");
+
+        if (item.getType() == Material.PLAYER_HEAD && slotPlayerMap.containsKey(slot)) {
+            UUID targetUuid = slotPlayerMap.get(slot);
+            Location targetLoc;
+
+            if (targetUuid == null) {
+                targetLoc = replayPlayer.getLastLocation();
+            } else {
+                targetLoc = replayPlayer.getNpcManager().getNearbyPlayerLocation(targetUuid);
+            }
+
+            if (targetLoc != null) {
+                player.closeInventory();
+                player.teleport(targetLoc);
+                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.0f);
+            } else {
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 0.5f);
+            }
         }
     }
 

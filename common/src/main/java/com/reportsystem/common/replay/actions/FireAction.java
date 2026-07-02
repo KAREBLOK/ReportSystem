@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class FireAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final boolean onFire;
     private final int fireTicks;

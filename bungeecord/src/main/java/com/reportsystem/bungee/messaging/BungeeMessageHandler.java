@@ -32,8 +32,7 @@ public class BungeeMessageHandler {
                 }
             }
         } catch (IOException e) {
-            plugin.getLogger().severe("Mesaj gönderilirken hata: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().severe("Tüm sunuculara mesaj gönderilirken hata: " + e.getMessage());
         }
     }
 
@@ -53,8 +52,7 @@ public class BungeeMessageHandler {
                 }
             }
         } catch (IOException e) {
-            plugin.getLogger().severe("Mesaj gönderilirken hata: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().severe("Sunucuya mesaj gönderilirken hata (" + serverName + "): " + e.getMessage());
         }
     }
 

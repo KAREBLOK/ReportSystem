@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.EntityCommandAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -79,7 +80,7 @@ public class EntityCommandListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Entity command: " + commandType.name() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity command: " + commandType.name() +
                         " on " + entity.getType().name());
             }
         }

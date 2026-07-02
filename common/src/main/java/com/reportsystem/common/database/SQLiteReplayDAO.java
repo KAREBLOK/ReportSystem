@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+// NOT: SQLite ve MySQL replay semalari uyumsuz. Veritabani tipi degistirmek veri kaybina neden olur.
 public class SQLiteReplayDAO implements ReplayDAO {
 
     private final SQLiteDatabaseManager dbManager;
@@ -20,15 +21,15 @@ public class SQLiteReplayDAO implements ReplayDAO {
         String sql = "INSERT INTO replays(report_id, recorded_player, world_name, start_time, " +
                 "end_time, duration, action_count, data, compressed) VALUES(?,?,?,?,?,?,?,?,?)";
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, replay.getReportId());
             pstmt.setString(2, replay.getRecordedPlayer());
             pstmt.setString(3, replay.getWorldName());
             pstmt.setLong(4, replay.getStartTime());
             pstmt.setLong(5, replay.getEndTime());
-            pstmt.setInt(6, (int) replay.getDuration()); // long'dan int'e cast
+            pstmt.setLong(6, replay.getDuration());
             pstmt.setInt(7, replay.getActionCount());
             pstmt.setBytes(8, replay.getData());
             pstmt.setBoolean(9, replay.isCompressed());
@@ -41,8 +42,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
     public Optional<Replay> getReplayByReportId(int reportId) throws SQLException {
         String sql = "SELECT * FROM replays WHERE report_id = ?";
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, reportId);
 
@@ -59,8 +60,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
     public Optional<Replay> getReplayById(int id) throws SQLException {
         String sql = "SELECT * FROM replays WHERE id = ?";
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, id);
 
@@ -79,8 +80,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
         String sql = "SELECT * FROM replays ORDER BY start_time DESC LIMIT ? OFFSET ?";
         int offset = (page - 1) * pageSize;
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, pageSize);
             pstmt.setInt(2, offset);
@@ -99,8 +100,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
         List<Replay> replays = new ArrayList<>();
         String sql = "SELECT * FROM replays WHERE recorded_player = ? ORDER BY start_time DESC";
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setString(1, playerName);
 
@@ -117,8 +118,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
     public void deleteReplay(int id) throws SQLException {
         String sql = "DELETE FROM replays WHERE id = ?";
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setInt(1, id);
             pstmt.executeUpdate();
@@ -130,8 +131,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
         String sql = "DELETE FROM replays WHERE start_time < ?";
         long cutoffTime = System.currentTimeMillis() - (daysOld * 24 * 60 * 60 * 1000L);
 
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setLong(1, cutoffTime);
             return pstmt.executeUpdate();
@@ -141,8 +142,8 @@ public class SQLiteReplayDAO implements ReplayDAO {
     @Override
     public int getTotalCount() throws SQLException {
         String sql = "SELECT COUNT(*) FROM replays";
-        try (Connection conn = dbManager.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
+        Connection conn = dbManager.getConnection();
+        try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
                 return rs.getInt(1);
@@ -157,10 +158,12 @@ public class SQLiteReplayDAO implements ReplayDAO {
     }
 
     private Replay mapResultSetToReplay(ResultSet rs) throws SQLException {
+        // Constructor 4 (11 parametre) kullan - SQLite sütunlarıyla doğru eşleşir
         return new Replay(
                 rs.getInt("id"),
                 rs.getInt("report_id"),
                 rs.getString("recorded_player"),
+                "",  // recordedPlayerUuid - SQLite şemasında yok
                 rs.getString("world_name"),
                 rs.getLong("start_time"),
                 rs.getLong("end_time"),

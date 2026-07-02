@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class UseItemAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum UseType {
         BOW_CHARGE,      // Yay çekme

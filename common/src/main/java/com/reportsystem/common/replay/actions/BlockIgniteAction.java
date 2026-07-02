@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Ateş yakma ve yanma (ignite, burn)
  */
 public class BlockIgniteAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum IgniteType {
         FLINT_AND_STEEL,    // Çakmak

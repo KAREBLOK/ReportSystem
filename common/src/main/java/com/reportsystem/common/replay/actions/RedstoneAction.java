@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Redstone komponent ayarları (repeater, comparator, daylight sensor)
  */
 public class RedstoneAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum RedstoneType {
         REPEATER_DELAY,     // Repeater gecikmesi ayarı

@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Kova kullanımı (su, lav, süt, balık)
  */
 public class BucketAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum BucketType {
         WATER,

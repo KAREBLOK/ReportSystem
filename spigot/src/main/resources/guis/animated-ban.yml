@@ -1,102 +1,99 @@
-# Animated Ban GUI Configuration
-# Used when selecting animated ban duration
+# Animasyonlu Ban GUI
+title: "&8&nYasakla"
+size: 36
 
-title: "&4&l⚡ ANIMATED BAN > %target%"
-size: 54
+# Arka plan
+background:
+  enabled: false
 
-# Player info
+# Oyuncu bilgisi
 player-info:
   slot: 4
   material: PLAYER_HEAD
   name: "&4⚡ %target%"
   lore:
-    - ""
-    - "&7Bu oyuncu animasyonlu"
-    - "&7ban ile cezalandırılacak!"
-    - ""
-    - "&c&lTanrıların gazabı bekliyor..."
+    - ''
+    - '&7Bu oyuncu animasyonlu'
+    - '&7ban ile cezalandırılacak!'
+    - ''
+    - '&c&lTanrıların gazabı bekliyor...'
 
-# Duration selections
+# Süre seçimleri
 durations:
   30-minutes:
-    slot: 19
-    material: CLOCK
+    slot: 10
+    material: PAPER
     name: "&e30 Dakika"
     duration: "30m"
 
   1-hour:
-    slot: 20
-    material: CLOCK
+    slot: 11
+    material: PAPER
     name: "&61 Saat"
     duration: "1h"
 
   6-hours:
-    slot: 21
-    material: CLOCK
+    slot: 12
+    material: GOLD_NUGGET
     name: "&c6 Saat"
     duration: "6h"
 
   1-day:
-    slot: 28
-    material: REDSTONE_BLOCK
+    slot: 14
+    material: GOLD_INGOT
     name: "&c1 Gün"
     duration: "1d"
 
   7-days:
-    slot: 29
-    material: REDSTONE_BLOCK
+    slot: 15
+    material: IRON_INGOT
     name: "&c7 Gün"
     duration: "7d"
 
   30-days:
-    slot: 30
-    material: REDSTONE_BLOCK
+    slot: 16
+    material: IRON_INGOT
     name: "&430 Gün"
     duration: "30d"
 
   permanent:
-    slot: 31
+    slot: 21
     material: BARRIER
     name: "&4&l⚠ KALICI BAN"
     lore:
-      - ""
-      - "&7Oyuncuyu kalıcı olarak"
-      - "&7sunucudan yasakla"
-      - ""
-      - "&4&lTANRILARIN SON CEZASI!"
-      - ""
-      - "&e▶ Tıkla ve kalıcı banla"
+      - ''
+      - '&7Oyuncuyu kalıcı olarak'
+      - '&7sunucudan yasakla.'
+      - ''
+      - '&4&lTANRILARIN SON CEZASI!'
+      - ''
+      - '&e► Tıkla'
     duration: "permanent"
 
   custom:
-    slot: 40
+    slot: 23
     material: NAME_TAG
-    name: "&bÖzel Süre"
+    name: "&b&lÖzel Süre"
     lore:
-      - ""
-      - "&7Özel bir süre gir"
-      - "&7(örn: 2h, 15d, 1w)"
-      - ""
-      - "&e▶ Tıkla ve özel süre gir"
+      - ''
+      - '&7Özel bir süre gir.'
+      - '&8(örn: 2h, 15d, 1w)'
+      - ''
+      - '&e► Tıkla'
     duration: "custom"
 
-# Control buttons
+# Kontrol butonları
 controls:
   cancel:
-    slot: 48
+    slot: 28
     material: RED_CONCRETE
     name: "&c✖ İptal"
     lore:
       - "&7Animasyonlu banı iptal et"
 
   back:
-    slot: 50
+    slot: 34
     material: ARROW
-    name: "&e◀ Geri Dön"
+    name: "&8←"
     lore:
       - "&7Rapor detayına dön"
-
-# Background
-background:
-  material: BLACK_STAINED_GLASS_PANE
-  name: " "

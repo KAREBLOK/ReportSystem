@@ -1,9 +1,11 @@
 package com.reportsystem.spigot.punishment.providers;
 
 import com.reportsystem.common.punishment.PunishmentProvider;
+import com.reportsystem.spigot.ReportSystemSpigot;
 import org.bukkit.BanList;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -19,6 +21,10 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
     private final JavaPlugin plugin;
     private final Map<String, Long> mutedPlayers = new ConcurrentHashMap<>();
     private final Map<String, List<String>> playerWarnings = new ConcurrentHashMap<>();
+
+    private com.reportsystem.spigot.managers.MessageManager getMessageManager() {
+        return ((ReportSystemSpigot) plugin).getMessageManager();
+    }
 
     public InternalPunishmentProvider(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -45,14 +51,18 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
             Date expires = new Date(System.currentTimeMillis() + durationMillis);
 
             // Ban mesajı
-            String banMessage = ChatColor.RED + "Sunucudan yasaklandınız!\n\n" +
-                    ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                    ChatColor.GRAY + "Süre: " + ChatColor.WHITE + formatDuration(durationMillis) + "\n" +
-                    ChatColor.GRAY + "Bitiş: " + ChatColor.WHITE + formatDate(expires) + "\n" +
-                    ChatColor.GRAY + "Cezayı veren: " + ChatColor.WHITE + punisher;
+            String banMessage = getMessageManager().colorize(
+                    getMessageManager().getMessage("punishments.ban.screen-temp")
+                            .replace("%reason%", reason)
+                            .replace("%duration%", formatDuration(durationMillis))
+                            .replace("%expires%", formatDate(expires))
+                            .replace("%staff%", punisher));
 
-            // Ban listesine ekle
+            // Ban listesine ekle (NAME)
             Bukkit.getBanList(BanList.Type.NAME).addBan(playerName, reason, expires, punisher);
+
+            // Profile ban listesine de ekle (Paper 1.21+ uyumluluğu)
+            addProfileBan(playerName, reason, expires, punisher);
 
             // Oyuncu online ise at
             Player target = Bukkit.getPlayer(playerName);
@@ -77,13 +87,17 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
     public boolean permBan(String playerName, String reason, String punisher) {
         try {
             // Ban mesajı
-            String banMessage = ChatColor.RED + "Sunucudan kalıcı olarak yasaklandınız!\n\n" +
-                    ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                    ChatColor.GRAY + "Cezayı veren: " + ChatColor.WHITE + punisher + "\n\n" +
-                    ChatColor.DARK_GRAY + "Ban kaldırma başvurusu için: discord.gg/sunucu";
+            String banMessage = getMessageManager().colorize(
+                    getMessageManager().getMessage("punishments.ban.screen-perm")
+                            .replace("%reason%", reason)
+                            .replace("%staff%", punisher)
+                            .replace("%discord_url%", getMessageManager().getMessage("punishments.discord-url")));
 
             // Ban listesine ekle (null = kalıcı)
             Bukkit.getBanList(BanList.Type.NAME).addBan(playerName, reason, null, punisher);
+
+            // Profile ban listesine de ekle (Paper 1.21+ uyumluluğu)
+            addProfileBan(playerName, reason, null, punisher);
 
             // Oyuncu online ise at
             Player target = Bukkit.getPlayer(playerName);
@@ -117,16 +131,13 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
 
             Player target = Bukkit.getPlayer(playerName);
             if (target != null && target.isOnline()) {
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage(ChatColor.RED + "          SUSTURULDUNUZ!");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GRAY + "  Sebep: " + ChatColor.WHITE + reason);
-                target.sendMessage(ChatColor.GRAY + "  Süre: " + ChatColor.WHITE +
-                        (durationMillis > 0 ? formatDuration(durationMillis) : "Kalıcı"));
-                target.sendMessage(ChatColor.GRAY + "  Yetkili: " + ChatColor.WHITE + punisher);
-                target.sendMessage(ChatColor.RED + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage("");
+                String muteMsg = getMessageManager().getMessage("punishments.mute.player-message")
+                        .replace("%reason%", reason)
+                        .replace("%duration%", durationMillis > 0 ? formatDuration(durationMillis) : getMessageManager().getMessage("misc.duration.permanent"))
+                        .replace("%staff%", punisher);
+                for (String line : muteMsg.split("\n")) {
+                    target.sendMessage(getMessageManager().colorize(line));
+                }
 
                 // Ses efekti
                 target.playSound(target.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 0.5f);
@@ -149,10 +160,10 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
         try {
             Player target = Bukkit.getPlayer(playerName);
             if (target != null && target.isOnline()) {
-                String kickMessage = ChatColor.RED + "Sunucudan atıldınız!\n\n" +
-                        ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                        ChatColor.GRAY + "Atan yetkili: " + ChatColor.WHITE + punisher + "\n\n" +
-                        ChatColor.GREEN + "Tekrar girebilirsiniz.";
+                String kickMessage = getMessageManager().colorize(
+                        getMessageManager().getMessage("punishments.kick.screen")
+                                .replace("%reason%", reason)
+                                .replace("%staff%", punisher));
 
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     target.kickPlayer(kickMessage);
@@ -181,25 +192,20 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
 
             Player target = Bukkit.getPlayer(playerName);
             if (target != null && target.isOnline()) {
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GOLD + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage(ChatColor.GOLD + "          ⚠ UYARI ⚠");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "  Bir yetkili tarafından uyarıldınız!");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GRAY + "  Sebep: " + ChatColor.WHITE + reason);
-                target.sendMessage(ChatColor.GRAY + "  Yetkili: " + ChatColor.WHITE + punisher);
-                target.sendMessage(ChatColor.GRAY + "  Uyarı sayınız: " + ChatColor.YELLOW + warnings.size());
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "  Kuralları ihlal etmeye devam ederseniz");
-                target.sendMessage(ChatColor.RED + "  daha ağır cezalar alabilirsiniz!");
-                target.sendMessage(ChatColor.GOLD + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage("");
+                String warnMsg = getMessageManager().getMessage("punishments.warn.player-message")
+                        .replace("%reason%", reason)
+                        .replace("%staff%", punisher)
+                        .replace("%count%", String.valueOf(warnings.size()));
+                for (String line : warnMsg.split("\n")) {
+                    target.sendMessage(getMessageManager().colorize(line));
+                }
 
                 // Ses efekti ve title
                 target.playSound(target.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                target.sendTitle(ChatColor.GOLD + "⚠ UYARI ⚠",
-                        ChatColor.RED + "Kuralları ihlal ettiniz!", 10, 60, 20);
+                target.sendTitle(
+                        getMessageManager().colorize(getMessageManager().getMessage("punishments.warn.title")),
+                        getMessageManager().colorize(getMessageManager().getMessage("punishments.warn.subtitle")),
+                        10, 60, 20);
             }
 
             // Log
@@ -216,14 +222,23 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
     @Override
     public boolean unban(String playerName) {
         try {
-            // Bukkit.getBanList().pardon() void döndürüyor, bu yüzden önce kontrol edelim
+            boolean unbanned = false;
+
+            // NAME ban listesinden kaldır
             if (Bukkit.getBanList(BanList.Type.NAME).isBanned(playerName)) {
                 Bukkit.getBanList(BanList.Type.NAME).pardon(playerName);
-                plugin.getLogger().info("[UNBAN] " + playerName + " has been unbanned.");
-                return true;
-            } else {
-                return false; // Zaten banlı değil
+                unbanned = true;
             }
+
+            // PROFILE ban listesinden de kaldır (Paper 1.21+ uyumluluğu)
+            if (removeProfileBan(playerName)) {
+                unbanned = true;
+            }
+
+            if (unbanned) {
+                plugin.getLogger().info("[UNBAN] " + playerName + " has been unbanned.");
+            }
+            return unbanned;
         } catch (Exception e) {
             plugin.getLogger().severe("Error unbanning player: " + e.getMessage());
             return false;
@@ -239,7 +254,7 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
 
                 Player target = Bukkit.getPlayer(playerName);
                 if (target != null && target.isOnline()) {
-                    target.sendMessage(ChatColor.GREEN + "✓ Artık konuşabilirsiniz!");
+                    target.sendMessage(getMessageManager().colorize(getMessageManager().getMessage("punishments.mute.unmuted-player")));
                 }
             }
             return result;
@@ -251,7 +266,12 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
 
     @Override
     public boolean isBanned(String playerName) {
-        return Bukkit.getBanList(BanList.Type.NAME).isBanned(playerName);
+        // Her iki ban listesini de kontrol et
+        if (Bukkit.getBanList(BanList.Type.NAME).isBanned(playerName)) {
+            return true;
+        }
+        // Profile ban kontrolü
+        return isProfileBanned(playerName);
     }
 
     @Override
@@ -285,14 +305,16 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
             if (muteEnd != null && muteEnd != Long.MAX_VALUE) {
                 long remaining = muteEnd - System.currentTimeMillis();
                 if (remaining > 0) {
-                    timeLeft = " (" + formatDuration(remaining) + " kaldı)";
+                    timeLeft = getMessageManager().getMessage("punishments.mute.time-remaining").replace("%time%", formatDuration(remaining));
                 }
             } else if (muteEnd == Long.MAX_VALUE) {
-                timeLeft = " (Kalıcı)";
+                timeLeft = getMessageManager().getMessage("punishments.mute.time-permanent");
             }
 
-            player.sendMessage(ChatColor.RED + "✗ Susturulmuşsunuz!" + timeLeft);
-            player.sendMessage(ChatColor.GRAY + "Sohbete yazamazsınız.");
+            player.sendMessage(getMessageManager().colorize(
+                    getMessageManager().getMessage("punishments.mute.chat-blocked")
+                            .replace("%time_left%", timeLeft)));
+            player.sendMessage(getMessageManager().colorize(getMessageManager().getMessage("punishments.mute.chat-blocked-detail")));
 
             // Ses efekti
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.5f, 1.0f);
@@ -314,23 +336,28 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
      * Süreyi formatlar
      */
     private String formatDuration(long millis) {
-        if (millis <= 0) return "0 saniye";
+        if (millis <= 0) return "0 " + getMessageManager().getMessage("misc.time.seconds");
 
         long seconds = millis / 1000;
         long minutes = seconds / 60;
         long hours = minutes / 60;
         long days = hours / 24;
 
+        String daysWord = getMessageManager().getMessage("misc.time.days");
+        String hoursWord = getMessageManager().getMessage("misc.time.hours");
+        String minutesWord = getMessageManager().getMessage("misc.time.minutes");
+        String secondsWord = getMessageManager().getMessage("misc.time.seconds");
+
         if (days > 0) {
-            return days + " gün" + (hours % 24 > 0 ? " " + (hours % 24) + " saat" : "");
+            return days + " " + daysWord + (hours % 24 > 0 ? " " + (hours % 24) + " " + hoursWord : "");
         }
         if (hours > 0) {
-            return hours + " saat" + (minutes % 60 > 0 ? " " + (minutes % 60) + " dakika" : "");
+            return hours + " " + hoursWord + (minutes % 60 > 0 ? " " + (minutes % 60) + " " + minutesWord : "");
         }
         if (minutes > 0) {
-            return minutes + " dakika" + (seconds % 60 > 0 ? " " + (seconds % 60) + " saniye" : "");
+            return minutes + " " + minutesWord + (seconds % 60 > 0 ? " " + (seconds % 60) + " " + secondsWord : "");
         }
-        return seconds + " saniye";
+        return seconds + " " + secondsWord;
     }
 
     /**
@@ -354,5 +381,60 @@ public class InternalPunishmentProvider implements PunishmentProvider, Listener 
      */
     public List<String> getWarnings(String playerName) {
         return playerWarnings.getOrDefault(playerName.toLowerCase(), new ArrayList<>());
+    }
+
+    /**
+     * Profile ban listesine ekler (Paper 1.21+ uyumluluğu)
+     * BanList.Type.PROFILE kullanarak UUID bazlı ban ekler
+     */
+    private void addProfileBan(String playerName, String reason, Date expires, String punisher) {
+        try {
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+            if (offlinePlayer.hasPlayedBefore() || offlinePlayer.isOnline()) {
+                Bukkit.getBanList(BanList.Type.PROFILE).addBan(
+                        offlinePlayer.getName(), reason, expires, punisher);
+            }
+        } catch (Exception e) {
+            // Profile ban eklenemezse sessizce devam et (NAME ban zaten eklendi)
+            plugin.getLogger().fine("[BAN] Profile ban could not be added: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Profile ban listesinden kaldırır
+     */
+    private boolean removeProfileBan(String playerName) {
+        try {
+            if (Bukkit.getBanList(BanList.Type.PROFILE).isBanned(playerName)) {
+                Bukkit.getBanList(BanList.Type.PROFILE).pardon(playerName);
+                return true;
+            }
+
+            // İsim ile bulamazsa OfflinePlayer üzerinden dene
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+            if (offlinePlayer.isBanned()) {
+                Bukkit.getBanList(BanList.Type.PROFILE).pardon(
+                        offlinePlayer.getName() != null ? offlinePlayer.getName() : playerName);
+                return true;
+            }
+        } catch (Exception e) {
+            plugin.getLogger().fine("[UNBAN] Profile unban error: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Profile ban listesinde banlı mı kontrol eder
+     */
+    private boolean isProfileBanned(String playerName) {
+        try {
+            if (Bukkit.getBanList(BanList.Type.PROFILE).isBanned(playerName)) {
+                return true;
+            }
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+            return offlinePlayer.isBanned();
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Crafting table kullanımı (item crafting)
  */
 public class CraftAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String craftedItem;  // Serialized ItemStack of crafted item
     private final int amount;          // Amount crafted

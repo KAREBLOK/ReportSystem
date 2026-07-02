@@ -6,6 +6,7 @@ import java.util.UUID;
  * Entity boyama (koyun, kedi tasması, vb.)
  */
 public class EntityDyeAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final UUID entityUuid;
     private final String entityType;

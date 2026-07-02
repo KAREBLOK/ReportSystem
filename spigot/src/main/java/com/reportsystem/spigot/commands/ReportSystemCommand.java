@@ -1,6 +1,7 @@
 package com.reportsystem.spigot.commands;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.punishment.PunishmentManager;
 import com.reportsystem.spigot.utils.AdvancementNotification;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -81,6 +82,59 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
                 checkAdvancement(sender);
                 break;
 
+            case "unban":
+                if (args.length < 2) {
+                    sender.sendMessage(plugin.getMessageManager().colorize("&cKullanım: /reportsystem unban <oyuncu>"));
+                    return true;
+                }
+                handleUnban(sender, args[1]);
+                break;
+
+            case "unmute":
+                if (args.length < 2) {
+                    sender.sendMessage(plugin.getMessageManager().colorize("&cKullanım: /reportsystem unmute <oyuncu>"));
+                    return true;
+                }
+                handleUnmute(sender, args[1]);
+                break;
+
+            case "ban":
+                if (args.length < 3) {
+                    sender.sendMessage(plugin.getMessageManager().colorize("&cKullanım: /reportsystem ban <oyuncu> <sebep> [süre]"));
+                    return true;
+                }
+                handleBan(sender, args);
+                break;
+
+            case "webreplay":
+                if (!plugin.getConfigManager().isWebReplayEnabled()) {
+                    plugin.getMessageManager().sendMessage(sender, "replay.web-replay.disabled");
+                    return true;
+                }
+                if (args.length < 2) {
+                    plugin.getMessageManager().sendMessage(sender, "replay.web-replay.usage");
+                    return true;
+                }
+                try {
+                    int reportId = Integer.parseInt(args[1]);
+                    plugin.getMessageManager().sendMessage(sender, "replay.web-replay.generating",
+                            "%report_id%", String.valueOf(reportId));
+                    plugin.getReplayManager().generateWebReplay(reportId).thenAccept(url -> {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (url != null) {
+                                plugin.getMessageManager().sendMessage(sender, "replay.web-replay.ready");
+                                plugin.getMessageManager().sendMessage(sender, "replay.web-replay.url",
+                                        "%url%", url);
+                            } else {
+                                plugin.getMessageManager().sendMessage(sender, "replay.web-replay.failed");
+                            }
+                        });
+                    });
+                } catch (NumberFormatException e) {
+                    plugin.getMessageManager().sendMessage(sender, "replay.web-replay.invalid-id");
+                }
+                break;
+
             default:
                 sendHelp(sender);
         }
@@ -93,6 +147,9 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.reload")));
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.stats")));
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.info")));
+        sender.sendMessage(plugin.getMessageManager().colorize("&e/reportsystem ban <oyuncu> <sebep> [süre] &7- Oyuncu banla"));
+        sender.sendMessage(plugin.getMessageManager().colorize("&e/reportsystem unban <oyuncu> &7- Oyuncu banını kaldır"));
+        sender.sendMessage(plugin.getMessageManager().colorize("&e/reportsystem unmute <oyuncu> &7- Oyuncu mute'ını kaldır"));
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.debug")));
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.testnotif")));
         sender.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("commands.reportsystem.help.checkadv")));
@@ -235,14 +292,115 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
         });
     }
 
+    private void handleUnban(CommandSender sender, String playerName) {
+        boolean success = plugin.getPunishmentManager().getProvider().unban(playerName);
+        if (success) {
+            sender.sendMessage(plugin.getMessageManager().colorize(
+                    "&a" + playerName + " &7oyuncusunun banı kaldırıldı."));
+            plugin.getLogger().info("[UNBAN] " + playerName + " unbanned by " + sender.getName());
+        } else {
+            sender.sendMessage(plugin.getMessageManager().colorize(
+                    "&c" + playerName + " &7zaten banlı değil."));
+        }
+    }
+
+    private void handleUnmute(CommandSender sender, String playerName) {
+        boolean success = plugin.getPunishmentManager().getProvider().unmute(playerName);
+        if (success) {
+            sender.sendMessage(plugin.getMessageManager().colorize(
+                    "&a" + playerName + " &7oyuncusunun mute'ı kaldırıldı."));
+            plugin.getLogger().info("[UNMUTE] " + playerName + " unmuted by " + sender.getName());
+        } else {
+            sender.sendMessage(plugin.getMessageManager().colorize(
+                    "&c" + playerName + " &7zaten mute'lı değil."));
+        }
+    }
+
+    private void handleBan(CommandSender sender, String[] args) {
+        String playerName = args[1];
+
+        // Sebep ve süreyi ayır
+        String reason;
+        long durationMillis = -1; // Varsayılan: kalıcı
+
+        // Son argüman süre olabilir (1d, 2h, 30m vb.)
+        String lastArg = args[args.length - 1];
+        long parsedDuration = PunishmentManager.parseDuration(lastArg);
+
+        if (parsedDuration > 0 && args.length > 3) {
+            // Son argüman süre, geri kalanı sebep
+            durationMillis = parsedDuration;
+            StringBuilder reasonBuilder = new StringBuilder();
+            for (int i = 2; i < args.length - 1; i++) {
+                if (i > 2) reasonBuilder.append(" ");
+                reasonBuilder.append(args[i]);
+            }
+            reason = reasonBuilder.toString();
+        } else {
+            // Süre yok, tamamı sebep
+            StringBuilder reasonBuilder = new StringBuilder();
+            for (int i = 2; i < args.length; i++) {
+                if (i > 2) reasonBuilder.append(" ");
+                reasonBuilder.append(args[i]);
+            }
+            reason = reasonBuilder.toString();
+        }
+
+        String punisher = sender.getName();
+        boolean success;
+
+        if (durationMillis > 0) {
+            success = plugin.getPunishmentManager().getProvider().tempBan(playerName, reason, punisher, durationMillis);
+            if (success) {
+                sender.sendMessage(plugin.getMessageManager().colorize(
+                        "&a" + playerName + " &7banlandı. Süre: &e" + formatDuration(durationMillis) + " &7Sebep: &f" + reason));
+            }
+        } else {
+            success = plugin.getPunishmentManager().getProvider().permBan(playerName, reason, punisher);
+            if (success) {
+                sender.sendMessage(plugin.getMessageManager().colorize(
+                        "&a" + playerName + " &7kalıcı olarak banlandı. Sebep: &f" + reason));
+            }
+        }
+
+        if (!success) {
+            sender.sendMessage(plugin.getMessageManager().colorize(
+                    "&cBan işlemi başarısız oldu!"));
+        }
+    }
+
+    private String formatDuration(long millis) {
+        long seconds = millis / 1000;
+        long minutes = seconds / 60;
+        long hours = minutes / 60;
+        long days = hours / 24;
+
+        if (days > 0) return days + " gün" + (hours % 24 > 0 ? " " + (hours % 24) + " saat" : "");
+        if (hours > 0) return hours + " saat" + (minutes % 60 > 0 ? " " + (minutes % 60) + " dakika" : "");
+        if (minutes > 0) return minutes + " dakika";
+        return seconds + " saniye";
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("reload", "stats", "info", "lang", "debug", "testnotif", "checkadv");
+            return Arrays.asList("reload", "stats", "info", "lang", "debug", "ban", "unban", "unmute", "testnotif", "checkadv");
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
             return Arrays.asList("true", "false");
+        }
+
+        // unban, unmute, ban için oyuncu ismi tab-complete
+        if (args.length == 2 && (args[0].equalsIgnoreCase("unban") ||
+                args[0].equalsIgnoreCase("unmute") || args[0].equalsIgnoreCase("ban"))) {
+            List<String> players = new ArrayList<>();
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
+                    players.add(p.getName());
+                }
+            }
+            return players;
         }
 
         return new ArrayList<>();

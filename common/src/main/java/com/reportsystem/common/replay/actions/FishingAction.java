@@ -1,6 +1,8 @@
 package com.reportsystem.common.replay.actions;
 
 public class FishingAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
+
     public enum FishingState {
         CAST,       // Olta atma
         CAUGHT,     // Balık yakalama

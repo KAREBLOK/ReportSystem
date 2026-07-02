@@ -22,6 +22,7 @@ public class Report {
     private String punishmentType;
     private String resolvedBy; // EKLENDİ
     private long resolvedAt;   // EKLENDİ
+    private boolean reporterNotified; // Raporcu bildirim aldı mı?
 
     // Status enum (İÇİNDEKİLER GÜNCELLENDİ)
     public enum Status {
@@ -50,12 +51,6 @@ public class Report {
             return PENDING;
         }
     }
-
-    // EKLENDİ - GUIListener'ın ihtiyaç duyduğu enum
-    public enum ReportStatus {
-        PENDING, ACCEPTED, REJECTED, IN_PROGRESS, CLOSED
-    }
-
 
     // Constructors
     public Report() {
@@ -153,11 +148,6 @@ public class Report {
         this.status = status.getValue();
     }
 
-    // EKLENDİ
-    public void setStatus(ReportStatus status) {
-        this.status = status.name();
-    }
-
     public Status getStatusEnum() {
         return Status.fromString(status);
     }
@@ -236,6 +226,13 @@ public class Report {
         return this.resolvedAt;
     }
 
+    public boolean isReporterNotified() {
+        return reporterNotified;
+    }
+
+    public void setReporterNotified(boolean reporterNotified) {
+        this.reporterNotified = reporterNotified;
+    }
 
     // Utility methods
     public boolean isPending() {

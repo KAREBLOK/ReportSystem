@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.HangingAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -68,7 +69,7 @@ public class HangingListener implements Listener {
                     );
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Hanging placed: " + type +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Hanging placed: " + type +
                             " facing " + hanging.getFacing() + " at " + hanging.getLocation() +
                             (paintingArt != null ? " art: " + paintingArt : ""));
                 }
@@ -112,7 +113,7 @@ public class HangingListener implements Listener {
                         );
                         session.addAction(action);
 
-                        plugin.getLogger().info("[RECORDING-DEBUG] Hanging broken: " + type);
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Hanging broken: " + type);
                     }
                 }
             }

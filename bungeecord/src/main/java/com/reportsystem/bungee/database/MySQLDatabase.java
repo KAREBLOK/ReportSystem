@@ -72,4 +72,8 @@ public class MySQLDatabase {
     public boolean isConnected() {
         return dataSource != null && !dataSource.isClosed();
     }
+
+    public HikariDataSource getDataSource() {
+        return dataSource;
+    }
 }

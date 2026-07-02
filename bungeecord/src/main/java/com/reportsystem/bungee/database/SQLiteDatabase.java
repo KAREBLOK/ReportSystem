@@ -6,9 +6,12 @@ import java.sql.SQLException;
 
 public class SQLiteDatabase {
 
-    private final Connection connection;
+    private final String dbPath;
+    private Connection connection;
 
     public SQLiteDatabase(String dbPath) throws SQLException {
+        this.dbPath = dbPath;
+
         // SQLite driver'ını yükle - relocated package ile
         try {
             Class.forName("com.reportsystem.bungee.libs.sqlite.JDBC");
@@ -22,19 +25,27 @@ public class SQLiteDatabase {
         }
 
         this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+
+        // WAL mode etkinleştir (concurrent read desteği)
+        try (java.sql.Statement stmt = connection.createStatement()) {
+            stmt.execute("PRAGMA journal_mode=WAL");
+        }
     }
 
-    public Connection getConnection() {
+    public synchronized Connection getConnection() throws SQLException {
+        if (connection == null || connection.isClosed()) {
+            connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        }
         return connection;
     }
 
-    public void close() {
+    public synchronized void close() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("SQLite connection close error: " + e.getMessage());
         }
     }
 }

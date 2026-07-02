@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.SignAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -41,7 +42,7 @@ public class SignListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Sign text: " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sign text: " +
                     String.join(" | ", lines) +
                     " at " + block.getLocation());
         }

@@ -1,7 +1,6 @@
 package com.reportsystem.common.database;
 
 import com.reportsystem.common.models.Report;
-import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.*;
@@ -13,18 +12,8 @@ public class MySQLReportDAO implements ReportDAO {
 
     private final HikariDataSource dataSource;
 
-    public MySQLReportDAO(String host, int port, String database, String username, String password) {
-        HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false&autoReconnect=true");
-        hikariConfig.setUsername(username);
-        hikariConfig.setPassword(password);
-        hikariConfig.setMaximumPoolSize(10);
-        hikariConfig.setMinimumIdle(2);
-        hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setIdleTimeout(600000);
-        hikariConfig.setMaxLifetime(1800000);
-
-        this.dataSource = new HikariDataSource(hikariConfig);
+    public MySQLReportDAO(HikariDataSource dataSource) {
+        this.dataSource = dataSource;
         createTables();
     }
 
@@ -46,7 +35,7 @@ public class MySQLReportDAO implements ReportDAO {
                 INDEX idx_status (status),
                 INDEX idx_timestamp (timestamp),
                 INDEX idx_server (server_name)
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """;
 
         try (Connection conn = dataSource.getConnection();
@@ -68,6 +57,12 @@ public class MySQLReportDAO implements ReportDAO {
 
             try {
                 stmt.execute("ALTER TABLE reports ADD COLUMN punishment_type VARCHAR(20)");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
+
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN reporter_notified BOOLEAN DEFAULT FALSE");
             } catch (SQLException e) {
                 // Kolon zaten varsa ignore
             }
@@ -394,7 +389,75 @@ public class MySQLReportDAO implements ReportDAO {
             // Eski tablolarda bu kolonlar olmayabilir
         }
 
+        // Raporcu bildirim durumunu oku
+        try {
+            report.setReporterNotified(rs.getBoolean("reporter_notified"));
+        } catch (SQLException e) {
+            // Eski tablolarda bu kolon olmayabilir
+        }
+
         return report;
+    }
+
+    @Override
+    public List<Report> getReportsByStatus(String status) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE status = ? ORDER BY timestamp DESC";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
+    }
+
+    @Override
+    public List<Report> getReportsByServer(String serverName) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE server_name = ? ORDER BY timestamp DESC";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, serverName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
+    }
+
+    @Override
+    public List<Report> getReportsByDateRange(long startTime, long endTime) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp DESC";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, startTime);
+            stmt.setLong(2, endTime);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
     }
 
     @Override
@@ -439,9 +502,34 @@ public class MySQLReportDAO implements ReportDAO {
         return 0;
     }
 
-    public void close() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
+    @Override
+    public List<Report> getUnnotifiedReportsForReporter(String reporterUuid) throws SQLException {
+        String sql = "SELECT * FROM reports WHERE reporter_uuid = ? AND status = 'ACCEPTED' AND (reporter_notified = FALSE OR reporter_notified IS NULL) ORDER BY timestamp DESC";
+        List<Report> reports = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, reporterUuid);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
         }
+        return reports;
+    }
+
+    @Override
+    public void markReporterNotified(int reportId) throws SQLException {
+        String sql = "UPDATE reports SET reporter_notified = TRUE WHERE id = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, reportId);
+            stmt.executeUpdate();
+        }
+    }
+
+    public void close() {
+        // Pool kapatma MySQLDatabase tarafından yönetilir
     }
 }

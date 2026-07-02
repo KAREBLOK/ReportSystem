@@ -1,77 +1,84 @@
-# Replay Control GUI Configuration
-# Control panel shown during replay playback
-
-title: "&8Replay Kontrolleri"
+# Replay Kontrol GUI
+title: "&8&nReplay Kontrolleri"
 size: 27
 
-# Playback controls
+# Arka plan
+background:
+  enabled: false
+
+# Kontroller
 controls:
   play-pause:
-    slot: 10
+    slot: 11
     play:
       material: LIME_DYE
       name: "&a▶ Oynat"
       lore:
-        - "&7Replay'i başlat"
+        - ''
+        - '&7Replay''i devam ettir.'
+        - ''
+        - '&e► Tıkla'
     pause:
-      material: ORANGE_DYE
+      material: GRAY_DYE
       name: "&e⏸ Duraklat"
       lore:
-        - "&7Replay'i duraklat"
+        - ''
+        - '&7Replay''i duraklat.'
+        - ''
+        - '&e► Tıkla'
 
   stop:
-    slot: 11
+    slot: 12
     material: RED_DYE
     name: "&c⏹ Durdur"
     lore:
-      - "&7Replay'i durdur ve çık"
+      - ''
+      - '&7Replay''i durdur ve çık.'
+      - ''
+      - '&e► Tıkla'
 
   speed:
-    slot: 13
+    slot: 14
     material: FEATHER
     name: "&bHız: &f%speed%x"
     lore:
-      - ""
-      - "&7Mevcut hız: &f%speed%x"
-      - ""
-      - "&e▶ Sol tık &7hızlandır"
-      - "&e▶ Sağ tık &7yavaşlat"
+      - ''
+      - ' &8▪ &7Mevcut: &a%speed%x'
+      - ''
+      - '&e► Sol tık &7hızlandır'
+      - '&e► Sağ tık &7yavaşlat'
 
   info:
-    slot: 16
-    material: BOOK
+    slot: 4
+    material: PAPER
     name: "&6📊 Replay Bilgileri"
     lore:
-      - ""
-      - "&7Oyuncu: &f%player%"
-      - "&7Süre: &f%duration%"
-      - "&7İlerleme: &f%progress%"
-      - "&7Aksiyon: &f%current%/%total%"
+      - ''
+      - ' &8▪ &7Oyuncu: &a%player%'
+      - ' &8▪ &7Süre: &a%duration%'
+      - ' &8▪ &7İlerleme: &a%progress%'
+      - ' &8▪ &7Aksiyon: &a%current%/%total%'
+      - ''
 
-# Time jump
+# Zaman kontrolleri
 time-controls:
   rewind-10s:
-    slot: 19
+    slot: 20
     material: ARROW
     name: "&e⏪ 10s Geri"
     lore:
-      - "&710 saniye geri sar"
+      - '&710 saniye geri sar'
 
   forward-10s:
-    slot: 25
+    slot: 24
     material: ARROW
     name: "&a⏩ 10s İleri"
     lore:
-      - "&710 saniye ileri sar"
+      - '&710 saniye ileri sar'
 
   teleport:
     slot: 22
     material: ENDER_PEARL
-    name: "&d🕐 Zaman Atlama"
+    name: "&d🌀 Işınlanma"
     lore:
-      - "&7Belirli bir zamana atla"
-
-# Background
-background:
-  material: GRAY_STAINED_GLASS_PANE
-  name: " "
+      - '&7Oyunculara ışınlan'

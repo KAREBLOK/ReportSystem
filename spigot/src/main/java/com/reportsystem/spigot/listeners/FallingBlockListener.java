@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.FallingBlockAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -41,7 +42,7 @@ public class FallingBlockListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Falling block: " +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Falling block: " +
                         fallingBlock.getBlockData().getMaterial() + " at " + fallingBlock.getLocation());
                 break; // Sadece en yakın oyuncu kaydeder
             }

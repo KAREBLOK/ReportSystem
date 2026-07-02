@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class BedAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum ActionType {
         ENTER_BED,

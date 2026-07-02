@@ -1,23 +1,23 @@
 package com.reportsystem.spigot.utils;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public class ChatInputManager implements Listener {
-    private final JavaPlugin plugin;
-    private final Map<UUID, ChatInputSession> activeSessions = new HashMap<>();
+    private final ReportSystemSpigot plugin;
+    private final Map<UUID, ChatInputSession> activeSessions = new ConcurrentHashMap<>();
 
-    public ChatInputManager(JavaPlugin plugin) {
+    public ChatInputManager(ReportSystemSpigot plugin) {
         this.plugin = plugin;
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
@@ -31,14 +31,15 @@ public class ChatInputManager implements Listener {
         }
 
         // Create new session
-        ChatInputSession session = new ChatInputSession(player, prompt, callback);
+        String cancelMsg = plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("reports.chat.input-cancelled"));
+        ChatInputSession session = new ChatInputSession(player, prompt, callback, cancelMsg);
         activeSessions.put(uuid, session);
 
         // Send prompt
         player.sendMessage("");
         player.sendMessage("§8§m                                                     ");
         player.sendMessage("§6" + prompt);
-        player.sendMessage("§7Yazın veya §e'iptal' §7yazarak çıkın.");
+        plugin.getMessageManager().sendMessage(player, "reports.chat.cancel-instruction");
         player.sendMessage("§8§m                                                     ");
         player.sendMessage("");
     }
@@ -80,12 +81,14 @@ public class ChatInputManager implements Listener {
         private final Player player;
         private final String prompt;
         private final Consumer<String> callback;
+        private final String cancelMessage;
         private boolean completed = false;
 
-        public ChatInputSession(Player player, String prompt, Consumer<String> callback) {
+        public ChatInputSession(Player player, String prompt, Consumer<String> callback, String cancelMessage) {
             this.player = player;
             this.prompt = prompt;
             this.callback = callback;
+            this.cancelMessage = cancelMessage;
         }
 
         public void complete(String input) {
@@ -98,7 +101,7 @@ public class ChatInputManager implements Listener {
         public void cancel() {
             if (!completed) {
                 completed = true;
-                player.sendMessage("§cGiriş iptal edildi.");
+                player.sendMessage(cancelMessage);
             }
         }
     }

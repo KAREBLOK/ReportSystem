@@ -3,12 +3,12 @@ version: ${project.version}
 main: com.reportsystem.spigot.ReportSystemSpigot
 api-version: '1.21'
 author: BaranMRJ
-website: https://seninsiten.com
+website: https://kareblok.tc
 description: Gelişmiş GUI ve Replay sistemine sahip rapor eklentisi
 
 # Bağımlılıklar
 depend: [packetevents]
-softdepend: [PlaceholderAPI, Vault]
+softdepend: [PlaceholderAPI, Vault, PolarLoader, Vulcan, GrimAC]
 
 # Kütüphaneler
 libraries:
@@ -121,3 +121,8 @@ permissions:
   reportsystem.overwatch.admin:
     description: Overwatch admin komutları (NPC yönetimi, kuyruk yönetimi)
     default: op
+
+  # Anti-cheat bypass
+  reportsystem.bypass.anticheat:
+    description: Replay izleyenlere otomatik verilir; ozel anti-cheat'lerin bu perm'i bypass kurali olarak kullanmasini saglar
+    default: false

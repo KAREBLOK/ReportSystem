@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.SoundAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -46,7 +47,8 @@ public class SoundListener implements Listener {
         // Yakındaki kayıt edilen oyuncular için ses kaydet
         for (UUID playerUuid : recordingManager.getActiveRecordings().keySet()) {
             Player player = plugin.getServer().getPlayer(playerUuid);
-            if (player != null && player.getLocation().distance(event.getLocation()) < 100) {
+            if (player != null && player.getWorld().equals(event.getLocation().getWorld())
+                    && player.getLocation().distance(event.getLocation()) < 100) {
                 RecordingSession session = recordingManager.getSession(playerUuid);
                 if (session != null) {
                     recordSound(session, Sound.ENTITY_GENERIC_EXPLODE, event.getLocation());
@@ -68,6 +70,6 @@ public class SoundListener implements Listener {
         );
         session.addAction(action);
 
-        plugin.getLogger().info("[RECORDING-DEBUG] Sound recorded: " + sound.name());
+        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sound recorded: " + sound.name());
     }
 }

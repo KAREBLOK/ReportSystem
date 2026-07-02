@@ -1,17 +1,15 @@
 package com.reportsystem.spigot.recording;
 
-import com.github.retrooper.packetevents.PacketEvents;
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
-import com.github.retrooper.packetevents.protocol.ConnectionState;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
 import com.github.retrooper.packetevents.protocol.player.DiggingAction;
 import com.github.retrooper.packetevents.protocol.player.InteractionHand;
 import com.github.retrooper.packetevents.protocol.player.User;
-import com.github.retrooper.packetevents.protocol.world.BlockFace;
 import com.github.retrooper.packetevents.util.Vector3d;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.play.client.*;
@@ -19,7 +17,6 @@ import com.github.retrooper.packetevents.wrapper.play.server.*;
 import com.reportsystem.common.replay.actions.*;
 import com.reportsystem.spigot.utils.SkinUtils;
 import com.reportsystem.spigot.utils.ItemSerializer;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -31,7 +28,6 @@ import org.bukkit.util.Vector;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public class ReplayPacketListener extends PacketListenerAbstract {
 
@@ -40,10 +36,6 @@ public class ReplayPacketListener extends PacketListenerAbstract {
     private final JavaPlugin plugin;
     private long lastPositionTime = 0;
     private Location lastLocation;
-    private final Map<UUID, Integer> nearbyPlayerEntityIds = new HashMap<>();
-    private int nextEntityId = 100000; // Yakındaki oyuncular için entity ID
-    private final Map<UUID, Location> lastNearbyPlayerLocations = new HashMap<>();
-    private long lastNearbyCheck = 0;
     private Vector lastVelocity = new Vector(0, 0, 0);
     private boolean isUsingItem = false;
     private long itemUseStartTime = 0;
@@ -65,7 +57,14 @@ public class ReplayPacketListener extends PacketListenerAbstract {
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
         User user = event.getUser();
-        if (user == null || !user.getUUID().equals(recordedPlayer.getUniqueId())) {
+        // user.getUUID() handshake/status fazinda null donebilir (server list ping)
+        if (user == null || user.getUUID() == null
+                || !user.getUUID().equals(recordedPlayer.getUniqueId())) {
+            return;
+        }
+
+        // Oyuncu geçerli değilse işlem yapma
+        if (!recordedPlayer.isOnline() || !recordedPlayer.isValid()) {
             return;
         }
 
@@ -74,7 +73,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         // Debug: Her 100 pakette bir log
         packetCount++;
         if (packetCount % 100 == 0) {
-            plugin.getLogger().info("[RECORDING-DEBUG] " + recordedPlayer.getName() + " - " + packetCount + " paket alındı, session size: " + session.getActions().size());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] " + recordedPlayer.getName() + " - " + packetCount + " paket alındı, session size: " + session.getActions().size());
         }
 
         // Oyuncu hareket paketleri
@@ -104,25 +103,25 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                 case START_SNEAKING:
                     session.addAction(new EntityStateAction(EntityStateAction.StateType.SNEAKING, true));
                     session.addAction(new PoseAction(PoseAction.PoseType.SNEAKING));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Sneaking started");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sneaking started");
                     break;
                 case STOP_SNEAKING:
                     session.addAction(new EntityStateAction(EntityStateAction.StateType.SNEAKING, false));
                     session.addAction(new PoseAction(PoseAction.PoseType.STANDING));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Sneaking stopped");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sneaking stopped");
                     break;
                 case START_SPRINTING:
                     session.addAction(new EntityStateAction(EntityStateAction.StateType.SPRINTING, true));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Sprinting started");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sprinting started");
                     break;
                 case STOP_SPRINTING:
                     session.addAction(new EntityStateAction(EntityStateAction.StateType.SPRINTING, false));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Sprinting stopped");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sprinting stopped");
                     break;
                 case START_FLYING_WITH_ELYTRA:
                     session.addAction(new EntityStateAction(EntityStateAction.StateType.GLIDING, true));
                     session.addAction(new PoseAction(PoseAction.PoseType.FALL_FLYING));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Elytra flying started");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Elytra flying started");
                     break;
             }
 
@@ -131,6 +130,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             WrapperPlayClientUseItem wrapper = new WrapperPlayClientUseItem(event);
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!recordedPlayer.isOnline()) return;
                 ItemStack item = wrapper.getHand() == InteractionHand.MAIN_HAND ?
                         recordedPlayer.getInventory().getItemInMainHand() :
                         recordedPlayer.getInventory().getItemInOffHand();
@@ -143,41 +143,41 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                         session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, 0, isMainHand, true));
                         isUsingItem = true;
                         itemUseStartTime = System.currentTimeMillis();
-                        plugin.getLogger().info("[RECORDING-DEBUG] Shield use started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield use started");
                     }
                     // Yay
                     else if (item.getType() == Material.BOW) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.BOW_CHARGE, 0, isMainHand, true));
                         isUsingItem = true;
                         itemUseStartTime = System.currentTimeMillis();
-                        plugin.getLogger().info("[RECORDING-DEBUG] Bow charge started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bow charge started");
                     }
                     // Arbalet
                     else if (item.getType() == Material.CROSSBOW) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.CROSSBOW_CHARGE, 0, isMainHand, true));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Crossbow charge started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Crossbow charge started");
                     }
                     // Trident
                     else if (item.getType() == Material.TRIDENT) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.TRIDENT_CHARGE, 0, isMainHand, true));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Trident charge started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Trident charge started");
                     }
                     // Yemek
                     else if (item.getType().isEdible()) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.FOOD_EAT, 0, isMainHand, true));
                         isUsingItem = true;
                         itemUseStartTime = System.currentTimeMillis();
-                        plugin.getLogger().info("[RECORDING-DEBUG] Food eating started: " + item.getType());
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Food eating started: " + item.getType());
                     }
                     // İksir
                     else if (item.getType().name().contains("POTION") && !item.getType().name().contains("SPLASH")) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.POTION_DRINK, 0, isMainHand, true));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Potion drinking started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Potion drinking started");
                     }
                     // Süt
                     else if (item.getType() == Material.MILK_BUCKET) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.MILK_DRINK, 0, isMainHand, true));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Milk drinking started");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Milk drinking started");
                     }
                 }
             });
@@ -187,10 +187,11 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             WrapperPlayClientHeldItemChange wrapper = new WrapperPlayClientHeldItemChange(event);
             int newSlot = wrapper.getSlot();
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Held item change to slot: " + newSlot);
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Held item change to slot: " + newSlot);
 
             // Bir tick bekle ve yeni item'ı kaydet
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (!recordedPlayer.isOnline()) return;
                 ItemStack mainHandItem = recordedPlayer.getInventory().getItemInMainHand();
                 recordEquipmentItem(mainHandItem, EquipmentAction.EquipmentSlot.MAIN_HAND);
             }, 1L);
@@ -202,6 +203,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
 
             // Kaydet
             plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!recordedPlayer.isOnline()) return;
                 org.bukkit.block.Block block = recordedPlayer.getWorld().getBlockAt(
                         blockPos.getX(), blockPos.getY(), blockPos.getZ()
                 );
@@ -215,12 +217,16 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             WrapperPlayClientPlayerDigging wrapper = new WrapperPlayClientPlayerDigging(event);
             Vector3i blockPos = wrapper.getBlockPosition();
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Digging action: " + wrapper.getAction() +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Digging action: " + wrapper.getAction() +
                     " at " + blockPos.getX() + "," + blockPos.getY() + "," + blockPos.getZ());
 
             if (wrapper.getAction() == DiggingAction.START_DIGGING) {
+                // Blok tipini kaydet (replay'de göstermek için - blok artık gerçek dünyada olmayabilir)
+                String blockTypeName = recordedPlayer.getWorld()
+                        .getBlockAt(blockPos.getX(), blockPos.getY(), blockPos.getZ())
+                        .getType().name();
                 session.addAction(new BlockAction(BlockAction.BlockActionType.START_BREAKING,
-                        blockPos.getX(), blockPos.getY(), blockPos.getZ(), 0));
+                        blockPos.getX(), blockPos.getY(), blockPos.getZ(), 0, blockTypeName));
             } else if (wrapper.getAction() == DiggingAction.FINISHED_DIGGING) {
                 // Blok kırma tamamlandı
                 session.addAction(new BlockAction(BlockAction.BlockActionType.STOP_BREAKING,
@@ -237,27 +243,32 @@ public class ReplayPacketListener extends PacketListenerAbstract {
 
                     // Son kullanılan item'a göre action oluştur
                     ItemStack item = recordedPlayer.getInventory().getItemInMainHand();
-                    if (item.getType() == Material.SHIELD) {
+                    if (item != null && item.getType() == Material.SHIELD) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, duration, true, false));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Shield use ended");
-                    } else if (item.getType() == Material.BOW) {
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield use ended");
+                    } else if (item != null && item.getType() == Material.BOW) {
                         session.addAction(new UseItemAction(UseItemAction.UseType.BOW_CHARGE, duration, true, false));
-                        plugin.getLogger().info("[RECORDING-DEBUG] Bow charge released");
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bow charge released");
                     }
                 }
             }
         }
 
         // Debug için
-        if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info("[PACKET-DEBUG] Received: " + packetType.getName());
-        }
+        ReportSystemSpigot.getInstance().debug("[PACKET-DEBUG] Received: " + packetType.getName());
     }
 
     @Override
     public void onPacketSend(PacketSendEvent event) {
         User user = event.getUser();
-        if (user == null || !user.getUUID().equals(recordedPlayer.getUniqueId())) {
+        // user.getUUID() handshake/status fazinda null donebilir
+        if (user == null || user.getUUID() == null
+                || !user.getUUID().equals(recordedPlayer.getUniqueId())) {
+            return;
+        }
+
+        // Oyuncu geçerli değilse işlem yapma
+        if (!recordedPlayer.isOnline() || !recordedPlayer.isValid()) {
             return;
         }
 
@@ -273,7 +284,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                     session.addAction(new VelocityAction(velocity.getX(), velocity.getY(), velocity.getZ()));
                     lastVelocity = newVelocity;
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Velocity recorded: " +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Velocity recorded: " +
                             String.format("%.2f, %.2f, %.2f", velocity.getX(), velocity.getY(), velocity.getZ()));
                 }
             }
@@ -287,7 +298,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             session.addAction(new BlockAction(BlockAction.BlockActionType.BREAK_PROGRESS,
                     pos.getX(), pos.getY(), pos.getZ(), wrapper.getDestroyStage()));
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Block break animation recorded: stage " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Block break animation recorded: stage " +
                     wrapper.getDestroyStage() + " at " + pos.getX() + "," + pos.getY() + "," + pos.getZ());
         }
 
@@ -296,7 +307,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             WrapperPlayServerEntityMetadata wrapper = new WrapperPlayServerEntityMetadata(event);
             if (wrapper.getEntityId() == recordedPlayer.getEntityId()) {
                 // Metadata'dan pose bilgisini çıkar
-                plugin.getLogger().info("[RECORDING-DEBUG] Player metadata update");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player metadata update");
             }
         }
 
@@ -305,8 +316,87 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             WrapperPlayServerBlockChange wrapper = new WrapperPlayServerBlockChange(event);
             Vector3i pos = wrapper.getBlockPosition();
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Block change detected at " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Block change detected at " +
                     pos.getX() + "," + pos.getY() + "," + pos.getZ());
+        }
+
+        // Ses paketlerini yakala - oyuncunun duydugu TUM sesleri kaydet
+        // (mob, ambiyans, hava durumu, blok, entity, muzik vs.)
+        else if (event.getPacketType() == PacketType.Play.Server.SOUND_EFFECT) {
+            try {
+                WrapperPlayServerSoundEffect wrapper = new WrapperPlayServerSoundEffect(event);
+
+                // Ses kaynagi bilgisini al
+                com.github.retrooper.packetevents.protocol.sound.Sound sound = wrapper.getSound();
+                if (sound == null) return;
+
+                // Ses adini al - birden fazla yontem dene
+                String soundName = null;
+
+                // Yontem 1: getName() -> ResourceLocation
+                try {
+                    Object nameObj = sound.getName();
+                    if (nameObj != null) {
+                        soundName = nameObj.toString();
+                    }
+                } catch (Exception ignored) {}
+
+                // Yontem 2: getKey() (bazi PacketEvents versiyonlarinda)
+                if (soundName == null) {
+                    try {
+                        java.lang.reflect.Method getKeyMethod = sound.getClass().getMethod("getKey");
+                        Object keyObj = getKeyMethod.invoke(sound);
+                        if (keyObj != null) {
+                            soundName = keyObj.toString();
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                // Yontem 3: toString() fallback
+                if (soundName == null) {
+                    try {
+                        String str = sound.toString();
+                        // "Sound{name=minecraft:entity.player.hurt}" gibi formattan parse et
+                        if (str.contains("name=")) {
+                            int start = str.indexOf("name=") + 5;
+                            int end = str.indexOf("}", start);
+                            if (end < 0) end = str.indexOf(",", start);
+                            if (end < 0) end = str.length();
+                            soundName = str.substring(start, end).trim();
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (soundName == null || soundName.isEmpty()) return;
+
+                // Namespace ekle
+                if (!soundName.contains(":")) {
+                    soundName = "minecraft:" + soundName;
+                }
+
+                // Konum (PacketEvents 2.x: getEffectPosition fixed-point * 8)
+                com.github.retrooper.packetevents.util.Vector3i soundPos = wrapper.getEffectPosition();
+                double soundX = soundPos.getX() / 8.0;
+                double soundY = soundPos.getY() / 8.0;
+                double soundZ = soundPos.getZ() / 8.0;
+
+                // Cok uzak sesler kaydetme (30 blok mesafe, performans icin)
+                Location playerLoc = recordedPlayer.getLocation();
+                double dx = soundX - playerLoc.getX();
+                double dy = soundY - playerLoc.getY();
+                double dz = soundZ - playerLoc.getZ();
+                if (dx * dx + dy * dy + dz * dz > 900) return; // 30^2
+
+                float volume = wrapper.getVolume();
+                float pitch = wrapper.getPitch();
+
+                session.addAction(new SoundAction(soundName, soundX, soundY, soundZ, volume, pitch));
+            } catch (Exception e) {
+                // Ses paketi parse hatasi
+                if (plugin.getConfig().getBoolean("debug", false)) {
+                    plugin.getLogger().warning("[RECORDING] Sound capture error: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -322,7 +412,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         // Her 100 hareket paketinde bir log (paketlerin yakalandığını doğrulamak için)
         packetCount++;
         if (packetCount % 100 == 0) {
-            plugin.getLogger().info("[RECORDING-DEBUG] Movement packets received: " + packetCount +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Movement packets received: " + packetCount +
                     " | Actions: " + session.getActions().size());
         }
 
@@ -365,7 +455,9 @@ public class ReplayPacketListener extends PacketListenerAbstract {
             }
         }
 
-        if (newLocation != null && (lastLocation == null || lastLocation.distance(newLocation) > 0.01 ||
+        if (newLocation != null && (lastLocation == null ||
+                !lastLocation.getWorld().equals(newLocation.getWorld()) ||
+                lastLocation.distance(newLocation) > 0.01 ||
                 Math.abs(lastLocation.getYaw() - newLocation.getYaw()) > 1 ||
                 Math.abs(lastLocation.getPitch() - newLocation.getPitch()) > 1)) {
 
@@ -380,7 +472,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
 
             // HAREKET KAYDI - Debug log
             if (session.getActions().size() % 50 == 0) { // Her 50 action'da bir log
-                plugin.getLogger().info("[RECORDING-DEBUG] Location recorded: " +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Location recorded: " +
                         String.format("%.1f, %.1f, %.1f", newLocation.getX(), newLocation.getY(), newLocation.getZ()) +
                         " | Total actions: " + session.getActions().size());
             }
@@ -401,7 +493,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                     session.addAction(fireAction);
                     wasOnFire = isOnFire;
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Fire state changed: " + isOnFire +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Fire state changed: " + isOnFire +
                             " ticks: " + recordedPlayer.getFireTicks());
                 }
             });
@@ -461,206 +553,16 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                         unbreakable
                 );
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Equipment recorded: " + slot + " - " + item.getType().name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Equipment recorded: " + slot + " - " + item.getType().name());
             } else {
-                plugin.getLogger().info("[RECORDING-DEBUG] Equipment recorded: " + slot + " - EMPTY");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Equipment recorded: " + slot + " - EMPTY");
             }
 
             session.addAction(new EquipmentAction(slot, itemData));
 
         } catch (Exception e) {
-            plugin.getLogger().warning("[RECORDING-DEBUG] Failed to record equipment: " + e.getMessage());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Failed to record equipment: " + e.getMessage());
         }
     }
 
-    /**
-     * Yakındaki oyuncuları kontrol eder ve kaydeder
-     */
-    private void checkNearbyPlayers() {
-        // 100ms'de bir kontrol et (çok sık)
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastNearbyCheck < 100) {
-            return;
-        }
-        lastNearbyCheck = currentTime;
-
-        // Minecraft varsayılan render mesafesi (chunks * 16)
-        double viewDistance = Bukkit.getViewDistance() * 16.0; // Sunucu görüş mesafesi
-
-        for (Player nearbyPlayer : recordedPlayer.getWorld().getPlayers()) {
-            if (nearbyPlayer.equals(recordedPlayer)) continue;
-
-            // Oyuncu gerçekten görünür mü kontrol et
-            if (!recordedPlayer.canSee(nearbyPlayer)) continue;
-
-            double distance = nearbyPlayer.getLocation().distance(recordedPlayer.getLocation());
-
-            if (distance <= viewDistance) {
-                Location lastLoc = lastNearbyPlayerLocations.get(nearbyPlayer.getUniqueId());
-
-                // Oyuncu görünür mesafede
-                if (!nearbyPlayerEntityIds.containsKey(nearbyPlayer.getUniqueId())) {
-                    // Yeni oyuncu görünür oldu
-                    nearbyPlayerEntityIds.put(nearbyPlayer.getUniqueId(), nextEntityId++);
-                    lastNearbyPlayerLocations.put(nearbyPlayer.getUniqueId(), nearbyPlayer.getLocation().clone());
-
-                    // Skin bilgisini al
-                    String[] skinData = SkinUtils.getSkinData(nearbyPlayer);
-                    String skinTexture = skinData[0];
-                    String skinSignature = skinData[1];
-
-                    // Equipment bilgisini al
-                    Map<EquipmentAction.EquipmentSlot, EquipmentAction.ItemData> equipment = getPlayerEquipment(nearbyPlayer);
-
-                    session.addAction(new NearbyPlayerAction(
-                            NearbyPlayerAction.ActionType.PLAYER_APPEAR,
-                            nearbyPlayer.getUniqueId(),
-                            nearbyPlayer.getName(),
-                            nearbyPlayer.getLocation().getX(),
-                            nearbyPlayer.getLocation().getY(),
-                            nearbyPlayer.getLocation().getZ(),
-                            nearbyPlayer.getLocation().getYaw(),
-                            nearbyPlayer.getLocation().getPitch(),
-                            skinTexture,
-                            skinSignature,
-                            equipment
-                    ));
-
-                    plugin.getLogger().info("[RECORDING-DEBUG] Nearby player appeared: " + nearbyPlayer.getName() +
-                            " at distance: " + String.format("%.1f", distance) +
-                            " with " + equipment.size() + " equipment items");
-
-                } else if (lastLoc == null || lastLoc.distance(nearbyPlayer.getLocation()) > 0.1) {
-                    // Oyuncu 0.1 bloktan fazla hareket etti
-                    lastNearbyPlayerLocations.put(nearbyPlayer.getUniqueId(), nearbyPlayer.getLocation().clone());
-
-                    session.addAction(new NearbyPlayerAction(
-                            NearbyPlayerAction.ActionType.PLAYER_MOVE,
-                            nearbyPlayer.getUniqueId(),
-                            nearbyPlayer.getName(),
-                            nearbyPlayer.getLocation().getX(),
-                            nearbyPlayer.getLocation().getY(),
-                            nearbyPlayer.getLocation().getZ(),
-                            nearbyPlayer.getLocation().getYaw(),
-                            nearbyPlayer.getLocation().getPitch(),
-                            "", ""
-                    ));
-                }
-            } else {
-                // Oyuncu görünür mesafe dışında
-                if (nearbyPlayerEntityIds.containsKey(nearbyPlayer.getUniqueId())) {
-                    // Oyuncu görünmez oldu
-                    nearbyPlayerEntityIds.remove(nearbyPlayer.getUniqueId());
-                    lastNearbyPlayerLocations.remove(nearbyPlayer.getUniqueId());
-
-                    session.addAction(new NearbyPlayerAction(
-                            NearbyPlayerAction.ActionType.PLAYER_DISAPPEAR,
-                            nearbyPlayer.getUniqueId(),
-                            nearbyPlayer.getName(),
-                            0, 0, 0, 0, 0, "", ""
-                    ));
-
-                    plugin.getLogger().info("[RECORDING-DEBUG] Nearby player disappeared: " + nearbyPlayer.getName());
-                }
-            }
-        }
-    }
-
-    /**
-     * Oyuncunun tüm equipment'ını alır ve ItemData map'e dönüştürür
-     */
-    private Map<EquipmentAction.EquipmentSlot, EquipmentAction.ItemData> getPlayerEquipment(Player player) {
-        Map<EquipmentAction.EquipmentSlot, EquipmentAction.ItemData> equipment = new HashMap<>();
-
-        // Ana el
-        ItemStack mainHand = player.getInventory().getItemInMainHand();
-        if (mainHand != null && !mainHand.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.MAIN_HAND, convertToItemData(mainHand));
-        }
-
-        // Yan el
-        ItemStack offHand = player.getInventory().getItemInOffHand();
-        if (offHand != null && !offHand.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.OFF_HAND, convertToItemData(offHand));
-        }
-
-        // Miğfer
-        ItemStack helmet = player.getInventory().getHelmet();
-        if (helmet != null && !helmet.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.HELMET, convertToItemData(helmet));
-        }
-
-        // Zırh
-        ItemStack chestplate = player.getInventory().getChestplate();
-        if (chestplate != null && !chestplate.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.CHESTPLATE, convertToItemData(chestplate));
-        }
-
-        // Pantolon
-        ItemStack leggings = player.getInventory().getLeggings();
-        if (leggings != null && !leggings.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.LEGGINGS, convertToItemData(leggings));
-        }
-
-        // Bot
-        ItemStack boots = player.getInventory().getBoots();
-        if (boots != null && !boots.getType().isAir()) {
-            equipment.put(EquipmentAction.EquipmentSlot.BOOTS, convertToItemData(boots));
-        }
-
-        return equipment;
-    }
-
-    /**
-     * ItemStack'i ItemData'ya dönüştürür
-     */
-    private EquipmentAction.ItemData convertToItemData(ItemStack itemStack) {
-        if (itemStack == null || itemStack.getType().isAir()) {
-            return null;
-        }
-
-        String displayName = null;
-        List<String> lore = null;
-        int customModelData = 0;
-        boolean unbreakable = false;
-
-        if (itemStack.hasItemMeta()) {
-            ItemMeta meta = itemStack.getItemMeta();
-
-            if (meta.hasDisplayName()) {
-                displayName = meta.getDisplayName();
-            }
-
-            if (meta.hasLore()) {
-                lore = meta.getLore();
-            }
-
-            if (meta.hasCustomModelData()) {
-                customModelData = meta.getCustomModelData();
-            }
-
-            unbreakable = meta.isUnbreakable();
-        }
-
-        // Enchantment'ları topla
-        Map<String, Integer> enchantments = new HashMap<>();
-        itemStack.getEnchantments().forEach((enchant, level) -> {
-            enchantments.put(enchant.getKey().getKey(), level);
-        });
-
-        // ItemStack'i serialize et
-        byte[] itemData = ItemSerializer.itemStackToBytes(itemStack);
-
-        return new EquipmentAction.ItemData(
-                itemStack.getType().name(),
-                itemStack.getAmount(),
-                itemStack.getDurability(),
-                displayName,
-                lore,
-                enchantments,
-                itemData,
-                customModelData,
-                unbreakable
-        );
-    }
 }

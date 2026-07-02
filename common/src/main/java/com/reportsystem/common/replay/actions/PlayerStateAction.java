@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Oyuncu durum değişiklikleri (sneak, sprint, glide)
  */
 public class PlayerStateAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum StateType {
         SNEAK,      // Çömelme

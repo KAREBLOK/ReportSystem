@@ -9,19 +9,24 @@ import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
-import java.util.concurrent.CompletableFuture;
+
 
 public class ReportCreateGUI extends GUI {
     private final String targetName;
     private final boolean isTargetOnline;
     private final GUIConfig guiConfig;
+    private final String targetWorldName; // Hedefin /report anındaki dünyası
 
     public ReportCreateGUI(ReportSystemSpigot plugin, Player player, String targetName) {
         super(plugin, player);
         this.targetName = targetName;
-        this.isTargetOnline = Bukkit.getPlayer(targetName) != null;
+        Player target = Bukkit.getPlayer(targetName);
+        this.isTargetOnline = target != null;
+        // Hedefin dünyasını ŞİMDİ kaydet - GUI'de sebep seçilene kadar oyuncu ölebilir/dünya değiştirebilir
+        this.targetWorldName = (target != null) ? target.getWorld().getName() : null;
         this.guiConfig = new GUIConfig(plugin, "report-create");
     }
 
@@ -57,13 +62,21 @@ public class ReportCreateGUI extends GUI {
             for (int i = 0; i < inventory.getSize(); i++) {
                 inventory.setItem(i, bgItem);
             }
+        } else {
+            // Black glass separator (row 2: slots 10-16)
+            ItemStack blackGlass = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
+            ItemMeta glassMeta = blackGlass.getItemMeta();
+            if (glassMeta != null) { glassMeta.setDisplayName(" "); blackGlass.setItemMeta(glassMeta); }
+            for (int i = 10; i <= 16; i++) {
+                inventory.setItem(i, blackGlass);
+            }
         }
 
         // Player head
         ItemStack playerHead = guiConfig.getItem("player-head",
                 "%player%", targetName,
                 "%server%", spigotPlugin.getServerName(),
-                "%online_status%", plugin.getMessageManager().getMessage(isTargetOnline ? "gui.report.online" : "gui.report.offline")
+                "%online_status%", guiConfig.getConfigString(isTargetOnline ? "status.online" : "status.offline", isTargetOnline ? "&aOnline" : "&cOffline")
         );
 
         if (playerHead != null && playerHead.getType() == Material.PLAYER_HEAD) {
@@ -130,15 +143,15 @@ public class ReportCreateGUI extends GUI {
 
         // Check config for reason slots
         if (slot == guiConfig.getItemSlot("reasons.cheating")) {
-            reason = plugin.getMessageManager().getMessage("gui.report-create.reasons.cheating");
+            reason = guiConfig.getConfigString("reasons.cheating", "Hile");
         } else if (slot == guiConfig.getItemSlot("reasons.chat-abuse")) {
-            reason = plugin.getMessageManager().getMessage("gui.report-create.reasons.chat-abuse");
+            reason = guiConfig.getConfigString("reasons.chat-abuse", "Sohbet İhlali");
         } else if (slot == guiConfig.getItemSlot("reasons.griefing")) {
-            reason = plugin.getMessageManager().getMessage("gui.report-create.reasons.griefing");
+            reason = guiConfig.getConfigString("reasons.griefing", "Griefing");
         } else if (slot == guiConfig.getItemSlot("reasons.bug-abuse")) {
-            reason = plugin.getMessageManager().getMessage("gui.report-create.reasons.bug-abuse");
+            reason = guiConfig.getConfigString("reasons.bug-abuse", "Bug İstismarı");
         } else if (slot == guiConfig.getItemSlot("reasons.teaming")) {
-            reason = plugin.getMessageManager().getMessage("gui.report-create.reasons.teaming");
+            reason = guiConfig.getConfigString("reasons.teaming", "Takım Oluşturma");
         } else if (slot == guiConfig.getItemSlot("custom-reason")) {
             player.closeInventory();
             requestCustomReason();
@@ -159,15 +172,8 @@ public class ReportCreateGUI extends GUI {
     private void requestCustomReason() {
         ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
 
-        player.sendMessage("");
-        player.sendMessage("§8§m                                                     ");
-        player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("gui.report.enter-reason")));
-        player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("gui.report.cancel-instruction")));
-        player.sendMessage("§8§m                                                     ");
-        player.sendMessage("");
-
-        // Chat input bekle
-        String enterReasonMsg = plugin.getMessageManager().getMessage("gui.report.enter-reason");
+        // Chat input bekle (ChatInputManager kendi prompt mesajını gönderiyor)
+        String enterReasonMsg = plugin.getMessageManager().getMessage("reports.chat.enter-reason");
         spigotPlugin.getChatInputManager().requestInput(player, enterReasonMsg, input -> {
             int minLength = spigotPlugin.getConfigManager().getMinReasonLength();
             int maxLength = spigotPlugin.getConfigManager().getMaxReasonLength();
@@ -198,71 +204,54 @@ public class ReportCreateGUI extends GUI {
         // Custom reasons are already validated in requestCustomReason()
         // Predefined reasons are admin-approved and don't need validation
 
-        String creatingMsg = plugin.getMessageManager().getMessage("gui.report.creating");
+        String creatingMsg = plugin.getMessageManager().getMessage("reports.chat.creating");
         player.sendMessage(plugin.getMessageManager().colorize(creatingMsg));
 
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                // Report oluştur (limit kontrolü ile)
-                int maxReportsPerPlayer = spigotPlugin.getConfigManager().getMaxReportsPerPlayer();
-                return spigotPlugin.getReportService().createReport(
-                        player.getName(),
-                        player.getUniqueId().toString(),
-                        targetName,
-                        "", // targetUuid - bilinmiyor
-                        reason,
-                        spigotPlugin.getServerName(),
-                        maxReportsPerPlayer
-                );
-            } catch (Exception e) {
-                spigotPlugin.getLogger().severe("Rapor oluşturulurken hata: " + e.getMessage());
-                return CompletableFuture.completedFuture(-1);
+        spigotPlugin.getReportService().createReport(
+                player.getName(),
+                player.getUniqueId().toString(),
+                targetName,
+                "", // targetUuid - bilinmiyor
+                reason,
+                spigotPlugin.getServerName(),
+                spigotPlugin.getConfigManager().getMaxReportsPerPlayer()
+        ).thenAccept(reportId -> {
+            if (reportId != null && reportId > 0) {
+                spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
+                    // Başarı mesajı
+                    spigotPlugin.getMessageManager().sendReportSuccess(player, targetName, reportId);
+                    playSound("select-reason");
+
+                    // Hedef oyuncu online ise kayıt başlat
+                    Player target = Bukkit.getPlayer(targetName);
+                    if (target != null && target.isOnline()) {
+                        if (!spigotPlugin.getRecordingManager().isRecording(target.getUniqueId())) {
+                            int duration = spigotPlugin.getConfigManager().getRecordingDuration();
+                            spigotPlugin.getRecordingManager().startRecording(target, reportId, duration, player.getName(), reason, targetWorldName);
+                            spigotPlugin.getMessageManager().sendRecordingStarted(player);
+                        } else {
+                            ReportCommand.updateRecordingWithReportId(target.getUniqueId(), reportId);
+                        }
+                    }
+
+                    // Otomatik olarak Overwatch kuyruğuna ekle
+                    if (spigotPlugin.getOverwatchManager() != null) {
+                        spigotPlugin.getOverwatchManager().addReportToQueue(reportId, 5);
+                    }
+                });
+            } else if (reportId != null && reportId == -2) {
+                spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
+                    int maxLimit = spigotPlugin.getConfigManager().getMaxReportsPerPlayer();
+                    spigotPlugin.getMessageManager().sendReportLimitReached(player, targetName, maxLimit);
+                    playSound("error");
+                });
+            } else {
+                spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
+                    String errorMsg = plugin.getMessageManager().getMessage("reports.chat.create-error");
+                    player.sendMessage(plugin.getMessageManager().colorize(errorMsg));
+                    playSound("error");
+                });
             }
-        }).thenAccept(futureResult -> {
-            futureResult.thenAccept(result -> {
-                Integer reportId = result;
-                if (reportId != null && reportId > 0) {
-                    spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
-                        // Başarı mesajı
-                        spigotPlugin.getMessageManager().sendReportSuccess(player, targetName, reportId);
-                        playSound("select-reason");
-
-                        // Hedef oyuncu online ise kayıt başlat
-                        Player target = Bukkit.getPlayer(targetName);
-                        if (target != null && target.isOnline()) {
-                            // Zaten kayıt yoksa başlat
-                            if (!spigotPlugin.getRecordingManager().isRecording(target.getUniqueId())) {
-                                int duration = spigotPlugin.getConfigManager().getRecordingDuration();
-                                spigotPlugin.getRecordingManager().startRecording(target, reportId, duration, player.getName(), reason);
-                                spigotPlugin.getMessageManager().sendRecordingStarted(player);
-                            } else {
-                                // Zaten kayıt varsa sadece ID'yi güncelle
-                                ReportCommand.updateRecordingWithReportId(target.getUniqueId(), reportId);
-                            }
-                        }
-
-                        // Otomatik olarak Overwatch kuyruğuna ekle (sadece PENDING raporlar için)
-                        if (spigotPlugin.getOverwatchManager() != null) {
-                            spigotPlugin.getOverwatchManager().addReportToQueue(reportId, 5); // Öncelik 5 (normal)
-                        }
-
-                        // NOT: Staff bildirimi ve webhook bildirimi kayıt bitince gönderilecek (RecordingManager'da)
-                    });
-                } else if (reportId != null && reportId == -2) {
-                    // Limit aşıldı
-                    spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
-                        int maxLimit = spigotPlugin.getConfigManager().getMaxReportsPerPlayer();
-                        spigotPlugin.getMessageManager().sendReportLimitReached(player, targetName, maxLimit);
-                        playSound("error");
-                    });
-                } else {
-                    spigotPlugin.getServer().getScheduler().runTask(spigotPlugin, () -> {
-                        String errorMsg = plugin.getMessageManager().getMessage("gui.report.create-error");
-                        player.sendMessage(plugin.getMessageManager().colorize(errorMsg));
-                        playSound("error");
-                    });
-                }
-            });
         });
     }
 

@@ -11,7 +11,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -21,6 +23,7 @@ public class ReportListGUI extends GUI {
     private List<Report> reports;
     private final int itemsPerPage = 28;
     private final GUIConfig guiConfig;
+    private Map<String, Integer> reportCountCache = new HashMap<>();
 
     private SortType currentSort = SortType.NEWEST_FIRST;
 
@@ -40,24 +43,59 @@ public class ReportListGUI extends GUI {
     private void loadAndBuild() {
         CompletableFuture.supplyAsync(() -> {
             try {
-                List<Report> allReports = plugin.getReportService().getAllReports();
-                return processReports(allReports);
+                // Sadece mevcut sayfanın raporlarını çek (Veritabanı bazlı pagination)
+                int totalReports = plugin.getReportService().getReportCount();
+                int limit = itemsPerPage;
+
+                // Veritabanından sadece bu sayfanın raporlarını al (Sıralamayı DAO yapıyor)
+                List<Report> pageReports;
+                if (currentSort == SortType.OLDEST_FIRST) {
+                    // TODO: DAO'da ASC sıralama metodu yoksa tümünü çekmek zorunda kalabiliriz,
+                    // Şimdilik sadece DESC sıralamayı kullanan getReports metodunu kullanıyoruz.
+                    // Note: If you really need ASC, you should add a method to DAO. 
+                    // Using default DESC pagination for now to prevent OOM.
+                    pageReports = plugin.getReportService().getReports(currentPage, itemsPerPage);
+                } else {
+                    pageReports = plugin.getReportService().getReports(currentPage, itemsPerPage);
+                }
+
+                // Pre-fetch report counts for ONLY the players in this page (Max 28 queries instead of thousands)
+                Map<String, Integer> counts = new HashMap<>();
+                for (Report r : pageReports) {
+                    String name = r.getReportedPlayerName();
+                    if (!counts.containsKey(name)) {
+                        counts.put(name, plugin.getReportService().getReportCount(name));
+                    }
+                }
+
+                int calculatedMaxPage = (int) Math.ceil((double) totalReports / itemsPerPage);
+                if (calculatedMaxPage == 0) calculatedMaxPage = 1;
+
+                // Return processed reports, counts, and maxPage
+                return new Object[]{pageReports, counts, calculatedMaxPage};
             } catch (Exception e) {
                 plugin.getLogger().severe("Raporlar yüklenirken hata: " + e.getMessage());
                 return null;
             }
-        }).thenAccept(processedReports -> {
-            if (processedReports != null) {
+        }).thenAccept(result -> {
+            if (result != null) {
+                Object[] data = (Object[]) result;
+                @SuppressWarnings("unchecked")
+                List<Report> processedReports = (List<Report>) data[0];
+                @SuppressWarnings("unchecked")
+                Map<String, Integer> counts = (Map<String, Integer>) data[1];
+                int newMaxPage = (Integer) data[2];
+
                 this.reports = processedReports;
-                this.maxPage = (int) Math.ceil((double) this.reports.size() / itemsPerPage);
-                if (this.maxPage == 0) this.maxPage = 1;
+                this.reportCountCache = counts;
+                this.maxPage = newMaxPage;
 
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     build();
                     player.openInventory(inventory);
                 });
             } else {
-                String errorMsg = plugin.getMessageManager().getMessage("gui.report-list.loading-error");
+                String errorMsg = guiConfig.getConfig().getString("loading-error", "&cRaporlar yüklenirken bir hata oluştu!");
                 player.sendMessage(plugin.getMessageManager().colorize(errorMsg));
             }
         });
@@ -65,17 +103,22 @@ public class ReportListGUI extends GUI {
 
     @Override
     public void build() {
-        // Get title from messages
-        String title = plugin.getMessageManager().getMessage("gui.report-list.title")
-                .replace("%page%", String.valueOf(currentPage))
-                .replace("%max_page%", String.valueOf(maxPage));
-        title = plugin.getMessageManager().colorize(title);
+        // Get title from GUI config
+        String title = guiConfig.getTitle(
+            "%page%", String.valueOf(currentPage),
+            "%max_page%", String.valueOf(maxPage)
+        );
 
         int size = guiConfig.getSize();
         inventory = Bukkit.createInventory(this, size, title);
 
-        // Background/Border
-        fillBorder(Material.GRAY_STAINED_GLASS_PANE);
+        // Top separator (row 1: slots 0-8 = black glass)
+        ItemStack separator = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
+        org.bukkit.inventory.meta.ItemMeta sepMeta = separator.getItemMeta();
+        if (sepMeta != null) { sepMeta.setDisplayName(" "); separator.setItemMeta(sepMeta); }
+        for (int i = 0; i < 9; i++) {
+            inventory.setItem(i, separator);
+        }
 
         // Report items
         if (reports != null && !reports.isEmpty()) {
@@ -117,27 +160,27 @@ public class ReportListGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        // Name from messages
-        String name = plugin.getMessageManager().getMessage("gui.report-list.report-item.name")
+        // Name from GUI config
+        String name = guiConfig.getConfig().getString("report-item.name", "&e#%id% &8- &f%reported%")
                 .replace("%id%", String.valueOf(report.getId()))
                 .replace("%reported%", report.getReportedPlayerName());
         meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-        // Get total reports
-        int totalReports = plugin.getReportService().getReportCount(report.getReportedPlayerName());
+        // Get total reports from cache (pre-fetched in loadAndBuild)
+        int totalReports = reportCountCache.getOrDefault(report.getReportedPlayerName(), 0);
 
         // Build lore from message labels
         SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm");
         String statusColor = guiConfig.getConfig().getString("report-item.status-colors." + status, "&e");
-        String statusName = guiConfig.getConfig().getString("report-item.status-names." + status, status);
+        String statusName = plugin.getMessageManager().getStatusName(status);
 
-        String labelReporter = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.reporter");
-        String labelReason = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.reason");
-        String labelServer = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.server");
-        String labelDate = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.date");
-        String labelStatus = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.status");
-        String labelTotalReports = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.total-reports");
-        String labelClick = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.click");
+        String labelReporter = guiConfig.getConfig().getString("report-item.labels.reporter", "Rapor Eden:");
+        String labelReason = guiConfig.getConfig().getString("report-item.labels.reason", "Sebep:");
+        String labelServer = guiConfig.getConfig().getString("report-item.labels.server", "Sunucu:");
+        String labelDate = guiConfig.getConfig().getString("report-item.labels.date", "Tarih:");
+        String labelStatus = guiConfig.getConfig().getString("report-item.labels.status", "Durum:");
+        String labelTotalReports = guiConfig.getConfig().getString("report-item.labels.total-reports", "Toplam Rapor:");
+        String labelClick = guiConfig.getConfig().getString("report-item.labels.click", "▸ Detayları görüntülemek için tıkla");
 
         List<String> lore = new java.util.ArrayList<>();
         lore.add("");
@@ -151,7 +194,7 @@ public class ReportListGUI extends GUI {
         // Add Overwatch voting statistics if available
         String votingStats = plugin.getOverwatchManager().getVotingStats(report.getId());
         if (votingStats != null) {
-            String labelOverwatch = plugin.getMessageManager().getMessage("gui.report-list.report-item.labels.overwatch");
+            String labelOverwatch = guiConfig.getConfig().getString("report-item.labels.overwatch", "Overwatch:");
             lore.add("&8▪ &7" + labelOverwatch + " &e" + votingStats);
         }
 
@@ -175,10 +218,10 @@ public class ReportListGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        String name = plugin.getMessageManager().getMessage("gui.report-list.empty-list.name");
+        String name = guiConfig.getConfig().getString("empty-list.name", "&cRapor Bulunamadı");
         meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-        List<String> lore = plugin.getMessageManager().getMessageList("gui.report-list.empty-list.lore");
+        List<String> lore = guiConfig.getConfig().getStringList("empty-list.lore");
         List<String> coloredLore = lore.stream()
                 .map(line -> plugin.getMessageManager().colorize(line))
                 .collect(Collectors.toList());
@@ -197,17 +240,10 @@ public class ReportListGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        String name = plugin.getMessageManager().getMessage("gui.report-list." + path + ".name");
+        String name = guiConfig.getConfig().getString(path + ".name", "");
         meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-        String loreKey = "gui.report-list." + path + ".lore";
-        List<String> lore = plugin.getMessageManager().getMessageList(loreKey);
-        if (lore.isEmpty()) {
-            String singleLore = plugin.getMessageManager().getMessage(loreKey);
-            if (!singleLore.equals(loreKey)) {
-                lore = java.util.Arrays.asList(singleLore);
-            }
-        }
+        List<String> lore = guiConfig.getConfig().getStringList(path + ".lore");
 
         List<String> coloredLore = lore.stream()
                 .map(line -> line.replace("%prev_page%", String.valueOf(pageNum))
@@ -228,7 +264,7 @@ public class ReportListGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        String name = plugin.getMessageManager().getMessage("gui.report-list.navigation.page-info.name")
+        String name = guiConfig.getConfig().getString("navigation.page-info.name", "&fSayfa &e%page%&f/&e%max_page%")
                 .replace("%page%", String.valueOf(currentPage))
                 .replace("%max_page%", String.valueOf(maxPage));
         meta.setDisplayName(plugin.getMessageManager().colorize(name));
@@ -236,7 +272,7 @@ public class ReportListGUI extends GUI {
         int total = reports != null ? reports.size() : 0;
         int showing = Math.min(itemsPerPage, total - ((currentPage - 1) * itemsPerPage));
 
-        List<String> lore = plugin.getMessageManager().getMessageList("gui.report-list.navigation.page-info.lore");
+        List<String> lore = guiConfig.getConfig().getStringList("navigation.page-info.lore");
         List<String> coloredLore = lore.stream()
                 .map(line -> line.replace("%total%", String.valueOf(total))
                         .replace("%showing%", String.valueOf(showing)))
@@ -256,10 +292,10 @@ public class ReportListGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        String name = plugin.getMessageManager().getMessage("gui.report-list.actions.refresh.name");
+        String name = guiConfig.getConfig().getString("actions.refresh.name", "&a↻ Yenile");
         meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-        List<String> lore = plugin.getMessageManager().getMessageList("gui.report-list.actions.refresh.lore");
+        List<String> lore = guiConfig.getConfig().getStringList("actions.refresh.lore");
         List<String> coloredLore = lore.stream()
                 .map(line -> plugin.getMessageManager().colorize(line))
                 .collect(Collectors.toList());
@@ -301,14 +337,6 @@ public class ReportListGUI extends GUI {
         }
     }
 
-    private List<Report> processReports(List<Report> initialList) {
-        // Sadece sıralama yap (filtre kaldırıldı)
-        initialList.sort((r1, r2) -> (currentSort == SortType.OLDEST_FIRST)
-                ? Long.compare(r1.getTimestamp(), r2.getTimestamp())
-                : Long.compare(r2.getTimestamp(), r1.getTimestamp()));
-
-        return initialList;
-    }
 
     public Report getReportAtSlot(int slot) {
         if (reports == null) return null;

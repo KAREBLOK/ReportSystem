@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.HealthAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -66,14 +67,17 @@ public class HealthListener implements Listener {
     }
 
     private void recordHealthState(Player player, RecordingSession session) {
+        if (!player.isOnline()) return;
         HealthAction action = new HealthAction(
                 player.getHealth(),
                 player.getMaxHealth(),
                 player.getFoodLevel(),
-                player.getSaturation()
+                player.getSaturation(),
+                player.getAbsorptionAmount()
         );
         session.addAction(action);
 
-        plugin.getLogger().info("[RECORDING-DEBUG] Health state: " + player.getHealth() + "/" + player.getMaxHealth());
+        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Health state: " + player.getHealth() + "/" + player.getMaxHealth() +
+                " absorption: " + player.getAbsorptionAmount());
     }
 }

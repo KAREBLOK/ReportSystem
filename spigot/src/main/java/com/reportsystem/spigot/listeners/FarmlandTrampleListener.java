@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.FarmingAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -44,7 +45,7 @@ public class FarmlandTrampleListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Farmland trampled at: " + block.getLocation());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Farmland trampled at: " + block.getLocation());
         }
     }
 }

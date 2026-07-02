@@ -13,6 +13,12 @@ public class SQLiteDatabaseManager {
     public SQLiteDatabaseManager(String dbPath) throws SQLException {
         this.dbPath = dbPath;
         this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+
+        // WAL mode etkinleştir (concurrent read desteği)
+        try (Statement walStmt = connection.createStatement()) {
+            walStmt.execute("PRAGMA journal_mode=WAL");
+        }
+
         createTables();
     }
 
@@ -53,14 +59,14 @@ public class SQLiteDatabaseManager {
         }
     }
 
-    public Connection getConnection() throws SQLException {
+    public synchronized Connection getConnection() throws SQLException {
         if (connection == null || connection.isClosed()) {
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
         }
         return connection;
     }
 
-    public void close() throws SQLException {
+    public synchronized void close() throws SQLException {
         if (connection != null && !connection.isClosed()) {
             connection.close();
         }

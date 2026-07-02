@@ -40,9 +40,11 @@ public class PunishmentSelectionGUI implements InventoryHolder {
         plugin.getLogger().info("[PunishmentSelectionGUI] Setting up inventory for " + report.getReportedPlayerName());
 
         // Background
-        ItemStack bgItem = guiConfig.getBackgroundItem();
-        for (int i = 0; i < inventory.getSize(); i++) {
-            inventory.setItem(i, bgItem);
+        if (guiConfig.isBackgroundEnabled()) {
+            ItemStack bgItem = guiConfig.getBackgroundItem();
+            for (int i = 0; i < inventory.getSize(); i++) {
+                inventory.setItem(i, bgItem);
+            }
         }
 
         // Player info
@@ -117,7 +119,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
             acceptWithoutPunishment();
         } else if (slot == guiConfig.getItemSlot("back")) {
             viewer.closeInventory();
-            viewer.sendMessage(plugin.getMessageManager().colorize("&cRapor kabul işlemi iptal edildi."));
+            plugin.getMessageManager().sendMessage(viewer, "reports.actions.accept-cancelled");
             // Go back to report detail
             new ReportDetailGUI(viewer, report, plugin.getReplayDAO()).open();
         }
@@ -134,31 +136,31 @@ public class PunishmentSelectionGUI implements InventoryHolder {
             case "kick":
                 Player target = org.bukkit.Bukkit.getPlayer(targetPlayer);
                 if (target != null && target.isOnline()) {
-                    String kickMessage = org.bukkit.ChatColor.RED + "" + org.bukkit.ChatColor.BOLD + "SUNUCUDAN ATILDINIZ!\n\n" +
-                        org.bukkit.ChatColor.GRAY + "Sebep: " + org.bukkit.ChatColor.WHITE + reason + "\n" +
-                        org.bukkit.ChatColor.GRAY + "Yetkili: " + org.bukkit.ChatColor.WHITE + punisher;
+                    String kickMessage = plugin.getMessageManager().colorize(
+                        plugin.getMessageManager().getMessage("punishments.kick.player-message")
+                                .replace("%reason%", reason)
+                                .replace("%staff%", punisher));
                     target.kickPlayer(kickMessage);
                     success = true;
                 } else {
-                    viewer.sendMessage(org.bukkit.ChatColor.RED + targetPlayer + " çevrimiçi değil!");
+                    plugin.getMessageManager().sendMessage(viewer, "punishments.kick.offline", "%player%", targetPlayer);
                     return;
                 }
                 break;
             case "warn":
                 Player targetWarn = org.bukkit.Bukkit.getPlayer(targetPlayer);
                 if (targetWarn != null && targetWarn.isOnline()) {
-                    targetWarn.sendMessage("");
-                    targetWarn.sendMessage(org.bukkit.ChatColor.GOLD + "" + org.bukkit.ChatColor.BOLD + "⚠ UYARI ⚠");
-                    targetWarn.sendMessage(org.bukkit.ChatColor.YELLOW + "Yetkili tarafından uyarıldınız!");
-                    targetWarn.sendMessage("");
-                    targetWarn.sendMessage(org.bukkit.ChatColor.GRAY + "Sebep: " + org.bukkit.ChatColor.WHITE + reason);
-                    targetWarn.sendMessage(org.bukkit.ChatColor.GRAY + "Yetkili: " + org.bukkit.ChatColor.WHITE + punisher);
-                    targetWarn.sendMessage(org.bukkit.ChatColor.YELLOW + "Kuralları ihlal etmeye devam ederseniz ceza alabilirsiniz!");
-                    targetWarn.sendMessage("");
+                    String warnMsg = plugin.getMessageManager().getMessage("punishments.warn.player-message")
+                            .replace("%reason%", reason)
+                            .replace("%staff%", punisher)
+                            .replace("%count%", "");
+                    for (String line : warnMsg.split("\n")) {
+                        targetWarn.sendMessage(plugin.getMessageManager().colorize(line));
+                    }
                     targetWarn.playSound(targetWarn.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.5f);
                     success = plugin.getPunishmentManager().getProvider().warn(targetPlayer, reason, punisher);
                 } else {
-                    viewer.sendMessage(org.bukkit.ChatColor.RED + targetPlayer + " çevrimiçi değil!");
+                    plugin.getMessageManager().sendMessage(viewer, "punishments.warn.offline", "%player%", targetPlayer);
                     return;
                 }
                 break;
@@ -174,7 +176,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
 
             try {
                 plugin.getReportService().updateReport(report);
-                viewer.sendMessage(org.bukkit.ChatColor.GREEN + "✓ Ceza uygulandı ve rapor kabul edildi!");
+                plugin.getMessageManager().sendMessage(viewer, "punishments.applied-with-report");
 
                 // Send Discord webhook notification
                 if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
@@ -184,10 +186,10 @@ public class PunishmentSelectionGUI implements InventoryHolder {
                 }
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to update report status after punishment: " + e.getMessage());
-                viewer.sendMessage(org.bukkit.ChatColor.RED + "Ceza uygulandı ama rapor güncellenemedi!");
+                plugin.getMessageManager().sendMessage(viewer, "punishments.applied-report-failed");
             }
         } else {
-            viewer.sendMessage(org.bukkit.ChatColor.RED + "Ceza uygulanamadı!");
+            plugin.getMessageManager().sendMessage(viewer, "punishments.failed");
         }
     }
 
@@ -200,7 +202,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
 
         try {
             plugin.getReportService().updateReport(report);
-            viewer.sendMessage(plugin.getMessageManager().colorize("&aRapor #" + report.getId() + " ceza verilmeden kabul edildi."));
+            plugin.getMessageManager().sendMessage(viewer, "reports.actions.accepted-no-punishment", "%id%", String.valueOf(report.getId()));
 
             // Send Discord webhook notification (no punishment)
             if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
@@ -209,7 +211,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to update report status: " + e.getMessage());
-            viewer.sendMessage(plugin.getMessageManager().colorize("&cRapor güncellenemedi!"));
+            plugin.getMessageManager().sendMessage(viewer, "reports.actions.update-failed");
         }
     }
 

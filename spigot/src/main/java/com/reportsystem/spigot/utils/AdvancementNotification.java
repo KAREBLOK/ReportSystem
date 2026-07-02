@@ -90,7 +90,7 @@ public class AdvancementNotification {
             display.addProperty("description", description);
 
             JsonObject iconObj = new JsonObject();
-            iconObj.addProperty("item", "minecraft:" + icon.name().toLowerCase());
+            iconObj.addProperty("id", "minecraft:" + icon.name().toLowerCase());
             display.add("icon", iconObj);
 
             display.addProperty("frame", frameType.name().toLowerCase());

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.WeatherAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -35,12 +36,9 @@ public class WeatherListener implements Listener {
                 if (session != null) {
                     WeatherAction.WeatherType weatherType;
 
-                    if (event.getWorld().hasStorm()) {
-                        if (event.getWorld().isThundering()) {
-                            weatherType = WeatherAction.WeatherType.THUNDER;
-                        } else {
-                            weatherType = WeatherAction.WeatherType.RAIN;
-                        }
+                    // event.toWeatherState() returns true if it WILL be raining after this event
+                    if (event.toWeatherState()) {
+                        weatherType = WeatherAction.WeatherType.RAIN;
                     } else {
                         weatherType = WeatherAction.WeatherType.CLEAR;
                     }
@@ -48,7 +46,7 @@ public class WeatherListener implements Listener {
                     WeatherAction action = new WeatherAction(weatherType, false);
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Weather changed to: " + weatherType);
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Weather changed to: " + weatherType);
                 }
             }
         }

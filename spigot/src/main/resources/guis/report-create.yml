@@ -1,50 +1,58 @@
-# Report Create GUI Configuration
-# Used when players type /report <player>
+# Rapor Oluşturma GUI
+title: "&8&n%player%"
+size: 45
 
-# GUI Settings
-title: "&8Rapor Et > &c%player%"
-size: 45  # Must be: 9, 18, 27, 36, 45, or 54
-
-# Background
+# Arka plan
 background:
-  enabled: true
+  enabled: false
   material: BLACK_STAINED_GLASS_PANE
   name: " "
-  slots: all  # 'all' or specific slots: [0,1,2,3...]
+  slots: all
 
-# Items
+# Rapor sebep isimleri
+reasons:
+  cheating: "Hile"
+  chat-abuse: "Sohbet İhlali"
+  griefing: "Griefing"
+  bug-abuse: "Bug İstismarı"
+  teaming: "Takım Oluşturma"
+
+# Durum
+status:
+  online: '&aÇevrimiçi'
+  offline: '&cÇevrimdışı'
+
+# Öğeler
 items:
-  # Target player head
+  # Oyuncu başlığı
   player-head:
-    slot: 13
+    slot: 4
     material: PLAYER_HEAD
-    name: "&c&l%player%"
+    name: "&b%player%"
     lore:
-      - ""
-      - "&7Rapor etmek için aşağıdan"
-      - "&7bir sebep seçin."
-      - ""
-      - "&8▪ &7Hedef: &f%player%"
-      - "&8▪ &7Sunucu: &f%server%"
-      - "&8▪ &7Çevrimiçi: %online_status%"
+      - ''
+      - ' &8▪ &7Sunucu: &a%server%'
+      - ' &8▪ &7Durum: %online_status%'
+      - ''
+      - '&7Bir sebep seçerek rapor oluştur.'
 
-  # Report reasons
+  # Rapor sebepleri
   reasons:
     cheating:
       slot: 20
       material: IRON_SWORD
-      name: "&c⚔ Hile"
+      name: "&c&l⚔ Hile"
       lore:
-        - ""
-        - "&7Oyuncu yasadışı modifikasyon"
-        - "&7veya hile kullanıyor."
-        - ""
-        - "&8Örnekler:"
-        - "&8▪ &7Kill Aura"
-        - "&8▪ &7Fly Hacks"
-        - "&8▪ &7X-Ray"
-        - ""
-        - "&e► Rapor etmek için tıkla"
+        - ''
+        - '&7Oyuncu yasadışı modifikasyon'
+        - '&7veya hile kullanıyor.'
+        - ''
+        - '&8Örnekler:'
+        - ' &8▪ &7Kill Aura'
+        - ' &8▪ &7Fly Hacks'
+        - ' &8▪ &7X-Ray'
+        - ''
+        - '&e► Raporlamak için tıkla'
       enchanted: true
       enchantments:
         - "DURABILITY:1"
@@ -54,106 +62,105 @@ items:
     chat-abuse:
       slot: 21
       material: BOOK
-      name: "&6📖 Sohbet İhlali"
+      name: "&6&l📖 Sohbet İhlali"
       lore:
-        - ""
-        - "&7Sohbette uygunsuz"
-        - "&7davranış."
-        - ""
-        - "&8Örnekler:"
-        - "&8▪ &7Hakaret/Küfür"
-        - "&8▪ &7Spam"
-        - "&8▪ &7Reklam"
-        - ""
-        - "&e► Rapor etmek için tıkla"
+        - ''
+        - '&7Sohbette uygunsuz'
+        - '&7davranış.'
+        - ''
+        - '&8Örnekler:'
+        - ' &8▪ &7Hakaret/Küfür'
+        - ' &8▪ &7Spam'
+        - ' &8▪ &7Reklam'
+        - ''
+        - '&e► Raporlamak için tıkla'
 
     griefing:
       slot: 22
       material: TNT
-      name: "&c💣 Griefing"
+      name: "&c&l💣 Griefing"
       lore:
-        - ""
-        - "&7Başka oyuncuların yapılarını"
-        - "&7yok etmek veya çalmak."
-        - ""
-        - "&8Örnekler:"
-        - "&8▪ &7Yapı kırma"
-        - "&8▪ &7Eşya çalma"
-        - "&8▪ &7Arazi ihlali"
-        - ""
-        - "&e► Rapor etmek için tıkla"
+        - ''
+        - '&7Başka oyuncuların yapılarını'
+        - '&7yok etmek veya çalmak.'
+        - ''
+        - '&8Örnekler:'
+        - ' &8▪ &7Yapı kırma'
+        - ' &8▪ &7Eşya çalma'
+        - ' &8▪ &7Arazi ihlali'
+        - ''
+        - '&e► Raporlamak için tıkla'
 
     bug-abuse:
       slot: 23
       material: REDSTONE
-      name: "&e🔧 Bug İstismarı"
+      name: "&e&l🔧 Bug İstismarı"
       lore:
-        - ""
-        - "&7Oyun hatalarını kötüye"
-        - "&7kullanmak."
-        - ""
-        - "&8Örnekler:"
-        - "&8▪ &7Dupe glitch"
-        - "&8▪ &7Ekonomi istismarı"
-        - "&8▪ &7İzin bypass"
-        - ""
-        - "&e► Rapor etmek için tıkla"
+        - ''
+        - '&7Oyun hatalarını kötüye'
+        - '&7kullanmak.'
+        - ''
+        - '&8Örnekler:'
+        - ' &8▪ &7Dupe glitch'
+        - ' &8▪ &7Ekonomi istismarı'
+        - ' &8▪ &7İzin bypass'
+        - ''
+        - '&e► Raporlamak için tıkla'
 
     teaming:
       slot: 24
       material: GOLDEN_APPLE
-      name: "&d👥 Takım Oluşturma"
+      name: "&d&l👥 Takım Oluşturma"
       lore:
-        - ""
-        - "&7Solo oyun modlarında"
-        - "&7takım oluşturma."
-        - ""
-        - "&7Sadece takım oluşturmanın"
-        - "&7yasak olduğu modlarda kullanın."
-        - ""
-        - "&e► Rapor etmek için tıkla"
+        - ''
+        - '&7Solo oyun modlarında'
+        - '&7takım oluşturma.'
+        - ''
+        - '&7Sadece takım oluşturmanın'
+        - '&7yasak olduğu modlarda kullanın.'
+        - ''
+        - '&e► Raporlamak için tıkla'
 
-  # Custom reason
+  # Özel sebep
   custom-reason:
     slot: 31
     material: WRITABLE_BOOK
-    name: "&b✏ Özel Sebep"
+    name: "&b&l✏ Özel Sebep"
     lore:
-      - ""
-      - "&7Doğru kategoriyi bulamadınız mı?"
-      - "&7Kendi sebebinizi yazın."
-      - ""
-      - "&8▪ &7Min uzunluk: &f%min_length%"
-      - "&8▪ &7Max uzunluk: &f%max_length%"
-      - ""
-      - "&e► Sebep yazmak için tıkla"
+      - ''
+      - '&7Doğru kategoriyi bulamadınız mı?'
+      - '&7Kendi sebebinizi yazın.'
+      - ''
+      - ' &8▪ &7Min uzunluk: &a%min_length%'
+      - ' &8▪ &7Max uzunluk: &a%max_length%'
+      - ''
+      - '&e► Sebep yazmak için tıkla'
     glow: true
 
-  # Close button
+  # Kapat
   close:
     slot: 40
-    material: BARRIER
-    name: "&c✖ Kapat"
-    lore:
-      - "&7Bu menüyü kapat"
+    material: ARROW
+    name: "&8←"
+    lore: []
 
-  # Info item
+  # Bilgi
   info:
     slot: 8
     material: NETHER_STAR
     name: "&b❓ Nasıl Rapor Edilir"
     lore:
-      - ""
-      - "&7Kural ihlalini en iyi"
-      - "&7açıklayan kategoriyi seçin."
-      - ""
-      - "&c&lUyarı:"
-      - "&7Yanlış raporlar cezaya"
-      - "&7yol açabilir!"
-      - ""
-      - "&8Bekleme süresi: &f%cooldown%s"
+      - ''
+      - '&7Kural ihlalini en iyi'
+      - '&7açıklayan kategoriyi seçin.'
+      - ''
+      - '&c&lUyarı:'
+      - '&7Yanlış raporlar cezaya'
+      - '&7yol açabilir!'
+      - ''
+      - ' &8▪ &7Bekleme: &a%cooldown%s'
 
-# Sounds
+# Sesler
 sounds:
   open: UI_BUTTON_CLICK
   select-reason: ENTITY_EXPERIENCE_ORB_PICKUP

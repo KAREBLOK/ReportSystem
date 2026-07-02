@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.EntitySpawnAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -43,7 +44,7 @@ public class EntitySpawnListener implements Listener {
             long currentTime = System.currentTimeMillis();
             Long lastUse = lastSpawnEggUse.get(playerUUID);
             if (lastUse != null && (currentTime - lastUse) < SPAWN_EGG_COOLDOWN) {
-                plugin.getLogger().info("[RECORDING-DEBUG] Spawn egg debounced for " + player.getName());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Spawn egg debounced for " + player.getName());
                 return;
             }
 
@@ -84,7 +85,7 @@ public class EntitySpawnListener implements Listener {
                                     // Entity'yi tracking için session'a ekle
                                     session.trackSpawnedEntity(entity);
 
-                                    plugin.getLogger().info("[RECORDING-DEBUG] Spawn egg used: " + entityType +
+                                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Spawn egg used: " + entityType +
                                             " at " + entity.getLocation() + ", UUID: " + entity.getUniqueId() +
                                             ", Properties: " + properties);
                                     break;

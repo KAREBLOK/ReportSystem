@@ -1,0 +1,71 @@
+# Replay Hotbar Items
+# Replay izlerken oyuncunun hotbar'ına verilen kontrol öğeleri
+
+items:
+  play:
+    material: LIME_DYE
+    name: "&a▶ OYNAT"
+    lore:
+      - '&7Replay''i devam ettir'
+      - ''
+      - '&e► Tıkla'
+
+  pause:
+    material: GRAY_DYE
+    name: "&7⏸ DURAKLAT"
+    lore:
+      - '&7Replay''i duraklat'
+      - ''
+      - '&e► Tıkla'
+
+  settings:
+    material: COMPARATOR
+    name: "&eReplay Ayarları"
+    lore:
+      - ''
+      - ' &8▪ &7Oyuncu: &a%player%'
+      - ' &8▪ &7Süre: &a%elapsed% / %total%'
+      - ' &8▪ &7İlerleme: &a%progress%'
+      - ' &8▪ &7Hız: &a%speed%x'
+      - ''
+      - '&e► Ayarlar için tıkla'
+
+  rewind:
+    material: PLAYER_HEAD
+    skull-owner: "MHF_ArrowLeft"
+    name: "&c◀ 5s Geri"
+    lore:
+      - '&75 saniye geri sar'
+
+  teleport:
+    material: ENDER_PEARL
+    name: "&d🌀 Işınlanma"
+    lore:
+      - '&7Oyunculara ışınlan'
+      - ''
+      - '&e► Tıkla'
+
+  forward:
+    material: PLAYER_HEAD
+    skull-owner: "MHF_ArrowRight"
+    name: "&a5s İleri ▶"
+    lore:
+      - '&75 saniye ileri sar'
+
+  speed:
+    material: RABBIT_FOOT
+    name: "&b⚡ Hız: &f%speed%x"
+    lore:
+      - ''
+      - '&e► Sol tık &7hızlandır'
+      - '&e► Sağ tık &7yavaşlat'
+      - ''
+      - '&8Hızlar: 0.25x, 0.5x, 1.0x, 2.0x, 4.0x'
+
+  stop:
+    material: BARRIER
+    name: "&c■ DURDUR"
+    lore:
+      - '&7Replay''i durdur ve çık'
+      - ''
+      - '&e► Tıkla'

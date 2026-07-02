@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.SoundAction;
 import com.reportsystem.common.replay.actions.UseItemAction;
 import com.reportsystem.common.replay.actions.ProjectileAction;
@@ -55,7 +56,7 @@ public class UseItemListener implements Listener {
                 useType = UseItemAction.UseType.POTION_DRINK;
                 // İçme bitişi - serialize ile potion effect bilgilerini kaydet
                 session.addAction(new UseItemAction(useType, 32, true, false, itemData)); // 32 tick = yaklaşık içme süresi
-                plugin.getLogger().info("[RECORDING-DEBUG] Potion consumed: " + item.getType().name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Potion consumed: " + item.getType().name());
             } else if (item.getType() == Material.MILK_BUCKET) {
                 useType = UseItemAction.UseType.MILK_DRINK;
                 session.addAction(new UseItemAction(useType, 32, true, false, itemData));
@@ -63,7 +64,7 @@ public class UseItemListener implements Listener {
                 useType = UseItemAction.UseType.FOOD_EAT;
                 // Yemek tipini kaydet
                 session.addAction(new UseItemAction(useType, 32, true, false, itemData));
-                plugin.getLogger().info("[RECORDING-DEBUG] Food consumed: " + item.getType().name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Food consumed: " + item.getType().name());
             }
         }
     }
@@ -86,39 +87,39 @@ public class UseItemListener implements Listener {
                 if (!shieldBlockStartTime.containsKey(player.getUniqueId())) {
                     shieldBlockStartTime.put(player.getUniqueId(), System.currentTimeMillis());
                     session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, 0, isMainHand, true));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Shield block started");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield block started");
                 }
             }
             // Yay kullanımı başlangıcı
             else if (itemType == Material.BOW) {
                 bowChargeStartTime.put(player.getUniqueId(), System.currentTimeMillis());
                 session.addAction(new UseItemAction(UseItemAction.UseType.BOW_CHARGE, 0, true, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Bow charge started");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bow charge started");
             }
             // Arbalet kullanımı
             else if (itemType == Material.CROSSBOW) {
                 session.addAction(new UseItemAction(UseItemAction.UseType.CROSSBOW_CHARGE, 0, true, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Crossbow charge started");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Crossbow charge started");
             }
             // Olta kullanımı - SADECE FishingListener handle etsin
             else if (itemType == Material.FISHING_ROD) {
                 // Hiçbir şey yapma, FishingListener halledecek
-                plugin.getLogger().info("[RECORDING-DEBUG] Fishing rod use detected, letting FishingListener handle it");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Fishing rod use detected, letting FishingListener handle it");
             }
             // Trident kullanımı (Riptide)
             else if (itemType == Material.TRIDENT) {
                 session.addAction(new UseItemAction(UseItemAction.UseType.TRIDENT_CHARGE, 0, true, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Trident charge started");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Trident charge started");
             }
             // Dürbün kullanımı
             else if (itemType == Material.SPYGLASS) {
                 session.addAction(new UseItemAction(UseItemAction.UseType.SPYGLASS, 0, isMainHand, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Spyglass used");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Spyglass used");
             }
             // Keçi boynuzu
             else if (itemType == Material.GOAT_HORN) {
                 session.addAction(new UseItemAction(UseItemAction.UseType.GOAT_HORN, 0, isMainHand, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Goat horn used");
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Goat horn used");
             }
             // İksir kontrolü - GÜNCELLENDİ
             else if (itemType == Material.POTION || itemType == Material.SPLASH_POTION ||
@@ -127,7 +128,7 @@ public class UseItemListener implements Listener {
                 if (itemType == Material.POTION) {
                     // Normal iksir - içme animasyonu
                     session.addAction(new UseItemAction(UseItemAction.UseType.POTION_DRINK, 0, isMainHand, true));
-                    plugin.getLogger().info("[RECORDING-DEBUG] Potion drink started: " + itemType.name());
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Potion drink started: " + itemType.name());
                 }
                 // Splash ve lingering potion'lar ProjectileAction ile handle ediliyor
             }
@@ -135,7 +136,7 @@ public class UseItemListener implements Listener {
             else if (itemType.isEdible()) {
                 foodEatStartTime.put(player.getUniqueId(), System.currentTimeMillis());
                 session.addAction(new UseItemAction(UseItemAction.UseType.FOOD_EAT, 0, isMainHand, true));
-                plugin.getLogger().info("[RECORDING-DEBUG] Food eating started: " + itemType.name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Food eating started: " + itemType.name());
             }
         }
     }
@@ -150,7 +151,7 @@ public class UseItemListener implements Listener {
             // Kalkan kullanımı bitti
             shieldBlockStartTime.remove(player.getUniqueId());
             session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, 0, true, false));
-            plugin.getLogger().info("[RECORDING-DEBUG] Shield block ended");
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield block ended");
         }
     }
 
@@ -184,7 +185,7 @@ public class UseItemListener implements Listener {
                     ItemStack arrowItem = player.getInventory().getItemInMainHand();
                     if (arrowItem.getType().name().contains("ARROW")) {
                         arrowData = com.reportsystem.spigot.utils.ItemSerializer.serializeItemStack(arrowItem);
-                        plugin.getLogger().info("[RECORDING-DEBUG] Tipped arrow shot: " + arrowItem.getType().name());
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Tipped arrow shot: " + arrowItem.getType().name());
                     }
                 }
 
@@ -195,7 +196,7 @@ public class UseItemListener implements Listener {
                         null, // potionData için null
                         arrowData
                 ));
-                plugin.getLogger().info("[RECORDING-DEBUG] Arrow shot with force: " + event.getForce());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Arrow shot with force: " + event.getForce());
             }
         }
     }
@@ -212,7 +213,7 @@ public class UseItemListener implements Listener {
             Projectile projectile = event.getEntity();
 
             // Debug log
-            plugin.getLogger().info("[RECORDING-DEBUG] Projectile detected: " + projectile.getType().name());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Projectile detected: " + projectile.getType().name());
 
             Vector velocity = projectile.getVelocity();
             ProjectileAction.ProjectileType type = null;
@@ -239,7 +240,7 @@ public class UseItemListener implements Listener {
                         player.getLocation().getYaw(), player.getLocation().getPitch(),
                         potionData
                 ));
-                plugin.getLogger().info("[RECORDING-DEBUG] Potion launched: " + type.name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Potion launched: " + type.name());
                 return; // Early return to avoid duplicate action
             } else if (projectile instanceof Trident) {
                 type = ProjectileAction.ProjectileType.TRIDENT;
@@ -256,7 +257,7 @@ public class UseItemListener implements Listener {
                         velocity.getX(), velocity.getY(), velocity.getZ(),
                         player.getLocation().getYaw(), player.getLocation().getPitch()
                 ));
-                plugin.getLogger().info("[RECORDING-DEBUG] Projectile launched: " + type.name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Projectile launched: " + type.name());
             }
         }
     }
@@ -300,7 +301,7 @@ public class UseItemListener implements Listener {
 
                     String hitType = event.getHitEntity() != null ? "entity" :
                             (event.getHitBlock() != null ? "block" : "unknown");
-                    plugin.getLogger().info("[RECORDING-DEBUG] Projectile hit (" + hitType + "): " +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Projectile hit (" + hitType + "): " +
                             event.getEntity().getType().name() + " at " +
                             String.format("%.1f, %.1f, %.1f", hitLoc.getX(), hitLoc.getY(), hitLoc.getZ()));
                 }

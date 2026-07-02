@@ -62,6 +62,15 @@ public class ReportSystemSpigot extends JavaPlugin {
     private com.reportsystem.spigot.overwatch.NPCManager npcManager;
     private com.reportsystem.spigot.overwatch.listeners.OverwatchReplayListener overwatchReplayListener;
 
+    // Trust Level
+    private com.reportsystem.spigot.trust.TrustLevelManager trustLevelManager;
+
+    // Anti-Cheat Hooks
+    private com.reportsystem.spigot.hooks.polar.PolarHook polarHook;
+    private com.reportsystem.spigot.hooks.vulcan.VulcanHook vulcanHook;
+    private com.reportsystem.spigot.hooks.grim.GrimHook grimHook;
+    private com.reportsystem.spigot.hooks.AntiCheatBypassManager antiCheatBypassManager;
+
     // Commands
     private ReportCommand reportCommand;
 
@@ -83,11 +92,11 @@ public class ReportSystemSpigot extends JavaPlugin {
     private com.reportsystem.spigot.telemetry.TelemetryManager telemetryManager; // KAREBLOK.TC
 
     // Cache
-    private final Map<String, Long> cooldowns = new HashMap<>();
+    private final Map<String, Long> cooldowns = new ConcurrentHashMap<>();
 
     // Pending reports
-    private final Map<UUID, PendingReport> pendingReports = new HashMap<>();
-    private final Map<UUID, String> pendingCrossServerTargets = new HashMap<>();
+    private final Map<UUID, PendingReport> pendingReports = new ConcurrentHashMap<>();
+    private final Map<UUID, String> pendingCrossServerTargets = new ConcurrentHashMap<>();
 
     @Override
     public void onEnable() {
@@ -109,8 +118,8 @@ public class ReportSystemSpigot extends JavaPlugin {
         this.licenseManager = new com.reportsystem.spigot.license.LicenseManager(this, licenseKey, apiUrl);
 
         try {
-            // İlk lisans doğrulamasını bekle
-            boolean isValid = licenseManager.verifyLicense().get();
+            // İlk lisans doğrulamasını bekle (max 15 saniye, main thread'i bloklamayı sınırla)
+            boolean isValid = licenseManager.verifyLicense().get(15, java.util.concurrent.TimeUnit.SECONDS);
 
             if (!isValid) {
                 getLogger().severe("");
@@ -135,25 +144,16 @@ public class ReportSystemSpigot extends JavaPlugin {
                 return;
             }
 
-            // RUNTIME VERIFICATION - Her 1 saatte bir lisansı kontrol et
+            // RUNTIME VERIFICATION - Her 1 saatte bir lisansi kontrol et
             licenseCheckTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
-                licenseManager.verifyLicense().thenAccept(valid -> {
+                licenseManager.verifyLicenseRuntime().thenAccept(valid -> {
                     if (!valid) {
                         getLogger().severe("");
                         getLogger().severe("╔════════════════════════════════════════════════════════╗");
-                        getLogger().severe("║                                                        ║");
-                        getLogger().severe("║  ⚠️  RUNTIME LİSANS DOĞRULAMA BAŞARISIZ!             ║");
-                        getLogger().severe("║                                                        ║");
-                        getLogger().severe("║  Lisans artık geçersiz! Eklenti kapatılıyor...       ║");
-                        getLogger().severe("║                                                        ║");
-                        getLogger().severe("║  Hata: " + String.format("%-45s",
-                                licenseManager.getErrorMessage() != null ?
-                                licenseManager.getErrorMessage() : "Bilinmeyen hata") + " ║");
-                        getLogger().severe("║                                                        ║");
+                        getLogger().severe("║  RUNTIME LISANS DOGRULAMA BASARISIZ!                 ║");
+                        getLogger().severe("║  Eklenti kapatiliyor...                               ║");
                         getLogger().severe("╚════════════════════════════════════════════════════════╝");
                         getLogger().severe("");
-
-                        // Ana thread'de eklentiyi kapat
                         Bukkit.getScheduler().runTask(this, () -> {
                             getServer().getPluginManager().disablePlugin(this);
                         });
@@ -161,10 +161,19 @@ public class ReportSystemSpigot extends JavaPlugin {
                         getLogger().info("[KAREBLOK.TC] Runtime license check: ✓ Valid");
                     }
                 });
-            }, 20L * 60L * 60L, 20L * 60L * 60L); // İlk kontrol 1 saat sonra, sonraki her 1 saatte
+            }, 20L * 60L * 60L, 20L * 60L * 60L); // Her 1 saatte
 
+        } catch (java.util.concurrent.TimeoutException e) {
+            // Timeout = API ulasilamiyor = plugin ACILMAZ
+            getLogger().severe("===========================================");
+            getLogger().severe("Lisans dogrulama zaman asimina ugradi (15s)!");
+            getLogger().severe("API'ye ulasilamiyor. Eklenti acilamaz.");
+            getLogger().severe("API URL: " + getConfig().getString("license.api-url", "https://kareblok.tc"));
+            getLogger().severe("===========================================");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         } catch (Exception e) {
-            getLogger().severe("Lisans doğrulama sırasında kritik hata!");
+            getLogger().severe("Lisans dogrulama sirasinda kritik hata!");
             getLogger().log(Level.SEVERE, "Exception:", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
@@ -195,8 +204,65 @@ public class ReportSystemSpigot extends JavaPlugin {
             checkForUpdates();
         }
 
-        // Metrics (optional)
-        // new Metrics(this, 12345);
+        // bStats Metrics
+        new org.bstats.bukkit.Metrics(this, 25469);
+
+        // PlaceholderAPI
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new com.reportsystem.spigot.hooks.ReportSystemPlaceholders(this).register();
+            getLogger().info("PlaceholderAPI support enabled!");
+        }
+
+        // Polar Anti-Cheat (softdepend — yoksa atlanir)
+        if (getServer().getPluginManager().getPlugin("PolarLoader") != null
+                && getConfig().getBoolean("polar.enabled", false)) {
+            try {
+                // ClassLoader kontrolu — Polar API sinifi yuklu mu?
+                Class.forName("top.polar.api.loader.LoaderApi");
+                this.polarHook = new com.reportsystem.spigot.hooks.polar.PolarHook(this);
+                getLogger().info("[POLAR] Polar callback kaydedildi, Polar yuklenince aktif olacak.");
+            } catch (ClassNotFoundException e) {
+                getLogger().warning("[POLAR] Polar API sinifi bulunamadi. PolarLoader yuklu mu?");
+                polarHook = null;
+            } catch (Exception e) {
+                getLogger().warning("[POLAR] Polar hook hatasi: " + e.getMessage());
+                polarHook = null;
+            }
+        }
+
+        // Vulcan Anti-Cheat (softdepend — yoksa atlanir)
+        if (getServer().getPluginManager().getPlugin("Vulcan") != null
+                && getConfig().getBoolean("vulcan.enabled", false)) {
+            try {
+                this.vulcanHook = new com.reportsystem.spigot.hooks.vulcan.VulcanHook(this);
+                if (!vulcanHook.connect()) {
+                    vulcanHook = null;
+                }
+            } catch (Exception e) {
+                getLogger().warning("[VULCAN] Vulcan hook hatasi: " + e.getMessage());
+                vulcanHook = null;
+            }
+        }
+
+        // GrimAC (softdepend — yoksa atlanir, ucretsiz + acik kaynak)
+        if (getServer().getPluginManager().getPlugin("GrimAC") != null
+                && getConfig().getBoolean("grim.enabled", false)) {
+            try {
+                Class.forName("ac.grim.grimac.api.GrimAbstractAPI");
+                this.grimHook = new com.reportsystem.spigot.hooks.grim.GrimHook(this);
+            } catch (ClassNotFoundException e) {
+                getLogger().warning("[GRIM] GrimAC API sinifi bulunamadi.");
+                grimHook = null;
+            } catch (Exception e) {
+                getLogger().warning("[GRIM] GrimAC hook hatasi: " + e.getMessage());
+                grimHook = null;
+            }
+        }
+
+        // Anti-Cheat Bypass Manager — replay viewer'lari AC flag'lerinden korur
+        // Hooks kuruldu mu kurulmadi mi farketmez, evrensel calisir (PermissionAttachment tabanli)
+        this.antiCheatBypassManager = new com.reportsystem.spigot.hooks.AntiCheatBypassManager(this);
+        getLogger().info("[AC-BYPASS] Anti-cheat bypass manager aktif.");
 
         // =====================================
         // KAREBLOK.TC - TELEMETRY SYSTEM
@@ -204,8 +270,8 @@ public class ReportSystemSpigot extends JavaPlugin {
         telemetryManager = new com.reportsystem.spigot.telemetry.TelemetryManager(this);
         telemetryManager.start();
 
-        getLogger().info("ReportSystem v" + getDescription().getVersion() + " has been enabled!");
-        getLogger().info("Using " + (configManager.isBungeeCordEnabled() ? "BungeeCord" : "Standalone") + " mode");
+        // Startup Banner
+        printBanner();
     }
 
     @Override
@@ -225,9 +291,20 @@ public class ReportSystemSpigot extends JavaPlugin {
             replayManager.stopAllReplays();
         }
 
+        // Cleanup Anti-Cheat hooks
+        if (polarHook != null) polarHook.disconnect();
+        if (vulcanHook != null) vulcanHook.disconnect();
+        if (grimHook != null) grimHook.disconnect();
+        if (antiCheatBypassManager != null) antiCheatBypassManager.shutdown();
+
         // Cleanup Overwatch NPCs
         if (npcManager != null) {
             npcManager.shutdown();
+        }
+
+        // Cleanup AnimatedBanManager (freeze task iptal, frozen oyuncuları serbest bırak)
+        if (animatedBanManager != null) {
+            animatedBanManager.shutdown();
         }
 
         // Close database
@@ -282,6 +359,12 @@ public class ReportSystemSpigot extends JavaPlugin {
         updateYamlFile("guis/punishment.yml");
         updateYamlFile("guis/punishment-selection.yml");
         updateYamlFile("guis/animated-ban.yml");
+        updateYamlFile("guis/replay-settings.yml");
+        updateYamlFile("guis/replay-hotbar.yml");
+        updateYamlFile("guis/overwatch-menu.yml");
+        updateYamlFile("guis/overwatch-verdict.yml");
+        updateYamlFile("guis/overwatch-stats.yml");
+        updateYamlFile("guis/overwatch-leaderboard.yml");
     }
 
     /**
@@ -301,41 +384,40 @@ public class ReportSystemSpigot extends JavaPlugin {
             FileConfiguration currentConfig = getConfig();
 
             // Load default config from jar
-            InputStream defaultStream = getResource("config.yml");
-            if (defaultStream == null) {
-                getLogger().warning("Could not load default config from jar!");
-                return;
-            }
-
-            FileConfiguration defaultConfig = YamlConfiguration.loadConfiguration(
-                new InputStreamReader(defaultStream, StandardCharsets.UTF_8)
-            );
-
-            // Add missing keys (deep comparison)
-            boolean updated = false;
-            for (String key : defaultConfig.getKeys(true)) {
-                // Skip parent nodes (only check leaf nodes)
-                if (defaultConfig.isConfigurationSection(key)) {
-                    continue;
+            try (InputStream defaultStream = getResource("config.yml")) {
+                if (defaultStream == null) {
+                    getLogger().warning("Could not load default config from jar!");
+                    return;
                 }
 
-                if (!currentConfig.contains(key)) {
-                    Object value = defaultConfig.get(key);
-                    currentConfig.set(key, value);
-                    updated = true;
-                    getLogger().info("§e[Config] Added missing key: §f" + key);
+                FileConfiguration defaultConfig = YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(defaultStream, StandardCharsets.UTF_8)
+                );
+
+                // Add missing keys (deep comparison)
+                boolean updated = false;
+                for (String key : defaultConfig.getKeys(true)) {
+                    // Skip parent nodes (only check leaf nodes)
+                    if (defaultConfig.isConfigurationSection(key)) {
+                        continue;
+                    }
+
+                    if (!currentConfig.contains(key)) {
+                        Object value = defaultConfig.get(key);
+                        currentConfig.set(key, value);
+                        updated = true;
+                        getLogger().info("§e[Config] Added missing key: §f" + key);
+                    }
+                }
+
+                // Save if updated
+                if (updated) {
+                    currentConfig.save(configFile);
+                    getLogger().info("§a[Config] Yeni ayarlar eklendi! Kullanıcı ayarlarınız korundu.");
+                } else {
+                    getLogger().info("§7[Config] config.yml zaten güncel.");
                 }
             }
-
-            // Save if updated
-            if (updated) {
-                currentConfig.save(configFile);
-                getLogger().info("§a[Config] Yeni ayarlar eklendi! Kullanıcı ayarlarınız korundu.");
-            } else {
-                getLogger().info("§7[Config] config.yml zaten güncel.");
-            }
-
-            defaultStream.close();
 
         } catch (Exception e) {
             getLogger().severe("Failed to update config: " + e.getMessage());
@@ -365,41 +447,40 @@ public class ReportSystemSpigot extends JavaPlugin {
             FileConfiguration currentConfig = YamlConfiguration.loadConfiguration(file);
 
             // Load default config from jar
-            InputStream defaultStream = getResource(resourcePath);
-            if (defaultStream == null) {
-                getLogger().warning("Could not load default " + resourcePath + " from jar!");
-                return;
-            }
-
-            FileConfiguration defaultConfig = YamlConfiguration.loadConfiguration(
-                new InputStreamReader(defaultStream, StandardCharsets.UTF_8)
-            );
-
-            // Add missing keys (deep comparison)
-            boolean updated = false;
-            for (String key : defaultConfig.getKeys(true)) {
-                // Skip parent nodes (only check leaf nodes)
-                if (defaultConfig.isConfigurationSection(key)) {
-                    continue;
+            try (InputStream defaultStream = getResource(resourcePath)) {
+                if (defaultStream == null) {
+                    getLogger().warning("Could not load default " + resourcePath + " from jar!");
+                    return;
                 }
 
-                if (!currentConfig.contains(key)) {
-                    Object value = defaultConfig.get(key);
-                    currentConfig.set(key, value);
-                    updated = true;
-                    getLogger().info("§e[Config] Added missing key: §f" + key + " §7to " + resourcePath);
+                FileConfiguration defaultConfig = YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(defaultStream, StandardCharsets.UTF_8)
+                );
+
+                // Add missing keys (deep comparison)
+                boolean updated = false;
+                for (String key : defaultConfig.getKeys(true)) {
+                    // Skip parent nodes (only check leaf nodes)
+                    if (defaultConfig.isConfigurationSection(key)) {
+                        continue;
+                    }
+
+                    if (!currentConfig.contains(key)) {
+                        Object value = defaultConfig.get(key);
+                        currentConfig.set(key, value);
+                        updated = true;
+                        getLogger().info("§e[Config] Added missing key: §f" + key + " §7to " + resourcePath);
+                    }
+                }
+
+                // Save if updated
+                if (updated) {
+                    currentConfig.save(file);
+                    getLogger().info("§a[Config] " + resourcePath + " güncellendi! Yeni ayarlar eklendi.");
+                } else {
+                    getLogger().info("§7[Config] " + resourcePath + " zaten güncel.");
                 }
             }
-
-            // Save if updated
-            if (updated) {
-                currentConfig.save(file);
-                getLogger().info("§a[Config] " + resourcePath + " güncellendi! Yeni ayarlar eklendi.");
-            } else {
-                getLogger().info("§7[Config] " + resourcePath + " zaten güncel.");
-            }
-
-            defaultStream.close();
 
         } catch (Exception e) {
             getLogger().severe("Failed to update " + resourcePath + ": " + e.getMessage());
@@ -483,6 +564,12 @@ public class ReportSystemSpigot extends JavaPlugin {
             this.webhookManager = new com.reportsystem.spigot.webhook.WebhookManager(this);
             if (webhookManager.isEnabled()) {
                 getLogger().info("Discord webhook system initialized");
+            }
+
+            // Trust Level Manager
+            if (getConfig().getBoolean("trust-level.enabled", true)) {
+                this.trustLevelManager = new com.reportsystem.spigot.trust.TrustLevelManager(this);
+                getLogger().info("Trust Level system initialized");
             }
 
             // Overwatch System
@@ -576,6 +663,7 @@ public class ReportSystemSpigot extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.VehicleListener(recordingManager, this), this);
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.BedListener(recordingManager, this), this);
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.BlockListener(recordingManager, this), this);
+            getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.BlockPhysicsListener(recordingManager, this), this);
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.TeleportListener(recordingManager, this), this);
 
             // Replay interaction listener (PacketEvents - for right-clicking fake NPCs to view equipment)
@@ -628,8 +716,11 @@ public class ReportSystemSpigot extends JavaPlugin {
 
         // Overwatch listeners
         if (overwatchManager != null) {
-            getServer().getPluginManager().registerEvents(
-                    new com.reportsystem.spigot.overwatch.listeners.NPCClickListener(this), this);
+            com.reportsystem.spigot.overwatch.listeners.NPCClickListener npcClickListener =
+                    new com.reportsystem.spigot.overwatch.listeners.NPCClickListener(this);
+            // Register as both PacketEvents listener (for NPC click) and Bukkit listener (for join + hologram protection)
+            com.github.retrooper.packetevents.PacketEvents.getAPI().getEventManager().registerListener(npcClickListener);
+            getServer().getPluginManager().registerEvents(npcClickListener, this);
             getServer().getPluginManager().registerEvents(overwatchReplayListener, this);
             getServer().getPluginManager().registerEvents(
                     new com.reportsystem.spigot.overwatch.listeners.OverwatchGUIListener(this), this);
@@ -673,9 +764,7 @@ public class ReportSystemSpigot extends JavaPlugin {
 
         // Auto-save task (every 5 minutes)
         autoSaveTask = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
-            if (configManager.isDebugEnabled()) {
-                getLogger().info("[DEBUG] Running auto-save task...");
-            }
+            debug("[DEBUG] Running auto-save task...");
 
             // Save active recordings
             recordingManager.saveAllRecordings();
@@ -687,9 +776,7 @@ public class ReportSystemSpigot extends JavaPlugin {
 
         // Cleanup task (every hour)
         cleanupTask = getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
-            if (configManager.isDebugEnabled()) {
-                getLogger().info("[DEBUG] Running cleanup task...");
-            }
+            debug("[DEBUG] Running cleanup task...");
 
             // Auto-close old reports
             int autoCloseDays = configManager.getAutoCloseDays();
@@ -710,16 +797,8 @@ public class ReportSystemSpigot extends JavaPlugin {
      * Check for plugin updates
      */
     private void checkForUpdates() {
-        new UpdateChecker(this, 12345).getVersion(version -> { // 12345'i Spigot resource ID'nizle değiştirin
-            if (!getDescription().getVersion().equalsIgnoreCase(version)) {
-                getLogger().info("========================================");
-                getLogger().info("ReportSystem Update Available!");
-                getLogger().info("Current Version: " + getDescription().getVersion());
-                getLogger().info("New Version: " + version);
-                getLogger().info("Download: https://www.spigotmc.org/resources/12345/");
-                getLogger().info("========================================");
-            }
-        });
+        // TODO: Spigot resource ID'yi gerçek değerle değiştir veya kareblok.tc API'sinden güncelleme kontrolü yap
+        getLogger().info("[UpdateChecker] Guncelleme kontrolu henuz yapilandirilmamis. Spigot resource ID gerekli.");
     }
 
     /**
@@ -752,9 +831,7 @@ public class ReportSystemSpigot extends JavaPlugin {
 
         reporter.sendPluginMessage(this, CHANNEL, out.toByteArray());
 
-        if (configManager.isDebugEnabled()) {
-            getLogger().info("[DEBUG] Sent cross-server report: " + reporter.getName() + " -> " + targetName);
-        }
+        debug("[DEBUG] Sent cross-server report: " + reporter.getName() + " -> " + targetName);
     }
 
     /**
@@ -863,15 +940,41 @@ public class ReportSystemSpigot extends JavaPlugin {
     }
 
     public void debug(String message) {
-        if (isDebugEnabled()) {
-            getLogger().info("[DEBUG] " + message);
+        if (configManager != null && configManager.isDebugEnabled()) {
+            getLogger().info(message);
         }
+    }
+
+    private void printBanner() {
+        String version = getDescription().getVersion();
+        String dbType = configManager.getDatabaseType().toUpperCase();
+        String lang = configManager.getLanguage().toUpperCase();
+        String mode = configManager.isBungeeCordEnabled() ? "Network" : "Standalone";
+        boolean papi = getServer().getPluginManager().getPlugin("PlaceholderAPI") != null;
+
+        getLogger().info("");
+        getLogger().info("  ██████╗ ███████╗██████╗  ██████╗ ██████╗ ████████╗");
+        getLogger().info("  ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝");
+        getLogger().info("  ██████╔╝█████╗  ██████╔╝██║   ██║██████╔╝   ██║   ");
+        getLogger().info("  ██╔══██╗██╔══╝  ██╔═══╝ ██║   ██║██╔══██╗   ██║   ");
+        getLogger().info("  ██║  ██║███████╗██║     ╚██████╔╝██║  ██║   ██║   ");
+        getLogger().info("  ╚═╝  ╚═╝╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ");
+        getLogger().info("  ╔══════════════════════════════════════════════════╗");
+        getLogger().info("  ║  SYSTEM  v" + version + " | " + mode + " | " + dbType + " | " + lang + "  ║");
+        getLogger().info("  ╚══════════════════════════════════════════════════╝");
+        boolean polar = polarHook != null && polarHook.isConnected();
+        boolean vulcan = vulcanHook != null && vulcanHook.isConnected();
+        boolean grim = grimHook != null && grimHook.isConnected();
+        getLogger().info("  Hooks: PacketEvents" + (papi ? " | PlaceholderAPI" : "") + (polar ? " | Polar AC" : "") + (vulcan ? " | Vulcan AC" : "") + (grim ? " | GrimAC" : "") + " | bStats");
+        getLogger().info("  Author: KAREBLOK.TC");
+        getLogger().info("");
     }
 
     // Getters
     public static ReportSystemSpigot getInstance() {
         return instance;
     }
+
 
     public ConfigManager getConfigManager() {
         return configManager;
@@ -882,6 +985,9 @@ public class ReportSystemSpigot extends JavaPlugin {
     }
 
     public ReportService getReportService() {
+        if (reportService == null) {
+            getLogger().severe("ReportService is null! Plugin may not be fully initialized.");
+        }
         return reportService;
     }
 
@@ -893,11 +999,18 @@ public class ReportSystemSpigot extends JavaPlugin {
         return recordingManager;
     }
 
+    public com.reportsystem.spigot.hooks.AntiCheatBypassManager getAntiCheatBypassManager() {
+        return antiCheatBypassManager;
+    }
+
     public PunishmentManager getPunishmentManager() {
         return punishmentManager;
     }
 
     public MessageManager getMessageManager() {
+        if (messageManager == null) {
+            getLogger().severe("MessageManager is null! Plugin may not be fully initialized.");
+        }
         return messageManager;
     }
 
@@ -915,6 +1028,9 @@ public class ReportSystemSpigot extends JavaPlugin {
 
     // EKLENDİ: GUIListener'ın ihtiyaç duyduğu metot
     public ReplayDAO getReplayDAO() {
+        if (replayDAO == null) {
+            getLogger().severe("ReplayDAO is null! Database may not be initialized.");
+        }
         return replayDAO;
     }
 
@@ -928,6 +1044,10 @@ public class ReportSystemSpigot extends JavaPlugin {
 
     public com.reportsystem.spigot.overwatch.OverwatchManager getOverwatchManager() {
         return overwatchManager;
+    }
+
+    public com.reportsystem.spigot.trust.TrustLevelManager getTrustLevelManager() {
+        return trustLevelManager;
     }
 
     public com.reportsystem.spigot.overwatch.NPCManager getNPCManager() {

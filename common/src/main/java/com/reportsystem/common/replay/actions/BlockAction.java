@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class BlockAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum BlockActionType {
         START_BREAKING,    // Blok kırmaya başlama
@@ -34,6 +35,17 @@ public class BlockAction extends ReplayAction {
         this.y = y;
         this.z = z;
         this.stage = 0;
+        this.blockType = blockType;
+    }
+
+    // Blok kırma + blok tipi için (START_BREAKING - kırılan bloğun tipini kaydetmek için)
+    public BlockAction(BlockActionType actionType, int x, int y, int z, int stage, String blockType) {
+        super();
+        this.actionType = actionType;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.stage = stage;
         this.blockType = blockType;
     }
 

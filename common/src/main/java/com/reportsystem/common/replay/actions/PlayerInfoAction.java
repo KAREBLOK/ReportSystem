@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class PlayerInfoAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String skinTexture;
     private final String skinSignature;

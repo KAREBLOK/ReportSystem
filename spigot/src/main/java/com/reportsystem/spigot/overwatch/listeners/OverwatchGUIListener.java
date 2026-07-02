@@ -2,6 +2,7 @@ package com.reportsystem.spigot.overwatch.listeners;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.overwatch.gui.*;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -78,21 +79,24 @@ public class OverwatchGUIListener implements Listener {
             OverwatchVerdictGUI verdictGUI = (OverwatchVerdictGUI) holder;
 
             if (!verdictGUI.isVerdictSubmitted()) {
-                // Verdict was NOT submitted - unassign the report
-                int reportId = verdictGUI.getReportId();
-
-                plugin.getLogger().info("[OVERWATCH] Player " + player.getName() +
-                    " closed verdict GUI without submitting - unassigning report #" + reportId);
-
-                // Return report to PENDING queue
-                plugin.getOverwatchManager().unassignReport(reportId);
-
-                // Notify player
-                String msg = plugin.getMessageManager().getMessage("overwatch.verdict.cancelled");
-                if (msg != null && !msg.isEmpty()) {
-                    player.sendMessage(plugin.getMessageManager().colorize(msg));
+                // Verdict GUI submit edilmeden kapatildi
+                if (plugin.getOverwatchReplayListener() != null
+                        && plugin.getOverwatchReplayListener().isReviewing(player.getUniqueId())) {
+                    // Post-replay itemlerine geri don (review iptal etme)
+                    plugin.debug("[OVERWATCH] Player " + player.getName() +
+                        " closed verdict GUI without submitting - returning to post-replay");
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (player.isOnline()) {
+                            plugin.getOverwatchReplayListener().returnToPostReplay(player);
+                        }
+                    }, 1L);
                 } else {
-                    player.sendMessage("§e✦ İnceleme iptal edildi. Rapor tekrar kuyruğa eklendi.");
+                    // Eski davranis - raporu birak
+                    int reportId = verdictGUI.getReportId();
+                    plugin.debug("[OVERWATCH] Player " + player.getName() +
+                        " closed verdict GUI without submitting - unassigning report #" + reportId);
+                    plugin.getOverwatchManager().unassignReport(reportId);
+                    player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.cancelled")));
                 }
             }
         }

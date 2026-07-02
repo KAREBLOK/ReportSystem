@@ -6,6 +6,7 @@ import java.util.List;
  * Kitap yazma/düzenleme
  */
 public class BookEditAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String title;      // Kitap başlığı
     private final String author;     // Yazar

@@ -1,9 +1,9 @@
 package com.reportsystem.spigot.replay;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.models.Replay;
 import com.reportsystem.common.replay.ReplaySerializer;
 import com.reportsystem.common.replay.actions.*;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -79,11 +79,14 @@ public class ReplayPlayer {
         // NPC'yi spawn et
         npcManager.spawnNPC(spawnLocation);
 
+        // Kayıt sırasında var olan blokları göster (replay başlamadan önce)
+        actionPlayer.showInitialBlocks();
+
         // Oynatmayı başlat
         state = ReplayState.PLAYING;
         actionHandler.startPlayback();
 
-        plugin.getLogger().info("[REPLAY] Replay started for " + replay.getRecordedPlayer());
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Replay started for " + replay.getRecordedPlayer());
     }
 
     /**
@@ -92,8 +95,9 @@ public class ReplayPlayer {
     public void pause() {
         if (state == ReplayState.PLAYING) {
             state = ReplayState.PAUSED;
+            actionHandler.onPause();
             stateManager.setPaused(true);
-            plugin.getLogger().info("[REPLAY] Replay paused");
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Replay paused");
         }
     }
 
@@ -103,9 +107,9 @@ public class ReplayPlayer {
     public void resume() {
         if (state == ReplayState.PAUSED) {
             state = ReplayState.PLAYING;
+            actionHandler.onResume();
             stateManager.setPaused(false);
-            stateManager.recalculateStartTime();
-            plugin.getLogger().info("[REPLAY] Replay resumed");
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Replay resumed");
         }
     }
 
@@ -117,49 +121,46 @@ public class ReplayPlayer {
             return;
         }
 
-        plugin.getLogger().info("[REPLAY] Stopping replay - cleaning up NPCs and UI");
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Stopping replay - cleaning up NPCs and UI");
 
         state = ReplayState.STOPPED;
         actionHandler.stopPlayback();
 
-        // 1. ÖNCE NPC'leri temizle
-        npcManager.despawnAll();
-        plugin.getLogger().info("[REPLAY] NPCs despawned");
-
-        // 2. ActionPlayer cleanup (FishHooks, vehicles, bloklar)
-        actionPlayer.cleanup();
-        plugin.getLogger().info("[REPLAY] ActionPlayer cleanup completed");
-
-        // 3. Her viewer için detaylı temizlik - SYNC olarak
+        // 1. Viewer listesinin kopyasını AL (cleanup'tan ÖNCE)
         Set<Player> viewersCopy = new HashSet<>(viewers);
+
+        // 2. Blokları restore et (viewers temizlenmeden ÖNCE)
+        actionPlayer.restoreBlocks(viewersCopy);
+
+        // 3. NPC'leri temizle
+        npcManager.despawnAll();
+        ReportSystemSpigot.getInstance().debug("[REPLAY] NPCs despawned");
+
+        // 4. ActionPlayer cleanup (FishHooks, vehicles vb. - blok restore hariç)
+        actionPlayer.cleanup();
+        ReportSystemSpigot.getInstance().debug("[REPLAY] ActionPlayer cleanup completed");
+
+        // 5. Her viewer için detaylı temizlik
         for (Player viewer : viewersCopy) {
             if (viewer != null && viewer.isOnline()) {
-                plugin.getLogger().info("[REPLAY] Cleaning up for viewer: " + viewer.getName());
-
-                // ReplayManager üzerinden kontrol itemlerini temizle
                 com.reportsystem.spigot.ReportSystemSpigot plugin =
                         (com.reportsystem.spigot.ReportSystemSpigot) this.plugin;
                 plugin.getReplayManager().getControlManager().removeControlItems(viewer);
-
-                // Mesaj gönder
-                viewer.sendMessage(ChatColor.RED + "Replay durduruldu!");
-
-                plugin.getLogger().info("[REPLAY] Cleanup completed for viewer: " + viewer.getName());
+                plugin.getReplayManager().restoreViewerLocation(viewer);
+                viewer.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("replay.stopped")));
             }
         }
 
-        // 4. Viewer'ları temizle
+        // 6. Viewer'ları temizle (en son)
         viewers.clear();
-        plugin.getLogger().info("[REPLAY] All viewers cleared");
-
-        plugin.getLogger().info("[REPLAY] Replay stopped and cleaned up completely");
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Replay stopped and cleaned up completely");
     }
 
     /**
      * Replay'i bitirir - GÜNCELLENEN METOD
      */
     public void finish() {
-        plugin.getLogger().info("[REPLAY] Replay finished - cleaning up and teleporting viewers back");
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Replay finished - cleaning up and teleporting viewers back");
 
         state = ReplayState.FINISHED;
         actionHandler.stopPlayback();
@@ -182,29 +183,63 @@ public class ReplayPlayer {
                         spigotPlugin.getMessageManager().colorize(subtitle),
                         10, 40, 10);
 
-                // Kontrol itemlerini temizle
-                spigotPlugin.getReplayManager().getControlManager().removeControlItems(viewer);
+                // Overwatch review'daysa sadece UI temizle, state'i geri yukleme
+                boolean isOverwatchViewer = spigotPlugin.getOverwatchReplayListener() != null
+                        && spigotPlugin.getOverwatchReplayListener().isReviewing(viewer.getUniqueId());
 
-                // ÖNEMLİ: activeReplays'den viewer'ı kaldır
-                spigotPlugin.getReplayManager().removeActiveReplay(viewer.getUniqueId());
+                if (isOverwatchViewer) {
+                    spigotPlugin.getReplayManager().getControlManager().stopReplayUI(viewer);
+                } else {
+                    spigotPlugin.getReplayManager().getControlManager().removeControlItems(viewer);
+                }
 
-                plugin.getLogger().info("[REPLAY] Replay finished notification sent to: " + viewer.getName());
+                // Düşme hasarını sıfırla - replay bitişinde havadan düşmeyi önler
+                viewer.setFallDistance(0f);
+
+                // NOT: activeReplays'den kaldırma işlemi teleport SONRASINA taşındı (aşağıda)
+
+                ReportSystemSpigot.getInstance().debug("[REPLAY] Replay finished notification sent to: " + viewer.getName());
             }
         }
 
-        // Spawned entity'leri temizle ve blokları restore et
+        // Blokları restore et (viewer listesi temizlenmeden ÖNCE)
+        actionPlayer.restoreBlocks(viewersCopy);
+
+        // Spawned entity'leri temizle
         actionPlayer.cleanup();
-        actionPlayer.restoreBlocks();
 
         // 3 saniye sonra NPC'yi kaldır, tamamen temizle ve viewer'ları geri ışınla
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             // NPC'leri temizle
             npcManager.despawnAll();
 
-            // ÖNEMLİ: Her viewer'ı orijinal konumuna geri ışınla
+            // Her viewer'i orijinal konumuna geri isinla
+            // ANCAK Overwatch review'daysa isinlama - verdict GUI acik kalsin
             for (Player viewer : viewersCopy) {
                 if (viewer != null && viewer.isOnline()) {
-                    spigotPlugin.getReplayManager().restoreViewerLocation(viewer);
+                    // Teleport öncesi düşme hasarını tekrar sıfırla
+                    viewer.setFallDistance(0f);
+
+                    boolean isOverwatchReview = spigotPlugin.getOverwatchReplayListener() != null
+                            && spigotPlugin.getOverwatchReplayListener().isReviewing(viewer.getUniqueId());
+
+                    if (!isOverwatchReview) {
+                        spigotPlugin.getReplayManager().restoreViewerLocation(viewer);
+                    }
+
+                    // Teleport tamamlandıktan sonra activeReplays'den kaldır
+                    // restoreViewerLocation içinde 10 tick daha bekliyor, toplam 70 tick sonra kaldır
+                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                        if (viewer != null && viewer.isOnline()) {
+                            viewer.setFallDistance(0f);
+                        }
+                        spigotPlugin.getReplayManager().removeActiveReplay(viewer.getUniqueId());
+                    }, 15L);
+                } else {
+                    // Offline oyuncuyu da activeReplays'den temizle
+                    if (viewer != null) {
+                        spigotPlugin.getReplayManager().removeActiveReplay(viewer.getUniqueId());
+                    }
                 }
             }
 
@@ -212,7 +247,7 @@ public class ReplayPlayer {
             viewers.clear();
             state = ReplayState.STOPPED;
 
-            plugin.getLogger().info("[REPLAY] Final cleanup and teleport completed");
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Final cleanup and teleport completed");
         }, 60L); // 3 saniye bekle
     }
 
@@ -222,7 +257,7 @@ public class ReplayPlayer {
     public void addViewer(Player player) {
         if (!viewers.contains(player)) {
             viewers.add(player);
-            plugin.getLogger().info("[REPLAY] Viewer added: " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Viewer added: " + player.getName());
 
             // Eğer NPC zaten spawn edilmişse, bu oyuncuya da göster
             if (state != ReplayState.STOPPED) {
@@ -236,12 +271,15 @@ public class ReplayPlayer {
      */
     public void removeViewer(Player player) {
         if (viewers.remove(player)) {
-            plugin.getLogger().info("[REPLAY] Viewer removed: " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Viewer removed: " + player.getName());
 
             // Bu oyuncu için kontrol itemlerini temizle
             com.reportsystem.spigot.ReportSystemSpigot plugin =
                     (com.reportsystem.spigot.ReportSystemSpigot) this.plugin;
             plugin.getReplayManager().getControlManager().removeControlItems(player);
+
+            // Viewer'ı tekrar göster ve orijinal konumuna geri gönder
+            plugin.getReplayManager().restoreViewerLocation(player);
 
             // ÖNEMLİ: activeReplays'den de kaldır
             plugin.getReplayManager().removeActiveReplay(player.getUniqueId());
@@ -249,7 +287,7 @@ public class ReplayPlayer {
 
         // Hiç izleyici kalmadıysa replay'i durdur
         if (viewers.isEmpty()) {
-            plugin.getLogger().info("[REPLAY] No viewers left, stopping replay");
+            ReportSystemSpigot.getInstance().debug("[REPLAY] No viewers left, stopping replay");
             stop();
         }
     }
@@ -270,8 +308,13 @@ public class ReplayPlayer {
      * Oynatma hızını değiştirir
      */
     public void setPlaybackSpeed(double speed) {
+        // 1. Hız değişmeden ÖNCE mevcut elapsed time'ı kaydet
+        actionHandler.onSpeedChange();
+        // 2. Hızı değiştir
         stateManager.setPlaybackSpeed(speed);
-        plugin.getLogger().info("[REPLAY] Playback speed changed to: " + speed + "x");
+        // 3. Yeni hızla startTime'ı yeniden hesapla (elapsed time korunsun)
+        actionHandler.afterSpeedChange();
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Playback speed changed to: " + speed + "x");
     }
 
     /**
@@ -285,22 +328,43 @@ public class ReplayPlayer {
      * Belirli bir yüzdeye atlar
      */
     public void seekToPercent(double percent) {
+        // Blokları restore et
+        actionPlayer.restoreBlocks(getViewers());
+        // Seek yap
         actionHandler.seekToPercent(percent);
-        plugin.getLogger().info("[REPLAY] Seeked to: " + (percent * 100) + "%");
+        // Blok durumunu hedef zamana kadar güncelle
+        actionPlayer.showInitialBlocks();
+        actionPlayer.replayBlockStateUpTo(actionHandler.getCurrentActionIndex());
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Seeked to: " + (percent * 100) + "%");
     }
 
     /**
      * İleri sar (saniye cinsinden)
      */
     public void forward(int seconds) {
+        // 1. Mevcut blok değişikliklerini restore et
+        actionPlayer.restoreBlocks(getViewers());
+        // 2. İleri sar (index + startTime + NPC konumu güncellenir)
         actionHandler.forward(seconds);
+        // 3. Başlangıç bloklarını göster
+        actionPlayer.showInitialBlocks();
+        // 4. Hedef zamana kadarki blok değişikliklerini uygula
+        actionPlayer.replayBlockStateUpTo(actionHandler.getCurrentActionIndex());
     }
 
     /**
      * Geri sar (saniye cinsinden)
+     * Geri sarma sırasında değiştirilen blokları restore eder ve başlangıç bloklarını tekrar gösterir
      */
     public void rewind(int seconds) {
+        // 1. Geri sarmadan ÖNCE değiştirilen blokları restore et
+        actionPlayer.restoreBlocks(getViewers());
+        // 2. Geri sar (index + startTime + NPC konumu güncellenir)
         actionHandler.rewind(seconds);
+        // 3. Başlangıç bloklarını tekrar göster (kayıt sırasında var olan bloklar)
+        actionPlayer.showInitialBlocks();
+        // 4. Hedef zamana kadarki blok değişikliklerini uygula (kırılmış bloklar kırık, konmuş bloklar konmuş)
+        actionPlayer.replayBlockStateUpTo(actionHandler.getCurrentActionIndex());
     }
 
     // Getter'lar

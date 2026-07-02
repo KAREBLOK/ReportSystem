@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.RedstoneAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -68,7 +69,7 @@ public class RedstoneListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Redstone: " + redstoneType.name() +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Redstone: " + redstoneType.name() +
                     " delay=" + delay + " mode=" + mode);
         }
     }

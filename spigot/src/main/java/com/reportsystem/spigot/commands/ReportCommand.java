@@ -10,12 +10,13 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class ReportCommand implements CommandExecutor, TabCompleter {
 
     private final ReportSystemSpigot plugin;
-    private static final Map<UUID, Integer> pendingReportIds = new HashMap<>();
+    private static final Map<UUID, Integer> pendingReportIds = new ConcurrentHashMap<>();
     private final Map<UUID, List<Long>> reportTimestamps = new HashMap<>();
 
     public ReportCommand(ReportSystemSpigot plugin) {
@@ -59,7 +60,7 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
         }
 
         // Immune kontrolü - Hedef oyuncu report edilemez izni var mı?
-        if (targetPlayer != null && targetPlayer.hasPermission("reportsystem.immune")) {
+        if (targetPlayer != null && targetPlayer.hasPermission("reportsystem.exempt")) {
             plugin.getMessageManager().sendCannotReportImmune(player);
             return true;
         }
@@ -71,6 +72,11 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
         }
 
         // Cooldown kontrolü
+        // Note: checkCooldown() both checks AND sets the cooldown. This means the
+        // cooldown is
+        // consumed when the GUI opens, even if the player cancels without submitting a
+        // report.
+        // This is intentional behavior to prevent spam-opening the report GUI.
         String cooldownKey = "report:" + player.getUniqueId();
         int cooldownSeconds = plugin.getConfigManager().getReportCooldown();
 
@@ -151,12 +157,12 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
         return pendingReportIds.remove(playerUUID);
     }
 
-    public void notifyStaff(Player reporter, String targetName, String reason, int reportId) {
-        if (plugin.getConfigManager().isStaffNotifyEnabled()) {
+    public void notifyStaff(String reporterName, String targetName, String reason, int reportId) {
+        if (plugin.getConfigManager().isStaffNotificationEnabled()) {
             for (Player staff : Bukkit.getOnlinePlayers()) {
                 if (staff.hasPermission("reportsystem.notify")) {
                     plugin.getMessageManager().sendReportNotification(
-                            staff, reporter.getName(), targetName, reason, reportId);
+                            staff, reporterName, targetName, reason, reportId);
                 }
             }
         }

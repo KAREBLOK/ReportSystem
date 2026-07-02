@@ -1,10 +1,11 @@
 package com.reportsystem.spigot.overwatch.commands;
 
-import com.reportsystem.common.models.overwatch.OverwatchStats;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.overwatch.NPCManager;
 import com.reportsystem.spigot.overwatch.gui.OverwatchLeaderboardGUI;
 import com.reportsystem.spigot.overwatch.gui.OverwatchMenuGUI;
 import com.reportsystem.spigot.overwatch.gui.OverwatchStatsGUI;
+import com.reportsystem.spigot.utils.SkinUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
@@ -16,19 +17,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
-/**
- * Overwatch Command Handler
- * /overwatch - Open main menu
- * /overwatch stats [player] - View statistics
- * /overwatch leaderboard - View leaderboard
- * /overwatch npc create - Create NPC (admin)
- * /overwatch npc delete [id] - Delete NPC (admin)
- * /overwatch npc list - List NPCs (admin)
- * /overwatch addqueue <reportId> [priority] - Add report to queue (admin)
- */
 public class OverwatchCommand implements CommandExecutor, TabCompleter {
 
     private final ReportSystemSpigot plugin;
@@ -40,54 +29,40 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.player-only");
-            sender.sendMessage(plugin.getMessageManager().colorize(msg));
+            sender.sendMessage(msg("overwatch.commands.player-only"));
             return true;
         }
 
         Player player = (Player) sender;
 
-        // Check permission
         if (!player.hasPermission("reportsystem.overwatch")) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.no-permission");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.no-permission"));
             return true;
         }
 
-        // No args - Open main menu
         if (args.length == 0) {
             new OverwatchMenuGUI(plugin, player).open();
             return true;
         }
 
-        String subCommand = args[0].toLowerCase();
-
-        switch (subCommand) {
+        switch (args[0].toLowerCase()) {
             case "stats":
                 handleStats(player, args);
                 break;
-
-            case "leaderboard":
-            case "lb":
-            case "top":
+            case "leaderboard": case "lb": case "top":
                 new OverwatchLeaderboardGUI(plugin, player).open();
                 break;
-
             case "npc":
                 handleNPC(player, args);
                 break;
-
             case "addqueue":
                 handleAddQueue(player, args);
                 break;
-
             case "help":
                 showHelp(player);
                 break;
-
             default:
-                String msg = plugin.getMessageManager().getMessage("overwatch.commands.unknown-command");
-                player.sendMessage(plugin.getMessageManager().colorize(msg));
+                player.sendMessage(msg("overwatch.commands.unknown-command"));
                 break;
         }
 
@@ -96,149 +71,193 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
 
     private void handleStats(Player player, String[] args) {
         if (args.length == 1) {
-            // Show own stats
             new OverwatchStatsGUI(plugin, player, player.getUniqueId()).open();
         } else {
-            // Show other player's stats
-            String targetName = args[1];
-            Player target = Bukkit.getPlayer(targetName);
-
+            Player target = Bukkit.getPlayer(args[1]);
             if (target != null) {
                 new OverwatchStatsGUI(plugin, player, target.getUniqueId()).open();
             } else {
-                // Try to find UUID from database
-                String msg = plugin.getMessageManager().getMessage("overwatch.commands.player-not-found")
-                        .replace("%player%", targetName);
-                player.sendMessage(plugin.getMessageManager().colorize(msg));
+                player.sendMessage(msg("overwatch.commands.player-not-found", "%player%", args[1]));
             }
         }
     }
 
     private void handleNPC(Player player, String[] args) {
         if (!player.hasPermission("reportsystem.overwatch.admin")) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.no-permission");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.no-permission"));
             return;
         }
 
         if (args.length < 2) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.npc.usage");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.npc.usage"));
             return;
         }
 
-        String npcAction = args[1].toLowerCase();
-
-        switch (npcAction) {
+        switch (args[1].toLowerCase()) {
             case "create":
                 handleNPCCreate(player, args);
                 break;
-
             case "delete":
                 handleNPCDelete(player, args);
                 break;
-
             case "list":
                 handleNPCList(player);
                 break;
-
+            case "skin":
+                handleNPCSkin(player, args);
+                break;
+            case "look":
+                handleNPCLook(player, args);
+                break;
+            case "move":
+                handleNPCMove(player, args);
+                break;
+            case "name":
+                handleNPCName(player, args);
+                break;
+            case "select":
+                handleNPCSelect(player, args);
+                break;
             default:
-                String msg = plugin.getMessageManager().getMessage("overwatch.commands.npc.unknown");
-                player.sendMessage(plugin.getMessageManager().colorize(msg));
+                player.sendMessage(msg("overwatch.commands.npc.unknown"));
                 break;
         }
     }
 
+    // ============= NPC Subcommands =============
+
     private void handleNPCCreate(Player player, String[] args) {
         Location loc = player.getLocation();
-
-        // Get custom name if provided (args: /overwatch npc create [customName])
-        String customName = null;
-        if (args.length >= 3) {
-            // Join all remaining args as the custom name (supports spaces)
-            StringBuilder nameBuilder = new StringBuilder();
-            for (int i = 2; i < args.length; i++) {
-                if (i > 2) nameBuilder.append(" ");
-                nameBuilder.append(args[i]);
-            }
-            customName = nameBuilder.toString();
-        }
+        String customName = args.length >= 3 ? joinArgs(args, 2) : null;
 
         String npcId = plugin.getNPCManager().createNPC(player, loc, customName);
 
         if (npcId != null) {
-            String successMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.created");
-            player.sendMessage(plugin.getMessageManager().colorize(successMsg));
-
-            String idMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.created-id")
-                    .replace("%id%", npcId);
-            player.sendMessage(plugin.getMessageManager().colorize(idMsg));
-
-            String locMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.created-location")
-                    .replace("%world%", loc.getWorld().getName())
-                    .replace("%x%", String.format("%.1f", loc.getX()))
-                    .replace("%y%", String.format("%.1f", loc.getY()))
-                    .replace("%z%", String.format("%.1f", loc.getZ()));
-            player.sendMessage(plugin.getMessageManager().colorize(locMsg));
+            player.sendMessage(msg("overwatch.commands.npc.created"));
+            player.sendMessage(msg("overwatch.commands.npc.created-id", "%id%", npcId));
+            player.sendMessage(msg("overwatch.commands.npc.created-location",
+                    "%world%", loc.getWorld().getName(),
+                    "%x%", String.format("%.1f", loc.getX()),
+                    "%y%", String.format("%.1f", loc.getY()),
+                    "%z%", String.format("%.1f", loc.getZ())));
         } else {
-            String failMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.create-failed");
-            player.sendMessage(plugin.getMessageManager().colorize(failMsg));
+            player.sendMessage(msg("overwatch.commands.npc.create-failed"));
         }
     }
 
     private void handleNPCDelete(Player player, String[] args) {
-        if (args.length < 3) {
-            String usageMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.delete-usage");
-            player.sendMessage(plugin.getMessageManager().colorize(usageMsg));
+        String npcId = resolveNPC(player, args, 2);
+        if (npcId == null) return;
 
-            String helpMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.delete-help");
-            player.sendMessage(plugin.getMessageManager().colorize(helpMsg));
-            return;
-        }
-
-        String nameOrId = args[2];
-
-        // Find NPC by display name or ID
-        String npcId = plugin.getNPCManager().findNPCId(nameOrId);
-
-        if (npcId == null) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.npc.not-found")
-                    .replace("%id%", nameOrId);
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
-            return;
-        }
-
-        boolean success = plugin.getNPCManager().deleteNPC(npcId);
-
-        if (success) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.npc.deleted")
-                    .replace("%id%", nameOrId);
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+        if (plugin.getNPCManager().deleteNPC(npcId)) {
+            player.sendMessage(msg("overwatch.commands.npc.deleted", "%id%", args.length >= 3 ? args[2] : npcId));
         } else {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.npc.delete-failed");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.npc.delete-failed"));
         }
+    }
+
+    private void handleNPCSkin(Player player, String[] args) {
+        // /overwatch npc skin <npc> <playerName>
+        String npcId = resolveNPC(player, args, 2);
+        if (npcId == null) return;
+
+        // Determine skin player name argument position
+        int skinArgIndex = args.length >= 4 ? 3 : -1;
+        if (skinArgIndex == -1) {
+            // Maybe selected NPC, so skin name is at index 2
+            if (plugin.getNPCManager().getSelectedNPC(player.getUniqueId()) != null && args.length >= 3) {
+                skinArgIndex = 2;
+            } else {
+                player.sendMessage(msg("overwatch.commands.npc.skin-usage"));
+                return;
+            }
+        }
+
+        String skinPlayerName = args[skinArgIndex];
+        player.sendMessage(msg("overwatch.commands.npc.skin-fetching", "%player%", skinPlayerName));
+
+        final String finalNpcId = npcId;
+        SkinUtils.fetchSkin(skinPlayerName, plugin, (texture, signature) -> {
+            if (texture == null) {
+                player.sendMessage(msg("overwatch.commands.npc.skin-failed", "%player%", skinPlayerName));
+                return;
+            }
+            plugin.getNPCManager().setSkin(finalNpcId, texture, signature);
+            player.sendMessage(msg("overwatch.commands.npc.skin-success", "%player%", skinPlayerName));
+        });
+    }
+
+    private void handleNPCLook(Player player, String[] args) {
+        String npcId = resolveNPC(player, args, 2);
+        if (npcId == null) return;
+
+        plugin.getNPCManager().lookNPC(npcId, player.getEyeLocation());
+        player.sendMessage(msg("overwatch.commands.npc.look-success"));
+    }
+
+    private void handleNPCMove(Player player, String[] args) {
+        String npcId = resolveNPC(player, args, 2);
+        if (npcId == null) return;
+
+        plugin.getNPCManager().moveNPC(npcId, player.getLocation());
+        player.sendMessage(msg("overwatch.commands.npc.move-success"));
+    }
+
+    private void handleNPCName(Player player, String[] args) {
+        // /overwatch npc name <npc> <newName...> OR /overwatch npc name <newName...> (with selection)
+        String npcId = resolveNPC(player, args, 2);
+        if (npcId == null) return;
+
+        int nameStartIndex;
+        if (args.length >= 4 && plugin.getNPCManager().findNPCId(args[2]) != null) {
+            nameStartIndex = 3;
+        } else if (plugin.getNPCManager().getSelectedNPC(player.getUniqueId()) != null) {
+            nameStartIndex = 2;
+        } else {
+            player.sendMessage(msg("overwatch.commands.npc.name-usage"));
+            return;
+        }
+
+        if (nameStartIndex >= args.length) {
+            player.sendMessage(msg("overwatch.commands.npc.name-usage"));
+            return;
+        }
+
+        String newName = joinArgs(args, nameStartIndex);
+        plugin.getNPCManager().renameNPC(npcId, newName);
+        player.sendMessage(msg("overwatch.commands.npc.name-success", "%name%", newName));
+    }
+
+    private void handleNPCSelect(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(msg("overwatch.commands.npc.select-usage"));
+            return;
+        }
+
+        String npcId = plugin.getNPCManager().findNPCId(args[2]);
+        if (npcId == null) {
+            player.sendMessage(msg("overwatch.commands.npc.not-found", "%id%", args[2]));
+            return;
+        }
+
+        plugin.getNPCManager().selectNPC(player.getUniqueId(), npcId);
+        NPCManager.NPCData data = plugin.getNPCManager().getActiveNPCs().get(npcId);
+        String name = data != null && data.getDisplayName() != null ? data.getDisplayName() : npcId.substring(0, 8);
+        player.sendMessage(msg("overwatch.commands.npc.select-success", "%name%", name));
     }
 
     private void handleNPCList(Player player) {
         var npcs = plugin.getNPCManager().getActiveNPCs();
 
         if (npcs.isEmpty()) {
-            String emptyMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-empty");
-            player.sendMessage(plugin.getMessageManager().colorize(emptyMsg));
-
-            String helpMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-help");
-            player.sendMessage(plugin.getMessageManager().colorize(helpMsg));
+            player.sendMessage(msg("overwatch.commands.npc.list-empty"));
+            player.sendMessage(msg("overwatch.commands.npc.list-help"));
             return;
         }
 
-        String header = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-header");
-        player.sendMessage(plugin.getMessageManager().colorize(header));
-
-        String title = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-title");
-        player.sendMessage(plugin.getMessageManager().colorize(title));
-
-        player.sendMessage(plugin.getMessageManager().colorize(header));
+        player.sendMessage(msg("overwatch.commands.npc.list-header"));
+        player.sendMessage(msg("overwatch.commands.npc.list-title"));
+        player.sendMessage(msg("overwatch.commands.npc.list-header"));
 
         int count = 1;
         for (var entry : npcs.entrySet()) {
@@ -248,111 +267,122 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
 
             player.sendMessage("");
 
-            // Display name varsa göster, yoksa ID'nin ilk 8 karakteri
             String displayText = npcData.getDisplayName() != null && !npcData.getDisplayName().isEmpty()
-                    ? npcData.getDisplayName()
-                    : npcId.substring(0, 8) + "...";
+                    ? npcData.getDisplayName() : npcId.substring(0, 8) + "...";
 
-            String numberMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-number")
-                    .replace("%num%", String.valueOf(count))
-                    .replace("%id%", displayText);
-            player.sendMessage(plugin.getMessageManager().colorize(numberMsg));
+            player.sendMessage(msg("overwatch.commands.npc.list-number", "%num%", String.valueOf(count), "%id%", displayText));
+            player.sendMessage(msg("overwatch.commands.npc.list-world", "%world%", loc.getWorld().getName()));
+            player.sendMessage(msg("overwatch.commands.npc.list-location",
+                    "%x%", String.format("%.1f", loc.getX()),
+                    "%y%", String.format("%.1f", loc.getY()),
+                    "%z%", String.format("%.1f", loc.getZ())));
 
-            String worldMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-world")
-                    .replace("%world%", loc.getWorld().getName());
-            player.sendMessage(plugin.getMessageManager().colorize(worldMsg));
-
-            String locMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-location")
-                    .replace("%x%", String.format("%.1f", loc.getX()))
-                    .replace("%y%", String.format("%.1f", loc.getY()))
-                    .replace("%z%", String.format("%.1f", loc.getZ()));
-            player.sendMessage(plugin.getMessageManager().colorize(locMsg));
-
-            String deleteMsg = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-delete")
-                    .replace("%id%", npcId);
-            player.sendMessage(plugin.getMessageManager().colorize(deleteMsg));
+            String deleteName = npcData.getDisplayName() != null && !npcData.getDisplayName().isEmpty()
+                    ? npcData.getDisplayName() : npcId;
+            player.sendMessage(msg("overwatch.commands.npc.list-delete", "%id%", deleteName));
 
             count++;
         }
 
-        String footer = plugin.getMessageManager().getMessage("overwatch.commands.npc.list-footer");
-        player.sendMessage(plugin.getMessageManager().colorize(footer));
+        player.sendMessage(msg("overwatch.commands.npc.list-footer"));
     }
 
     private void handleAddQueue(Player player, String[] args) {
         if (!player.hasPermission("reportsystem.overwatch.admin")) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.no-permission");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.no-permission"));
             return;
         }
 
         if (args.length < 2) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.addqueue-usage");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.addqueue-usage"));
             return;
         }
 
         try {
             int reportId = Integer.parseInt(args[1]);
             int priority = args.length >= 3 ? Integer.parseInt(args[2]) : 0;
-
             plugin.getOverwatchManager().addReportToQueue(reportId, priority);
-
-            String successMsg = plugin.getMessageManager().getMessage("overwatch.commands.addqueue-success")
-                    .replace("%id%", String.valueOf(reportId));
-            player.sendMessage(plugin.getMessageManager().colorize(successMsg));
-
-            String priorityMsg = plugin.getMessageManager().getMessage("overwatch.commands.addqueue-priority")
-                    .replace("%priority%", String.valueOf(priority));
-            player.sendMessage(plugin.getMessageManager().colorize(priorityMsg));
-
+            player.sendMessage(msg("overwatch.commands.addqueue-success", "%id%", String.valueOf(reportId)));
+            player.sendMessage(msg("overwatch.commands.addqueue-priority", "%priority%", String.valueOf(priority)));
         } catch (NumberFormatException e) {
-            String msg = plugin.getMessageManager().getMessage("overwatch.commands.invalid-number");
-            player.sendMessage(plugin.getMessageManager().colorize(msg));
+            player.sendMessage(msg("overwatch.commands.invalid-number"));
         }
     }
 
     private void showHelp(Player player) {
-        String header = plugin.getMessageManager().getMessage("overwatch.commands.help.header");
-        player.sendMessage(plugin.getMessageManager().colorize(header));
-
-        String title = plugin.getMessageManager().getMessage("overwatch.commands.help.title");
-        player.sendMessage(plugin.getMessageManager().colorize(title));
-
-        player.sendMessage(plugin.getMessageManager().colorize(header));
+        player.sendMessage(msg("overwatch.commands.help.header"));
+        player.sendMessage(msg("overwatch.commands.help.title"));
+        player.sendMessage(msg("overwatch.commands.help.header"));
         player.sendMessage("");
-
-        String cmd1 = plugin.getMessageManager().getMessage("overwatch.commands.help.cmd-menu");
-        player.sendMessage(plugin.getMessageManager().colorize(cmd1));
-
-        String cmd2 = plugin.getMessageManager().getMessage("overwatch.commands.help.cmd-stats");
-        player.sendMessage(plugin.getMessageManager().colorize(cmd2));
-
-        String cmd3 = plugin.getMessageManager().getMessage("overwatch.commands.help.cmd-leaderboard");
-        player.sendMessage(plugin.getMessageManager().colorize(cmd3));
+        player.sendMessage(msg("overwatch.commands.help.cmd-menu"));
+        player.sendMessage(msg("overwatch.commands.help.cmd-stats"));
+        player.sendMessage(msg("overwatch.commands.help.cmd-leaderboard"));
         player.sendMessage("");
 
         if (player.hasPermission("reportsystem.overwatch.admin")) {
-            String adminTitle = plugin.getMessageManager().getMessage("overwatch.commands.help.admin-title");
-            player.sendMessage(plugin.getMessageManager().colorize(adminTitle));
-
-            String adminCmd1 = plugin.getMessageManager().getMessage("overwatch.commands.help.admin-npc-create");
-            player.sendMessage(plugin.getMessageManager().colorize(adminCmd1));
-
-            String adminCmd2 = plugin.getMessageManager().getMessage("overwatch.commands.help.admin-npc-delete");
-            player.sendMessage(plugin.getMessageManager().colorize(adminCmd2));
-
-            String adminCmd3 = plugin.getMessageManager().getMessage("overwatch.commands.help.admin-npc-list");
-            player.sendMessage(plugin.getMessageManager().colorize(adminCmd3));
-
-            String adminCmd4 = plugin.getMessageManager().getMessage("overwatch.commands.help.admin-addqueue");
-            player.sendMessage(plugin.getMessageManager().colorize(adminCmd4));
+            player.sendMessage(msg("overwatch.commands.help.admin-title"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-create"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-delete"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-list"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-skin"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-look"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-move"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-name"));
+            player.sendMessage(msg("overwatch.commands.help.admin-npc-select"));
+            player.sendMessage(msg("overwatch.commands.help.admin-addqueue"));
             player.sendMessage("");
         }
 
-        String footer = plugin.getMessageManager().getMessage("overwatch.commands.help.footer");
-        player.sendMessage(plugin.getMessageManager().colorize(footer));
+        player.sendMessage(msg("overwatch.commands.help.footer"));
     }
+
+    // ============= Helpers =============
+
+    /**
+     * Resolve NPC ID from args or selected NPC. Sends error message if not found.
+     */
+    private String resolveNPC(Player player, String[] args, int argIndex) {
+        String npcId = null;
+
+        // Try from argument
+        if (args.length > argIndex) {
+            npcId = plugin.getNPCManager().findNPCId(args[argIndex]);
+        }
+
+        // Try from selection
+        if (npcId == null) {
+            npcId = plugin.getNPCManager().getSelectedNPC(player.getUniqueId());
+        }
+
+        if (npcId == null) {
+            if (args.length > argIndex) {
+                player.sendMessage(msg("overwatch.commands.npc.not-found", "%id%", args[argIndex]));
+            } else {
+                player.sendMessage(msg("overwatch.commands.npc.select-none"));
+            }
+        }
+
+        return npcId;
+    }
+
+    private String joinArgs(String[] args, int from) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < args.length; i++) {
+            if (i > from) sb.append(" ");
+            sb.append(args[i]);
+        }
+        return sb.toString();
+    }
+
+    private String msg(String key, String... replacements) {
+        String message = plugin.getMessageManager().getMessage(key);
+        for (int i = 0; i < replacements.length - 1; i += 2) {
+            message = message.replace(replacements[i], replacements[i + 1]);
+        }
+        return plugin.getMessageManager().colorize(message);
+    }
+
+    // ============= Tab Complete =============
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
@@ -360,32 +390,41 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             completions.addAll(Arrays.asList("stats", "leaderboard", "help"));
-
             if (sender.hasPermission("reportsystem.overwatch.admin")) {
                 completions.addAll(Arrays.asList("npc", "addqueue"));
             }
         } else if (args.length == 2) {
             if (args[0].equalsIgnoreCase("npc")) {
-                completions.addAll(Arrays.asList("create", "delete", "list"));
+                completions.addAll(Arrays.asList("create", "delete", "list", "skin", "look", "move", "name", "select"));
             } else if (args[0].equalsIgnoreCase("stats")) {
-                // Add online player names
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     completions.add(p.getName());
                 }
             }
         } else if (args.length == 3) {
-            if (args[0].equalsIgnoreCase("npc") && args[1].equalsIgnoreCase("delete")) {
-                // Add NPC IDs
-                for (String npcId : plugin.getNPCManager().getActiveNPCs().keySet()) {
-                    completions.add(npcId);
+            if (args[0].equalsIgnoreCase("npc")) {
+                String sub = args[1].toLowerCase();
+                if (Arrays.asList("delete", "skin", "look", "move", "name", "select").contains(sub)) {
+                    // Suggest NPC display names
+                    for (var entry : plugin.getNPCManager().getActiveNPCs().values()) {
+                        String name = entry.getDisplayName();
+                        if (name != null && !name.isEmpty()) {
+                            completions.add(name);
+                        }
+                    }
+                }
+            }
+        } else if (args.length == 4) {
+            if (args[0].equalsIgnoreCase("npc") && args[1].equalsIgnoreCase("skin")) {
+                // Suggest online player names for skin
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    completions.add(p.getName());
                 }
             }
         }
 
-        // Filter based on what user has typed
         String input = args[args.length - 1].toLowerCase();
         completions.removeIf(s -> !s.toLowerCase().startsWith(input));
-
         return completions;
     }
 }

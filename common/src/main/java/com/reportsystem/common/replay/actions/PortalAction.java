@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Portal kullanımı (nether, end)
  */
 public class PortalAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum PortalType {
         NETHER,         // Nether portal

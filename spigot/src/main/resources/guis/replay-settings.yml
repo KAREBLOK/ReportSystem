@@ -1,0 +1,91 @@
+# Replay Ayarları GUI
+title: "&8&nReplay Ayarları"
+size: 27
+
+# Arka plan
+background:
+  enabled: false
+
+# Durum
+status-playing: "&aOynuyor"
+status-paused: "&cDuraklatıldı"
+
+# 1. şahıs çıkış mesajı
+first-person-exit-message: "&e&lEğilme &7tuşuna basarak 1. şahıstan çıkabilirsiniz."
+
+# Öğeler
+items:
+  info:
+    slot: 10
+    material: PAPER
+    name: "&eReplay Bilgileri"
+    lore:
+      - ''
+      - ' &8▪ &7Oyuncu: &a%player%'
+      - ' &8▪ &7Süre: &a%elapsed% / %total%'
+      - ' &8▪ &7İlerleme: &a%progress%'
+      - ' &8▪ &7Aksiyon: &a%current% / %total_actions%'
+      - ' &8▪ &7Durum: %status%'
+      - ' &8▪ &7Hız: &a%speed%x'
+      - ''
+
+  glow:
+    enabled:
+      material: SPECTRAL_ARROW
+      name: "&aGlow: AÇIK"
+      lore:
+        - ''
+        - '&7Şüphelinin etrafında glow efekti'
+        - ''
+        - '&e► Kapatmak için tıkla'
+    disabled:
+      material: ARROW
+      name: "&7Glow: KAPALI"
+      lore:
+        - ''
+        - '&7Şüphelinin etrafında glow efekti'
+        - ''
+        - '&e► Açmak için tıkla'
+
+  night-vision:
+    enabled:
+      material: GOLDEN_CARROT
+      name: "&aGece Görüşü: AÇIK"
+      lore:
+        - ''
+        - '&7Karanlık alanlarda daha iyi görün'
+        - ''
+        - '&e► Kapatmak için tıkla'
+    disabled:
+      material: CARROT
+      name: "&7Gece Görüşü: KAPALI"
+      lore:
+        - ''
+        - '&7Karanlık alanlarda daha iyi görün'
+        - ''
+        - '&e► Açmak için tıkla'
+
+  first-person:
+    enabled:
+      material: ENDER_EYE
+      name: "&a1. Şahıs: AÇIK"
+      lore:
+        - ''
+        - '&7Şüphelinin gözünden izle'
+        - ''
+        - '&e► Serbest kameraya dön'
+    disabled:
+      material: ENDER_PEARL
+      name: "&71. Şahıs: KAPALI"
+      lore:
+        - ''
+        - '&7Şüphelinin gözünden izle'
+        - ''
+        - '&e► 1. şahıs görünüme geç'
+
+  close:
+    slot: 22
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Kapat"

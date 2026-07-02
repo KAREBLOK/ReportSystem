@@ -32,32 +32,14 @@ public class MySQLDatabase implements Database {
 
         this.dataSource = new HikariDataSource(hikariConfig);
 
-        // DAO'ları oluştur
-        this.reportDAO = new MySQLReportDAO(
-                config.getHost(),
-                config.getPort(),
-                config.getDatabase(),
-                config.getUsername(),
-                config.getPassword()
-        );
-
-        this.replayDAO = new MySQLReplayDAO(
-                config.getHost(),
-                config.getPort(),
-                config.getDatabase(),
-                config.getUsername(),
-                config.getPassword()
-        );
+        // DAO'ları oluştur (paylaşılan connection pool kullanarak)
+        this.reportDAO = new MySQLReportDAO(dataSource);
+        this.replayDAO = new MySQLReplayDAO(dataSource);
     }
 
     @Override
     public void close() throws SQLException {
-        if (reportDAO != null) {
-            reportDAO.close();
-        }
-        if (replayDAO != null) {
-            replayDAO.close();
-        }
+        // Pool kapatma sadece burada yapılır, DAO'lar pool'u kapatmaz
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
         }

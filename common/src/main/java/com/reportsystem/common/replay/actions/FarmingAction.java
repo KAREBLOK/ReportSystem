@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Tarım mekaniği (bone meal, hoe, harvest, farmland trample)
  */
 public class FarmingAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum FarmingType {
         BONE_MEAL,      // Kemik tozu kullanma

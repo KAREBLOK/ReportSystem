@@ -8,6 +8,7 @@ import java.util.UUID;
  * Spawn egg ile entity spawn edildiğinde özellikleri kaydetmek için
  */
 public class EntitySpawnAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final UUID entityUuid;
     private final String entityType;

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.BrewAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -57,7 +58,7 @@ public class BrewingListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Brewing completed: " + ingredientName +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Brewing completed: " + ingredientName +
                         " at " + block.getLocation());
                 break; // Sadece en yakın oyuncu kaydeder
             }

@@ -91,13 +91,7 @@ public class ReportSystemBungee extends Plugin {
             createDatabaseIfNotExists(dbConfig);
             this.database = new MySQLDatabase(dbConfig);
             createAllTables();
-            this.reportDAO = new MySQLReportDAO(
-                    dbConfig.getHost(),
-                    dbConfig.getPort(),
-                    dbConfig.getDatabase(),
-                    dbConfig.getUsername(),
-                    dbConfig.getPassword()
-            );
+            this.reportDAO = new MySQLReportDAO(this.database.getDataSource());
             this.reportService = new ReportService(reportDAO);
             this.punishmentManager = new BungeePunishmentManager(this);
             getProxy().getPluginManager().registerListener(this, punishmentManager);
@@ -145,7 +139,9 @@ public class ReportSystemBungee extends Plugin {
             """;
             stmt.execute(reportsTable);
 
-            // Global punishments tablosu (Doğru)
+            // Global punishments tablosu
+            // NOT: MySQL partial index (WHERE active = TRUE) desteklemedigi icin
+            // ayni oyuncuya birden fazla aktif ceza eklenebilir. Uygulama katmaninda kontrol edilmeli.
             String punishmentsTable = """
                 CREATE TABLE IF NOT EXISTS global_punishments (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -189,8 +185,7 @@ public class ReportSystemBungee extends Plugin {
             getLogger().info("Tüm BungeeCord tabloları başarıyla kontrol edildi/oluşturuldu!");
 
         } catch (SQLException e) {
-            getLogger().severe("Tablo oluşturma hatası: " + e.getMessage());
-            e.printStackTrace();
+            getLogger().log(Level.SEVERE, "Tablo oluşturma hatası!", e);
         }
     }
 

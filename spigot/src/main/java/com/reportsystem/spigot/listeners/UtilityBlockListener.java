@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.UtilityBlockAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -81,7 +82,7 @@ public class UtilityBlockListener implements Listener {
                         );
                         session.addAction(action);
 
-                        plugin.getLogger().info("[RECORDING-DEBUG] Utility block used: " + utilityType.name() +
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Utility block used: " + utilityType.name() +
                                 " at " + block.getLocation());
                     }
                 }

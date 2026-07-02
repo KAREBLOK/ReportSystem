@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Note block sesi
  */
 public class NoteBlockAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final int blockX, blockY, blockZ;
     private final String instrument;

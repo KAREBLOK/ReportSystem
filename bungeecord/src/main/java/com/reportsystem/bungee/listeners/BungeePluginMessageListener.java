@@ -110,8 +110,11 @@ public class BungeePluginMessageListener implements Listener {
                     // Rapor oluşturan oyuncuya onay mesajı
                     ProxiedPlayer reporter = ProxyServer.getInstance().getPlayer(reporterName);
                     if (reporter != null) {
-                        reporter.sendMessage(ChatColor.GREEN + "✓ Rapor başarıyla oluşturuldu! (ID: #" +
-                                reportId + ")");
+                        String createdMsg = ChatColor.translateAlternateColorCodes('&',
+                                plugin.getConfig().getString("messages.report.created",
+                                        "&a✓ Rapor başarıyla oluşturuldu! (ID: #%id%)"))
+                                .replace("%id%", String.valueOf(reportId));
+                        reporter.sendMessage(createdMsg);
                     }
 
                     // Target oyuncunun sunucusuna report ID'yi gönder
@@ -135,25 +138,32 @@ public class BungeePluginMessageListener implements Listener {
 
                 ProxiedPlayer reporter = ProxyServer.getInstance().getPlayer(reporterName);
                 if (reporter != null) {
-                    reporter.sendMessage(ChatColor.RED + "✗ " + targetName + " adlı oyuncuyu daha fazla rapor edemezsiniz! " +
-                            ChatColor.GRAY + "(Limit: " + maxReportsPerPlayer + ")");
+                    String limitMsg = ChatColor.translateAlternateColorCodes('&',
+                            plugin.getConfig().getString("messages.report.limit-reached",
+                                    "&c✗ %player% adlı oyuncuyu daha fazla rapor edemezsiniz! &7(Limit: %limit%)"))
+                            .replace("%player%", targetName)
+                            .replace("%limit%", String.valueOf(maxReportsPerPlayer));
+                    reporter.sendMessage(limitMsg);
                 }
             } else {
                 plugin.getLogger().severe("[REPORT] Invalid report ID returned: " + reportId);
 
                 ProxiedPlayer reporter = ProxyServer.getInstance().getPlayer(reporterName);
                 if (reporter != null) {
-                    reporter.sendMessage(ChatColor.RED + "Rapor oluşturulurken bir hata oluştu!");
+                    reporter.sendMessage(ChatColor.translateAlternateColorCodes('&',
+                            plugin.getConfig().getString("messages.report.error",
+                                    "&cRapor oluşturulurken bir hata oluştu!")));
                 }
             }
 
         }).exceptionally(ex -> {
             plugin.getLogger().severe("[REPORT] Report creation failed: " + ex.getMessage());
-            ex.printStackTrace();
 
             ProxiedPlayer reporter = ProxyServer.getInstance().getPlayer(reporterName);
             if (reporter != null) {
-                reporter.sendMessage(ChatColor.RED + "Rapor oluşturulurken bir hata oluştu!");
+                reporter.sendMessage(ChatColor.translateAlternateColorCodes('&',
+                        plugin.getConfig().getString("messages.report.error",
+                                "&cRapor oluşturulurken bir hata oluştu!")));
             }
             return null;
         });
@@ -194,7 +204,10 @@ public class BungeePluginMessageListener implements Listener {
             // Önce target sunucunun var olup olmadığını kontrol et
             if (ProxyServer.getInstance().getServerInfo(reportServerName) == null) {
                 plugin.getLogger().severe("[REPLAY] Target server not found: " + reportServerName);
-                player.sendMessage(ChatColor.RED + "Hedef sunucu bulunamadı: " + reportServerName);
+                player.sendMessage(ChatColor.translateAlternateColorCodes('&',
+                        plugin.getConfig().getString("messages.report.server-not-found",
+                                "&cHedef sunucu bulunamadı: %server%"))
+                        .replace("%server%", reportServerName));
                 return;
             }
 

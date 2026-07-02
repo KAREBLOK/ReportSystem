@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Painting ve Item Frame yerleştirme/kırma
  */
 public class HangingAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum HangingType {
         PAINTING,

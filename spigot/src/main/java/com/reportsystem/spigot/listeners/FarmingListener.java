@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.FarmingAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -46,7 +47,7 @@ public class FarmingListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Bone meal used on: " + block.getType().name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bone meal used on: " + block.getType().name());
             }
         } catch (Exception e) {
             plugin.getLogger().warning("[FarmingListener] Error in onBoneMeal: " + e.getMessage());
@@ -81,7 +82,7 @@ public class FarmingListener implements Listener {
                         );
                         session.addAction(action);
 
-                        plugin.getLogger().info("[RECORDING-DEBUG] Hoe used at: " + block.getLocation());
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Hoe used at: " + block.getLocation());
                     }
                 }
             }
@@ -118,7 +119,7 @@ public class FarmingListener implements Listener {
                     );
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Crop harvested: " + type.name());
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Crop harvested: " + type.name());
                 }
             }
         } catch (Exception e) {

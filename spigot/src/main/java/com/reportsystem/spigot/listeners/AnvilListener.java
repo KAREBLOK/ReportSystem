@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.AnvilAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -63,7 +64,7 @@ public class AnvilListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Anvil " + actionType.name().toLowerCase() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Anvil " + actionType.name().toLowerCase() +
                         ": " + result.getType().name() + " (cost: " + repairCost + ")");
             }
         }

@@ -1,0 +1,56 @@
+# Overwatch Ana Menü GUI
+title: "&8&nOverwatch"
+
+# Oyuncu başlığı (slot 4)
+player-head:
+  name: "&b%player%"
+  lore-level: " &8▪ &7Seviye: &a%level%"
+  lore-rank: " &8▪ &7Rütbe: %rank_color%&l%rank%"
+  lore-xp: " &8▪ &7XP: &a%xp%"
+  lore-total: " &8▪ &7İnceleme: &a%total%"
+
+# İncelemeye başla (slot 20)
+start-review:
+  name: "&6&lİncelemeye Başla"
+  lore-desc1: "&7Sıradaki raporu incele"
+  lore-desc2: "&7ve kararını ver."
+  lore-pending: " &8▪ &7Bekleyen: &e%count% rapor"
+  lore-click: "&e► Başlamak için tıkla"
+
+# İstatistiklerim (slot 22)
+stats:
+  name: "&b&lİstatistiklerim"
+  lore-level: " &8▪ &7Seviye: &a%level%"
+  lore-rank: " &8▪ &7Rütbe: %rank_color%&l%rank%"
+  lore-xp: " &8▪ &7XP: &a%xp%"
+  lore-total: " &8▪ &7Toplam: &a%total%"
+  lore-guilty: " &8▪ &7Suçlu: &c%guilty%"
+  lore-innocent: " &8▪ &7Masum: &a%innocent%"
+  lore-skip: " &8▪ &7Atlandı: &e%skip%"
+  lore-no-stats1: "&7Henüz inceleme yapmadın."
+  lore-no-stats2: "&7İnceleme yapmak için"
+  lore-no-stats3: "&eİncelemeye Başla &7butonuna tıkla."
+  lore-click: "&e► Detaylar için tıkla"
+
+# Liderlik tablosu (slot 24)
+leaderboard:
+  name: "&e&lLiderlik Tablosu"
+  lore-desc1: "&7En iyi incelemecileri"
+  lore-desc2: "&7gör ve sıralamana bak."
+  lore-click: "&e► Göz atmak için tıkla"
+
+# Nasıl çalışır (slot 31)
+tutorial:
+  name: "&a&lNasıl Çalışır?"
+  lore-header: "&8Overwatch Sistemi:"
+  lore-step1: " &8▪ &7Replay izle"
+  lore-step2: " &8▪ &7Kararını ver"
+  lore-step3: " &8▪ &7XP kazan"
+  lore-step4: " &8▪ &7Rütbe atla"
+  lore-consensus-header: ""
+  lore-consensus-desc1: "&8Yeterli oy toplandığında"
+  lore-consensus-desc2: "&8sonuç belirlenir."
+  lore-click: "&e► Detaylı bilgi için tıkla"
+
+# Geri (slot 40)
+back: "&8←"

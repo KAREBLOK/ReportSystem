@@ -1,0 +1,150 @@
+# ReportSystem Velocity Configuration
+
+# ======================
+# Database Settings
+# ======================
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    database: "reportsystem"
+    username: "root"
+    password: "CHANGE_THIS_PASSWORD"
+
+    # Connection pool
+    pool:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+
+# ======================
+# Network Settings
+# ======================
+network:
+  # Staff notification settings
+  notifications:
+    # Broadcast to all servers
+    cross-server: true
+
+    # Only notify staff on specific servers
+    # Leave empty for all servers
+    staff-servers: []
+    # - "hub"
+    # - "staff"
+
+  # Punishment sync
+  punishment-sync:
+    # Sync punishments across all servers
+    enabled: true
+
+    # Broadcast punishment messages
+    broadcast: true
+
+# ======================
+# Report Settings
+# ======================
+reports:
+  # Allow cross-server reports
+  cross-server: true
+
+  # Require player to be online to be reported
+  require-online: false
+
+  # Auto-assign reports to staff
+  auto-assign: false
+
+  # Maximum reports per player (same reporter to same reported player)
+  # Set to -1 to disable
+  max-reports-per-player: 3
+
+# ======================
+# Discord Integration
+# ======================
+discord:
+  enabled: false
+
+  # Webhook URLs
+  webhooks:
+    reports: ""
+    punishments: ""
+
+  # Embed settings
+  embeds:
+    color: "#FF5555"
+    footer: "ReportSystem"
+    timestamp: true
+
+  # Ping roles
+  ping-roles:
+    - "@Staff"
+    - "@Admin"
+
+# ======================
+# Debug Settings
+# ======================
+debug:
+  # Enable debug logging
+  enabled: false
+
+  # Log database queries
+  log-queries: false
+
+  # Log plugin messages
+  log-messages: false
+
+# ======================
+# Messages
+# ======================
+messages:
+  # Ban messages
+  ban:
+    kick-temp: "&cSunucudan yasaklandiniz!\n\n&7Sebep: &f%reason%\n&7Sure: &f%duration%\n&7Yetkili: &f%staff%"
+    kick-permanent: "&cSunucudan kalici olarak yasaklandiniz!\n\n&7Sebep: &f%reason%\n&7Yetkili: &f%staff%"
+    login-temp: "&cSunucudan yasaklandiniz!\n\n&7Sebep: &f%reason%\n&7Kalan sure: &f%duration%"
+    login-permanent: "&cSunucudan kalici olarak yasaklandiniz!\n\n&7Sebep: &f%reason%\n\n&8Ban kaldirma basvurusu icin: discord.gg/sunucu"
+    login-denied: "&cBu sunucudan yasaklandiniz!"
+
+  # Mute messages
+  mute:
+    player-message: "&c\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\n&c          SUSTURULDUNUZ!\n\n&7  Sebep: &f%reason%\n&7  Sure: &f%duration%\n&7  Yetkili: &f%staff%\n&c\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC"
+
+  # Kick messages
+  kick:
+    player-message: "&cSunucudan atildiniz!\n\n&7Sebep: &f%reason%\n&7Atan yetkili: &f%staff%\n\n&aTekrar girebilirsiniz."
+
+  # Warn messages
+  warn:
+    player-message: "&6\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\n&6          \u26A0 UYARI \u26A0\n\n&c  Bir yetkili tarafindan uyarildiniz!\n\n&7  Sebep: &f%reason%\n&7  Yetkili: &f%staff%\n\n&c  Kurallari ihlal etmeye devam ederseniz\n&c  daha agir cezalar alabilirsiniz!\n&6\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC\u25AC"
+
+  # Staff notification messages
+  notify:
+    ban-temp: "&c[CEZA] &f%player% &csunucudan %duration% sureligine yasaklandi!"
+    ban-permanent: "&c[CEZA] &f%player% &csunucudan kalici olarak yasaklandi!"
+    mute-temp: "&6[CEZA] &f%player% &6%duration% sureligine susturuldu!"
+    mute-permanent: "&6[CEZA] &f%player% &6kalici olarak susturuldu!"
+    kick: "&e[CEZA] &f%player% &esunucudan atildi!"
+    warn: "&e[CEZA] &f%player% &euyari aldi!"
+    reason: "&7Sebep: &f%reason%"
+    staff: "&7Yetkili: &f%staff%"
+
+  # Report messages
+  report:
+    created: "&a\u2713 Rapor basariyla olusturuldu! (ID: #%id%)"
+    limit-reached: "&c\u2717 %player% adli oyuncuyu daha fazla rapor edemezsiniz! (Limit: %limit%)"
+    error: "&cRapor olusturulurken bir hata olustu!"
+    server-not-found: "&cHedef sunucu bulunamadi: %server%"
+
+  # Report notification (staff)
+  report-notify:
+    format: "&8[&6Rapor&8] &7(%server%) &f%reporter% &7\u279C &c%reported%\n&7Sebep: &f%reason% &8(#%id%)"
+
+  # Duration format
+  duration:
+    permanent: "Kalici"
+    days: "gun"
+    hours: "saat"
+    minutes: "dakika"
+    seconds: "saniye"
+    zero: "0 saniye"
+
+  # Default reason
+  unknown-reason: "Bilinmeyen sebep"

@@ -1,43 +1,44 @@
-# Replay Info GUI Configuration
-# Shows detailed information about a replay
-
-title: "&8Replay Bilgileri"
+# Replay Bilgi GUI
+title: "&8&nReplay Bilgileri"
 size: 27
 
-# Info item
+# Arka plan
+background:
+  enabled: false
+
+# Bilgi öğesi
 info:
   slot: 13
-  material: BOOK
+  material: PAPER
   name: "&6📊 Replay Detayları"
   lore:
-    - ""
-    - "&7Oyuncu: &f%player%"
-    - "&7Rapor ID: &f#%report_id%"
-    - "&7Süre: &f%duration%"
-    - "&7Aksiyon Sayısı: &f%actions%"
-    - "&7Oluşturma: &f%created%"
-    - "&7İzlenme: &f%views% kez"
-    - ""
-    - "&7Dünya: &f%world%"
-    - "&7Sıkıştırılmış: &f%compressed%"
+    - ''
+    - ' &8▪ &7Oyuncu: &a%player%'
+    - ' &8▪ &7Rapor ID: &a#%report_id%'
+    - ' &8▪ &7Süre: &a%duration%'
+    - ' &8▪ &7Aksiyon: &a%actions%'
+    - ' &8▪ &7Oluşturma: &a%created%'
+    - ' &8▪ &7İzlenme: &a%views% kez'
+    - ''
+    - ' &8▪ &7Dünya: &a%world%'
+    - ' &8▪ &7Sıkıştırılmış: &a%compressed%'
+    - ''
 
-# Action buttons
+# İşlem butonları
 actions:
   watch:
     slot: 11
-    material: ENDER_EYE
-    name: "&d▶ İzle"
+    material: SUNFLOWER
+    name: "&d&l▶ İzle"
     lore:
-      - "&7Bu replay'i izle"
+      - ''
+      - '&7Bu replay''i izle.'
+      - ''
+      - '&e► Tıkla'
 
   close:
     slot: 15
-    material: BARRIER
-    name: "&c✖ Kapat"
+    material: ARROW
+    name: "&8←"
     lore:
-      - "&7Pencereyi kapat"
-
-# Background
-background:
-  material: GRAY_STAINED_GLASS_PANE
-  name: " "
+      - '&7Kapat'
