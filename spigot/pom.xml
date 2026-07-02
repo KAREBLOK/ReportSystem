@@ -15,6 +15,11 @@
     <packaging>jar</packaging>
 
     <repositories>
+        <!-- CodeMC (PacketEvents resmi deposu) -->
+        <repository>
+            <id>codemc-releases</id>
+            <url>https://repo.codemc.io/repository/maven-releases/</url>
+        </repository>
         <!-- JitPack Repository -->
         <repository>
             <id>jitpack.io</id>
@@ -58,7 +63,7 @@
         <dependency>
             <groupId>com.github.retrooper</groupId>
             <artifactId>packetevents-api</artifactId>
-            <version>2.12.1</version>
+            <version>2.13.0</version>
             <scope>provided</scope>
         </dependency>
 
@@ -66,7 +71,7 @@
         <dependency>
             <groupId>com.github.retrooper</groupId>
             <artifactId>packetevents-spigot</artifactId>
-            <version>2.12.1</version>
+            <version>2.13.0</version>
             <scope>provided</scope>
         </dependency>
 
@@ -110,33 +115,6 @@
             <version>1.2.4.0</version>
             <scope>provided</scope>
         </dependency>
-
-        <!-- NPC Lib -->
-        <dependency>
-            <groupId>io.github.juliarn</groupId>
-            <artifactId>npc-lib-bukkit</artifactId>
-            <version>3.0.0-beta13</version>
-            <scope>compile</scope>
-            <exclusions>
-                <!-- PacketEvents zaten provided olarak tanımlı, transitive SNAPSHOT çekmesini engelle -->
-                <exclusion>
-                    <groupId>com.github.retrooper</groupId>
-                    <artifactId>packetevents-spigot</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.github.retrooper</groupId>
-                    <artifactId>packetevents-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>io.github.retrooper</groupId>
-                    <artifactId>packetevents-spigot</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>io.github.retrooper</groupId>
-                    <artifactId>packetevents-api</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
     </dependencies>
 
     <build>
@@ -159,16 +137,6 @@
                         </excludes>
                     </artifactSet>
                     <relocations>
-                        <!-- NPC Lib -->
-                        <relocation>
-                            <pattern>io.github.juliarn</pattern>
-                            <shadedPattern>com.reportsystem.spigot.libs.npclib</shadedPattern>
-                        </relocation>
-                        <!-- Caffeine (NPC lib dependency) -->
-                        <relocation>
-                            <pattern>com.github.benmanes.caffeine</pattern>
-                            <shadedPattern>com.reportsystem.spigot.libs.caffeine</shadedPattern>
-                        </relocation>
                         <!-- bStats -->
                         <relocation>
                             <pattern>org.bstats</pattern>

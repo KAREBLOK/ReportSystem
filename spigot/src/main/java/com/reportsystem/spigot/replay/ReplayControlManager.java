@@ -77,7 +77,7 @@ public class ReplayControlManager {
         // Replay izleme moduna gec
         player.getInventory().clear();
         player.setGameMode(GameMode.ADVENTURE);
-        player.setHealth(player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue());
+        player.setHealth(com.reportsystem.spigot.utils.AttributeCompat.maxHealth(player));
         player.setFoodLevel(20);
         player.setSaturation(20.0f);
         player.setFireTicks(0);
@@ -373,7 +373,7 @@ public class ReplayControlManager {
         Integer savedFire = savedFireTicks.remove(playerUUID);
 
         if (savedHP != null) {
-            double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
+            double maxHealth = com.reportsystem.spigot.utils.AttributeCompat.maxHealth(player);
             player.setHealth(Math.min(savedHP, maxHealth));
         }
         if (savedFood != null) player.setFoodLevel(savedFood);

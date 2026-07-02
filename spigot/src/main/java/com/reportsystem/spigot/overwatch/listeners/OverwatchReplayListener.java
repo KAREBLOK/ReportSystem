@@ -421,7 +421,7 @@ public class OverwatchReplayListener implements Listener {
             player.setGameMode(gameMode);
             player.setAllowFlight(allowFlight);
             if (allowFlight) player.setFlying(flying);
-            double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
+            double maxHealth = com.reportsystem.spigot.utils.AttributeCompat.maxHealth(player);
             player.setHealth(Math.min(health, maxHealth));
             player.setFoodLevel(foodLevel);
             player.setSaturation(saturation);
