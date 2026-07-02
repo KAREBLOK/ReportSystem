@@ -270,6 +270,9 @@ public class ReportSystemSpigot extends JavaPlugin {
         telemetryManager = new com.reportsystem.spigot.telemetry.TelemetryManager(this);
         telemetryManager.start();
 
+        // PacketEvents surum kontrolu — eski PE yeni MC protokolunu bilemez (replay/NPC bozulur)
+        checkPacketEventsVersion();
+
         // Startup Banner
         printBanner();
     }
@@ -942,6 +945,30 @@ public class ReportSystemSpigot extends JavaPlugin {
     public void debug(String message) {
         if (configManager != null && configManager.isDebugEnabled()) {
             getLogger().info(message);
+        }
+    }
+
+    /**
+     * PacketEvents surumunu kontrol eder. Yeni Minecraft surumleri (26.2+) icin
+     * PacketEvents 2.13.0+ gerekir; eski surumde replay/NPC paketleri bozulabilir.
+     */
+    private void checkPacketEventsVersion() {
+        try {
+            String peVersion = String.valueOf(
+                    com.github.retrooper.packetevents.PacketEvents.getAPI().getVersion());
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("(\\d+)\\.(\\d+)").matcher(peVersion);
+            if (m.find()) {
+                int major = Integer.parseInt(m.group(1));
+                int minor = Integer.parseInt(m.group(2));
+                if (major < 2 || (major == 2 && minor < 13)) {
+                    getLogger().warning("PacketEvents " + peVersion + " surumu eski olabilir. "
+                            + "Yeni Minecraft surumleri (26.2+) icin PacketEvents 2.13.0+ kurmaniz onerilir; "
+                            + "aksi halde replay/NPC paketleri bozulabilir.");
+                }
+            }
+        } catch (Throwable ignored) {
+            // PE surumu okunamadi — engel degil
         }
     }
 
