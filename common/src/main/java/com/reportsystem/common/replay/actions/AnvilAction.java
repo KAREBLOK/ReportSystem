@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Anvil kullanımı (item renaming/repairing)
  */
 public class AnvilAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum AnvilActionType {
         RENAME,     // Item renaming

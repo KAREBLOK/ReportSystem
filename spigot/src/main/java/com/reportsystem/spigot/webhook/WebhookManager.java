@@ -39,7 +39,7 @@ public class WebhookManager {
 
         this.enabled = config.getBoolean("discord-webhook.enabled", false);
         this.webhookUrl = config.getString("discord-webhook.url", "");
-        this.language = config.getString("language", "en").toLowerCase();
+        this.language = config.getString("general.language", "en").toLowerCase();
         this.sendNewReport = config.getBoolean("discord-webhook.events.new-report", true);
         this.sendReportClosed = config.getBoolean("discord-webhook.events.report-closed", true);
         this.sendPunishment = config.getBoolean("discord-webhook.events.punishment", true);

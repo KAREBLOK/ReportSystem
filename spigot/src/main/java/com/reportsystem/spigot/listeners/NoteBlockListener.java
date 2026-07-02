@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.NoteBlockAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -39,7 +40,7 @@ public class NoteBlockListener implements Listener {
                     );
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Note block: " + event.getInstrument() +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Note block: " + event.getInstrument() +
                             " note " + event.getNote().getId() + " at " + event.getBlock().getLocation());
                     break; // Sadece en yakın oyuncu kaydeder
                 }

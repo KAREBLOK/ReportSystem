@@ -91,6 +91,29 @@ reports:
     subtitle: "&e%reporter% &7➜ &c%reported%"
     actionbar: "&e⚠ New report: &c%reported% &7(#%id%)"
 
+    # Toast notification settings (advancement-style popup in top right corner)
+    # Frame types: TASK (Advancement Made), GOAL (Goal Reached), CHALLENGE (Challenge Complete)
+    # Icon: Any Minecraft material name (PAPER, MAP, BELL, BOOK, DIAMOND, etc.)
+    # Placeholders: %reporter%, %reported%, %reason%, %id%, %server%
+    toast:
+      new-report:
+        title: "&c⚠ New report notification! &8(#%id%)"
+        icon: "BELL"
+        frame: "GOAL"
+      status-update:
+        title: "&6Report #%id% &7status: &e%status%"
+        icon: "MAP"
+        frame: "TASK"
+
+  # Reporter feedback (Hypixel style - only for accepted reports)
+  reporter-feedback:
+    accepted: "%prefix_success% &aYour report has been reviewed and action was taken! &7(Report #%id% - %player%)"
+
+    # Staff join notification (pending reports)
+    staff-join-title: "&6&l⚠ PENDING REPORTS"
+    staff-join-message: "&eThere are &c%count% &epending reports on the server!"
+    staff-join-action: "&eCheck them: &b/reports"
+
   # List messages
   list:
     header: "&8&m          &r &6Report List &7(Page %page%/%max%) &8&m          "
@@ -98,6 +121,31 @@ reports:
     footer: "&8&m                                                  "
     empty: "%prefix_info% &7No reports found."
     no-permission-view: "%prefix_error% &cYou don't have permission to view this report!"
+
+  # Report action messages (staff actions)
+  actions:
+    select-punishment: "%prefix_warning% &ePlease select a punishment or close the GUI."
+    accept-cancelled: "%prefix_error% &cReport acceptance cancelled."
+    accepted-no-punishment: "%prefix_success% &aReport #%id% accepted without punishment."
+    rejected: "%prefix_error% &cReport #%id% rejected."
+    deleted: "%prefix_success% &aReport #%id% and related replay deleted."
+    update-failed: "%prefix_error% &cFailed to update report!"
+    database-error: "%prefix_error% &cDatabase error while updating report."
+
+  # Chat messages (used during report creation)
+  chat:
+    enter-reason: "&6Enter report reason:"
+    cancel-instruction: "&7Type or write &e'cancel' &7to exit."
+    creating: "&7Creating report..."
+    create-error: "&cAn error occurred while creating report!"
+    cancelled: "%prefix_error% &cReport cancelled."
+    enter-search: "&6Enter the player name to search:"
+    enter-punishment-reason: "&6Enter %type% reason:"
+    enter-assignment: "&6Enter staff name to assign the report to:"
+    enter-note: "&6Enter the note you want to add:"
+    enter-duration: "&6Enter ban duration (e.g. 2h, 15d, 1w):"
+    input-cancelled: "%prefix_error% &cInput cancelled."
+    invalid-duration: "%prefix_error% &cInvalid duration! Operation cancelled."
 
 # ======================
 # Replay Messages
@@ -124,6 +172,20 @@ replay:
   error-class: "%prefix_error% &cReplay class not found!"
   error-version: "&7Plugin version may be incompatible. Error: %error%"
   error-unexpected: "%prefix_error% &cUnexpected error while starting replay!"
+  teleported: "%prefix_success% &aReplay started! Teleported to main character."
+
+  # Replay cross-server messages
+  cross-server: "%prefix_info% &eReplay is on &b%server%&e. Transferring you there..."
+  return-server: "%prefix_success% &a✦ Replay finished! Returning to &b%server%&a..."
+  return-location: "%prefix_success% &a✦ Replay finished! Returned to your starting location."
+  not-watching: "%prefix_error% &cYou are not watching a replay!"
+  stopped-error: "%prefix_error% &cReplay stopped (with error)!"
+  stopped-shutdown: "%prefix_info% &cReplay stopped (server shutting down)!"
+  world-missing: "%prefix_error% &cReplay world not found! The world may have been deleted or unloaded."
+  server-connect-error: "%prefix_error% &cError connecting to server!"
+  world-change: "%prefix_info% &e✦ Replay: Changing to &b%world% &eworld..."
+  command-blocked: "%prefix_error% &cYou cannot use this command while watching a replay!"
+  command-blocked-tip: "&eStop the replay first: &f/replay stop"
 
   # Nametag prefixes
   nametag-recorded-player: "&c&l[WATCHED] "
@@ -133,6 +195,8 @@ replay:
     stopped: "%prefix_info% &7Recording stopped."
     failed: "%prefix_error% &cFailed to start recording!"
     no-report-id: "%prefix_error% &cCouldn't get report ID, recording cancelled!"
+    continue-warning: "%prefix_warning% &eYour movements are still being recorded!"
+    auto-start: "%prefix_info% &a✦ Replay starting automatically..."
 
   # Replay errors
   error:
@@ -155,6 +219,19 @@ replay:
     rewind: "&7Rewind &e%seconds%s"
     jump-disabled: "%prefix_error% &c✗ Time jump feature is not active yet!"
 
+  # Web Replay messages
+  web-replay:
+    disabled: "%prefix_error% &cWeb replay system is disabled! &7Enable it in config."
+    generating: "%prefix_info% &eGenerating web replay... &7(Report #%report_id%)"
+    ready: "%prefix_success% &aWeb replay is ready!"
+    url: "&b%url%"
+    failed: "%prefix_error% &cFailed to generate web replay. Check console."
+    usage: "%prefix_error% &cUsage: &e/reportsystem webreplay <reportId>"
+    invalid-id: "%prefix_error% &cInvalid report ID!"
+    uploading: "%prefix_info% &eUploading replay to website..."
+    upload-success: "%prefix_success% &aReplay uploaded to website!"
+    upload-failed: "%prefix_warning% &eFailed to upload replay to website, using local URL."
+
 # ======================
 # Punishment Messages
 # ======================
@@ -171,6 +248,24 @@ punishments:
     animated-duration: "&7Duration: &e%duration%"
     animated-reason: "&7Reason: &f%reason%"
     animated-message: "&4The wrath of the gods begins..."
+    # Ban screen messages shown to the player
+    screen-temp: |
+      &cYou have been banned from the server!
+
+      &7Reason: &f%reason%
+      &7Duration: &f%duration%
+      &7Expires: &f%expires%
+      &7Banned by: &f%staff%
+    screen-perm: |
+      &cYou have been permanently banned!
+
+      &7Reason: &f%reason%
+      &7Banned by: &f%staff%
+
+      &8Appeal at: %discord_url%
+    # Animated ban special messages
+    death-message: "&4&l☠ &c%player% &7suffered the wrath of the gods!"
+    animated-screen: "&4&l⚡ BAN ⚡\n&cReason: &f%reason%\n&7Staff: &f%staff%"
 
   mute:
     success: "%prefix_success% &aPlayer &e%player% &ahas been muted!"
@@ -178,6 +273,22 @@ punishments:
     not-muted: "%prefix_error% &cPlayer is not muted!"
     unmuted: "%prefix_success% &aPlayer &e%player% &ahas been unmuted!"
     enter-reason: "&6Enter mute reason (default: %default%)"
+    # Mute notification shown to the player
+    player-message: |
+      &c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+      &c          YOU HAVE BEEN MUTED!
+
+      &7  Reason: &f%reason%
+      &7  Duration: &f%duration%
+      &7  Staff: &f%staff%
+      &c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+    # When muted player tries to chat
+    chat-blocked: "&c✗ You are muted!%time_left%"
+    chat-blocked-detail: "&7You cannot type in chat."
+    time-remaining: " (%time% remaining)"
+    time-permanent: " (Permanent)"
+    # When unmuted
+    unmuted-player: "&a✓ You can now speak again!"
 
   kick:
     success: "%prefix_success% &e%player% &7has been kicked!"
@@ -188,338 +299,60 @@ punishments:
 
       &7Reason: &f%reason%
       &7Staff: &f%staff%
+    # Internal kick screen (with re-entry note)
+    screen: |
+      &cYou have been kicked from the server!
+
+      &7Reason: &f%reason%
+      &7Kicked by: &f%staff%
+
+      &aYou may rejoin.
 
   warn:
     success: "%prefix_success% &e%player% &7has been warned!"
+    success-detail: "&7Message: &f%reason%"
     offline: "%prefix_error% &c%player% &7is offline!"
     enter-reason: "&6Enter warning message (default: %default%)"
     player-message: |
+      &6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+      &6          ⚠ WARNING ⚠
 
-      &6&l⚠ WARNING ⚠
-      &eYou have been warned by staff!
+      &c  You have been warned by staff!
 
-      &7Reason: &f%reason%
-      &7Staff: &f%staff%
-      &eContinuing to break rules may result in punishment!
+      &7  Reason: &f%reason%
+      &7  Staff: &f%staff%
+      &7  Warning count: &e%count%
 
+      &c  Continuing to break rules may result
+      &c  in more severe punishment!
+      &6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+    title: "&6⚠ WARNING ⚠"
+    subtitle: "&cYou violated the rules!"
+    # Login warning reminder
+    login-warning: "&e⚠ &cWarning! You have &f%count% &cwarning(s)!"
+    login-warning-detail: "&7Continuing to break rules may result in punishment."
 
   # General punishment messages
   applied: "%prefix_success% &aPunishment applied successfully."
+  applied-with-report: "%prefix_success% &a✓ Punishment applied and report accepted!"
+  applied-report-failed: "%prefix_error% &cPunishment applied but failed to update report!"
   failed: "%prefix_error% &cFailed to apply punishment."
   removed: "%prefix_success% &aPunishment removed."
   history-empty: "%prefix_info% &7This player has a clean punishment history."
   duration-invalid: "%prefix_error% &cInvalid duration format!"
-
-# ======================
-# GUI Messages
-# ======================
-gui:
-  # Common
-  common:
-    close: "&cClose"
-    back: "&aBack"
-    next-page: "&aNext Page"
-    previous-page: "&ePrevious Page"
-    confirm: "&aConfirm"
-    cancel: "&cCancel"
-    loading: "&7Loading..."
-    refresh: "&bRefresh"
-
-  # Report GUI
-  report:
-    title: "&8Report > %player%"
-    select-reason: "&eSelect a reason:"
-    custom-reason: "&bCustom Reason"
-    quick-reasons: "&6Quick Reasons"
-    online: "&aOnline"
-    offline: "&cOffline"
-    enter-reason: "&6Enter report reason:"
-    cancel-instruction: "&7Type or write &e'cancel' &7to exit."
-    creating: "&7Creating report..."
-    create-error: "&cAn error occurred while creating report!"
-
-  # Report Create GUI
-  report-create:
-    reasons:
-      cheating: "Cheating"
-      chat-abuse: "Chat Abuse"
-      griefing: "Griefing"
-      bug-abuse: "Bug Abuse"
-      teaming: "Teaming"
-
-  # Report List GUI
-  report-list:
-    title: "&8Reports &7(%page%/%max_page%)"
-    loading-error: "&cAn error occurred while loading reports!"
-
-    # Report item
-    report-item:
-      name: "&e#%id% &8- &f%reported%"
-      labels:
-        reporter: "Reporter:"
-        reason: "Reason:"
-        server: "Server:"
-        date: "Date:"
-        status: "Status:"
-        total-reports: "Total Reports:"
-        overwatch: "Overwatch:"
-        click: "▸ Click to view details"
-
-    # Empty list
-    empty-list:
-      name: "&cNo Reports Found"
-      lore:
-        - ""
-        - "&7No reports match"
-        - "&7your current filter."
-        - ""
-        - "&eTry changing the filter"
-        - "&7or check back later."
-
-    # Navigation
-    navigation:
-      previous:
-        name: "&e« Previous Page"
-        lore: "&7Go to page %prev_page%"
-      page-info:
-        name: "&fPage &e%page%&f/&e%max_page%"
-        lore:
-          - ""
-          - "&7Total reports: &f%total%"
-          - "&7Showing: &f%showing%"
-          - ""
-          - "&eClick to jump to page"
-      next:
-        name: "&aNext Page »"
-        lore: "&7Go to page %next_page%"
-
-    # Filters
-    filter:
-      all:
-        name: "&fAll Reports"
-        lore:
-          - "&7Show all reports"
-          - ""
-          - "Status: %selected%"
-      pending:
-        name: "&ePending Reports"
-        lore:
-          - "&7Show unresolved reports"
-          - ""
-          - "&7Count: &f%count%"
-          - "Status: %selected%"
-      accepted:
-        name: "&aAccepted Reports"
-        lore:
-          - "&7Show accepted reports"
-          - ""
-          - "&7Count: &f%count%"
-          - "Status: %selected%"
-      rejected:
-        name: "&cRejected Reports"
-        lore:
-          - "&7Show rejected reports"
-          - ""
-          - "&7Count: &f%count%"
-          - "Status: %selected%"
-      mine:
-        name: "&bMy Reports"
-        lore:
-          - "&7Show reports you created"
-          - ""
-          - "&7Count: &f%count%"
-          - "Status: %selected%"
-      assigned:
-        name: "&dAssigned to Me"
-        lore:
-          - "&7Show reports assigned to you"
-          - ""
-          - "&7Count: &f%count%"
-          - "Status: %selected%"
-      selected: "&a✔ Selected"
-      not-selected: "&7✖ Not Selected"
-
-    # Sort
-    sort:
-      name: "&6Sort Options"
-      lore:
-        - ""
-        - "&7Current: &e%sort_method%"
-        - ""
-        - "&8▪ &fNewest First"
-        - "&8▪ &fOldest First"
-        - "&8▪ &fPriority"
-        - "&8▪ &fPlayer Name"
-        - ""
-        - "&eClick to change"
-      newest: "&bNewest First"
-      oldest: "&7Oldest First"
-      priority: "&cPriority"
-      player-name: "&aPlayer Name"
-
-    # Actions
-    actions:
-      refresh:
-        name: "&a↻ Refresh"
-        lore:
-          - "&7Refresh the report list"
-          - ""
-          - "&8Last refresh: %last_refresh%"
-      search:
-        name: "&b🔍 Search"
-        lore:
-          - "&7Search for specific"
-          - "&7players or keywords"
-          - ""
-          - "&eCurrent: &f%search_query%"
-          - ""
-          - "&eClick to search"
-      stats:
-        name: "&a📊 Statistics"
-        lore:
-          - ""
-          - "&8▪ &7Total: &f%total%"
-          - "&8▪ &7Pending: &e%pending%"
-          - "&8▪ &7Accepted: &a%accepted%"
-          - "&8▪ &7Rejected: &c%rejected%"
-          - ""
-          - "&8▪ &7This week: &f%weekly%"
-          - "&8▪ &7Today: &f%daily%"
-      settings:
-        name: "&c⚙ Settings"
-        lore:
-          - "&7Configure report"
-          - "&7list settings"
-          - ""
-          - "&eClick to open"
-
-  # Report Detail GUI
-  report-detail:
-    title: "&8Report #%id%"
-    player-head-name: "&c⚡ %reported%"
-
-    # Info labels
-    labels:
-      report-id: "Report ID:"
-      reporter: "Reporter:"
-      reason: "Reason:"
-      date: "Date:"
-      server: "Server:"
-      total-reports: "Total Reports:"
-      status: "Status:"
-      times: "times"
-      unknown: "Unknown"
-
-    # Buttons
-    buttons:
-      replay-available:
-        name: "&d▶ Watch Replay"
-        lore:
-          - ""
-          - "&7Watch the recording"
-          - ""
-          - "&a✓ Replay available"
-          - "&e▶ Click to watch!"
-
-      replay-unavailable:
-        name: "&7No Replay"
-        lore:
-          - ""
-          - "&7No recording found"
-          - ""
-          - "&c✗ Replay not available"
-
-      accept:
-        name: "&a✓ Accept Report"
-        lore:
-          - ""
-          - "&7Mark report as valid"
-          - ""
-          - "&e▶ Click to accept!"
-
-      reject:
-        name: "&c✗ Reject Report"
-        lore:
-          - ""
-          - "&7Mark report as invalid"
-          - ""
-          - "&e▶ Click to reject!"
-
-      ban:
-        name: "&4⚔ Ban Player"
-        lore:
-          - ""
-          - "&7Ban player from server"
-          - ""
-          - "&6Temporary or permanent"
-          - "&e▶ Click to select duration!"
-
-      mute:
-        name: "&6🔇 Mute Player"
-        lore:
-          - ""
-          - "&7Mute the player"
-          - "&7Prevent chat messages"
-          - ""
-          - "&e▶ Click to select duration!"
-
-      kick:
-        name: "&c👢 Kick Player"
-        lore:
-          - ""
-          - "&7Kick player from server"
-          - "&7Can rejoin"
-          - ""
-          - "&e▶ Click to kick!"
-
-      warn:
-        name: "&e⚠ Warn Player"
-        lore:
-          - ""
-          - "&7Give player a warning"
-          - "&7Adds punishment points"
-          - ""
-          - "&e▶ Click to warn!"
-
-      teleport:
-        name: "&b🌀 Teleport to Player"
-        lore:
-          - ""
-          - "&7Teleport to reported player"
-          - ""
-          - "&e▶ Click to teleport!"
-
-      back:
-        name: "&c◀ Back"
-        lore:
-          - "&7Return to report list"
-
-  # Replay Control GUI
-  replay-control:
-    title: "&8Replay Controls"
-    play: "&aPlay"
-    pause: "&ePause"
-    stop: "&cStop"
-    speed: "&bSpeed: &f%speed%x"
-    info: "&6Replay Info"
-    teleport: "&dTime Jump"
-
-  # Punishment GUI
-  punishment:
-    title: "&8Punish > %player%"
-    ban: "&cBan Player"
-    mute: "&6Mute Player"
-    kick: "&eKick Player"
-    warn: "&7Warn Player"
-    history: "&bPunishment History"
-
-  # Punishment Selection GUI
-  punishment-selection:
-    title: "&8Select Punishment > %player%"
-    select-type: "&eSelect action:"
-    applying: "&7Applying punishment..."
-    applied: "&a✓ %type% punishment applied!"
-    accepted-no-punishment: "&a✓ Report accepted without punishment."
+  default-reason: "Rule violation"
+  # Punishment success with player name
+  success-target: "%prefix_success% &a✓ Punishment applied successfully for &e%player%&a."
+  # Punishment removal messages
+  unban-success: "%prefix_success% &a✓ &e%player% &ahas been unbanned!"
+  unban-failed: "%prefix_error% &c✗ Error unbanning &e%player%&c!"
+  unmute-success: "%prefix_success% &a✓ &e%player% &ahas been unmuted!"
+  unmute-failed: "%prefix_error% &c✗ Error unmuting &e%player%&c!"
+  no-active-punishment: "%prefix_error% &cNo active punishment found for %player%!"
+  no-active-detail: "&7No ban or mute punishment."
+  operation-complete: "&7Operation complete!"
+  # Discord URL (shown on ban screen)
+  discord-url: "discord.gg/server"
 
 # ======================
 # Command Messages
@@ -591,6 +424,17 @@ commands:
       json-exists: "&a✓ notification.json file exists"
       json-missing: "&c✗ notification.json file not found!"
       datapack-missing: "&c✗ Datapack folder not found!"
+
+# ======================
+# Trust Level (Account Standing)
+# ======================
+trust-level:
+  levels:
+    excellent: "Excellent"
+    good: "Good"
+    moderate: "Moderate"
+    poor: "Poor"
+    critical: "Critical"
 
 # ======================
 # Overwatch Messages
@@ -674,7 +518,7 @@ overwatch:
     no-permission-admin: "%overwatch_prefix% &cYou don't have permission to use this command!"
 
     npc:
-      usage: "%overwatch_prefix% &cUsage: /overwatch npc <create|delete|list>"
+      usage: "%overwatch_prefix% &cUsage: /overwatch npc <create|delete|list|skin|look|move|name|select>"
       unknown: "%overwatch_prefix% &cUnknown NPC command! &7/overwatch npc help"
       created: "%overwatch_prefix% &7NPC created successfully!"
       created-id: "&7NPC ID: &e%id%"
@@ -693,6 +537,18 @@ overwatch:
       list-location: "&7Location: &e%x%, %y%, %z%"
       list-delete: "&cTo delete: &e/overwatch npc delete %id%"
       list-footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      not-found: "%overwatch_prefix% &cNPC not found: %id%"
+      skin-usage: "%overwatch_prefix% &cUsage: /overwatch npc skin <npc> <playerName>"
+      skin-fetching: "%overwatch_prefix% &7Fetching skin for &e%player%&7..."
+      skin-success: "%overwatch_prefix% &aSkin updated to &e%player%&a!"
+      skin-failed: "%overwatch_prefix% &cFailed to fetch skin for &e%player%&c!"
+      look-success: "%overwatch_prefix% &aNPC is now looking at you!"
+      move-success: "%overwatch_prefix% &aNPC moved to your location!"
+      name-usage: "%overwatch_prefix% &cUsage: /overwatch npc name <npc> <newName>"
+      name-success: "%overwatch_prefix% &aNPC renamed to &e%name%&a!"
+      select-usage: "%overwatch_prefix% &cUsage: /overwatch npc select <npc>"
+      select-success: "%overwatch_prefix% &aSelected NPC: &e%name%"
+      select-none: "%overwatch_prefix% &cNo NPC selected! Use &e/overwatch npc select <npc> &cor specify NPC name."
 
     addqueue-success: "%overwatch_prefix% &7Report #%id% added to queue!"
     addqueue-priority: "&7Priority: &e%priority%"
@@ -713,6 +569,11 @@ overwatch:
       admin-npc-create: "&e/overwatch npc create &7- Create NPC"
       admin-npc-delete: "&e/overwatch npc delete <id> &7- Delete NPC"
       admin-npc-list: "&e/overwatch npc list &7- List NPCs"
+      admin-npc-skin: "&e/overwatch npc skin <npc> <player> &7- Change NPC skin"
+      admin-npc-look: "&e/overwatch npc look <npc> &7- Make NPC look at you"
+      admin-npc-move: "&e/overwatch npc move <npc> &7- Move NPC to your location"
+      admin-npc-name: "&e/overwatch npc name <npc> <name> &7- Rename NPC"
+      admin-npc-select: "&e/overwatch npc select <npc> &7- Select NPC for quick editing"
       admin-addqueue: "&e/overwatch addqueue <reportId> [priority] &7- Add report to queue"
       npc-create: "&e/overwatch npc create &7- Create NPC"
       npc-delete: "&e/overwatch npc delete <id> &7- Delete NPC"
@@ -740,302 +601,6 @@ overwatch:
       consensus-desc2: "&7Admins review the votes and make the final decision!"
       important: "&a&lIMPORTANT: &7Be fair and honest! Don't vote randomly."
 
-  # GUI Messages
-  gui:
-    # Main Menu
-    menu:
-      title: "&6&l⚖ OVERWATCH ⚖"
-      start-review:
-        name: "&6&lStart Reviewing"
-        lore-desc1: "&7Watch one of the"
-        lore-desc2: "&7pending reports"
-        lore-pending: "&ePending: &a%count% &7reports"
-        lore-click: "&a&l► Click to start reviewing!"
-      stats:
-        name: "&b&lMy Statistics"
-        lore-level: "&7Level: &e%level%"
-        lore-rank: "&7Rank: %rank_color%%rank%"
-        lore-xp: "&7XP: &6%xp%"
-        lore-total: "&7Total Reviews: &e%total%"
-        lore-guilty: "&aGuilty: &c%guilty%"
-        lore-innocent: "&2Innocent: &a%innocent%"
-        lore-skip: "&7Skipped: &e%skip%"
-        lore-no-stats1: "&7You haven't reviewed anything yet!"
-        lore-no-stats2: "&eMake your first review"
-        lore-no-stats3: "&eand start earning XP!"
-        lore-click: "&e&l► Click to see details!"
-      leaderboard:
-        name: "&e&lLeaderboard"
-        lore-desc1: "&7View top reviewers"
-        lore-desc2: "&7on the server"
-        lore-click: "&6&l► Click to view rankings!"
-      tutorial:
-        name: "&a&lHow It Works?"
-        lore-header: "&7&nHow Overwatch System Works?"
-        lore-step1: "&e1. &7Start reviewing reports"
-        lore-step2: "&e2. &7Watch replay and decide"
-        lore-step3: "&e3. &7Vote Guilty/Innocent/Skip"
-        lore-step4: "&e4. &7Earn XP and level up!"
-        lore-consensus-header: "&6Voting: &7Multiple reviewers"
-        lore-consensus-desc1: "&7vote and admins review the"
-        lore-consensus-desc2: "&7votes to make final decision."
-        lore-click: "&a&l► Click to learn more!"
-
-    # Verdict GUI
-    verdict:
-      title: "&6&l⚖ OVERWATCH - SUBMIT VERDICT ⚖"
-      report-info:
-        name: "&6&lREPORT INFO &8#%id%"
-        lore-reported: "&7Reported: &c%reported%"
-        lore-reporter: "&7Reporter: &e%reporter%"
-        lore-reason: "&7Reason: &f%reason%"
-        lore-server: "&7Server: &b%server%"
-      guilty:
-        name: "&c&l✘ GUILTY"
-        lore-desc1: "&7Player is &ccheating&7!"
-        lore-desc2: "&cThis player is clearly"
-        lore-desc3: "&ccheating and should be punished."
-        lore-click: "&e&l► Click to select category!"
-      innocent:
-        name: "&a&l✔ INNOCENT"
-        lore-desc1: "&7Player is &aclean&7!"
-        lore-desc2: "&aThis player is not cheating."
-        lore-desc3: "&aFalse report or no evidence."
-        lore-click: "&a&l► Click to confirm!"
-      skip:
-        name: "&e&l⊗ SKIP"
-        lore-desc1: "&7Not sure / Insufficient evidence"
-        lore-desc2: "&eNot enough evidence to"
-        lore-desc3: "&emake a decision or unsure."
-        lore-note: "&7&oNote: Skipping gives less XP"
-        lore-click: "&e&l► Click to skip!"
-      back:
-        name: "&c&lBack"
-        lore: "&7Return to main menu"
-      category-title: "&c&lSELECT CHEAT CATEGORY"
-      category-combat:
-        name: "&c&lCOMBAT HACKS"
-        lore-desc1: "&7KillAura, Velocity, AutoClicker,"
-        lore-desc2: "&7Reach, Criticals, etc."
-      category-movement:
-        name: "&e&lMOVEMENT HACKS"
-        lore-desc1: "&7Fly, Speed, Jesus, Glide,"
-        lore-desc2: "&7NoFall, Spider, etc."
-      category-visual:
-        name: "&b&lVISUAL HACKS"
-        lore-desc1: "&7XRay, ESP, Tracers, Wallhack,"
-        lore-desc2: "&7ChestESP, Freecam, etc."
-      category-other:
-        name: "&7&lOTHER"
-        lore-desc1: "&7Other cheat types or"
-        lore-desc2: "&7uncategorized cheats."
-      category-back:
-        name: "&c&lBack"
-
-    # Stats GUI
-    stats:
-      title: "&6&l%player% - Statistics"
-
-      # No stats messages
-      no-stats:
-        name: "&c&lNo Statistics"
-        lore-desc1: "&7This player hasn't"
-        lore-desc2: "&7reviewed anything yet!"
-      no-stats-name: "&c&lNo Statistics"
-      no-stats-lore1: "&7This player hasn't"
-      no-stats-lore2: "&7reviewed anything yet!"
-      back: "&c&lGo Back"
-
-      # Player head
-      player-head:
-        name: "&b&l%player%"
-        lore-rank: "&7Rank: %rank_color%&l%rank%"
-        lore-level: "&7Level: &e%level%"
-        lore-xp: "&7XP: &6%xp% &8/ &6%next_xp%"
-        lore-progress: "%progress_bar%"
-
-      # Simple message versions
-      player-name: "&b&l%player%"
-      rank-lore: "&7Rank: %rank_color%&l%rank%"
-      level-lore: "&7Level: &e%level%"
-      xp-lore: "&7XP: &6%xp% &8/ &6%next_xp%"
-
-      # Total reviews
-      total-reviews:
-        name: "&6&lTotal Reviews"
-        lore-desc1: "&7Total reports you've"
-        lore-desc2: "&7reviewed"
-        lore-count: "&e&l%count% &7reports"
-      total-name: "&6&lTotal Reviews"
-      total-desc1: "&7Total reports you've"
-      total-desc2: "&7reviewed"
-      total-count: "&e&l%count% &7reports"
-
-      # Guilty verdicts
-      guilty-verdicts:
-        name: "&c&lGuilty Verdicts"
-        lore-desc1: "&7Number of players you"
-        lore-desc2: "&7found guilty"
-        lore-count: "&c&l%count% &7guilty"
-        lore-percentage: "&8(&c%percentage%%&8)"
-      guilty-name: "&c&lGuilty Verdicts"
-      guilty-desc1: "&7Number of players you"
-      guilty-desc2: "&7found guilty"
-      guilty-count: "&c&l%count% &7guilty"
-      guilty-percent: "&8(&c%percent%%&8)"
-
-      # Innocent verdicts
-      innocent-verdicts:
-        name: "&a&lInnocent Verdicts"
-        lore-desc1: "&7Number of players you"
-        lore-desc2: "&7found innocent"
-        lore-count: "&a&l%count% &7innocent"
-        lore-percentage: "&8(&a%percentage%%&8)"
-      innocent-name: "&a&lInnocent Verdicts"
-      innocent-desc1: "&7Number of players you"
-      innocent-desc2: "&7found innocent"
-      innocent-count: "&a&l%count% &7innocent"
-      innocent-percent: "&8(&a%percent%%&8)"
-
-      # Skip verdicts
-      skip-verdicts:
-        name: "&e&lSkipped Verdicts"
-        lore-desc: "&7Number of reports you skipped"
-        lore-count: "&e&l%count% &7skips"
-        lore-percentage: "&8(&e%percentage%%&8)"
-      skip-name: "&e&lSkipped Verdicts"
-      skip-desc: "&7Number of reports you skipped"
-      skip-count: "&e&l%count% &7skips"
-      skip-percent: "&8(&e%percent%%&8)"
-
-      # Accuracy
-      accuracy:
-        name: "&6&lAccuracy Rate"
-        lore-desc1: "&7Your agreement rate"
-        lore-desc2: "&7with other reviewers"
-        lore-accuracy: "&6&l%accuracy%% &7accuracy"
-      accuracy-name: "&6&lAccuracy Rate"
-      accuracy-desc1: "&7Your agreement rate"
-      accuracy-desc2: "&7with other reviewers"
-      accuracy-value: "&6&l%accuracy%% &7accuracy"
-      review-time:
-        name: "&b&lReview Time"
-        lore-desc: "&7Total review time"
-        lore-total: "&e&l%hours%h %minutes%m %seconds%s"
-        lore-average: "&7Average: &e%avg_seconds% seconds"
-      dates:
-        name: "&d&lDates"
-        lore-first: "&7First review:"
-        lore-first-date: "&e%first_date%"
-        lore-last: "&7Last review:"
-        lore-last-date: "&e%last_date%"
-      xp-system:
-        name: "&a&lXP System"
-        lore-header: "&7XP earning details:"
-        lore-guilty-innocent: "&a✔ Guilty/Innocent: &e+15 XP"
-        lore-skip: "&e⊗ Skip: &e+5 XP"
-        lore-next-level: "&7Next level:"
-        lore-needed: "&6%needed% XP &7needed"
-      time-name: "&b&lReview Time"
-      time-desc: "&7Total review time"
-      time-total: "&e&l%hours%h %minutes%m %seconds%s"
-      time-average: "&7Average: &e%avg_seconds% seconds"
-
-      dates-name: "&d&lDates"
-      dates-first: "&7First review:"
-      dates-first-value: "&e%date%"
-      dates-last: "&7Last review:"
-      dates-last-value: "&e%date%"
-
-      xp-name: "&a&lXP System"
-      xp-desc: "&7XP earning details:"
-      xp-guilty: "&a✔ Guilty/Innocent: &e+15 XP"
-      xp-skip: "&e⊗ Skip: &e+5 XP"
-      xp-next: "&7Next level:"
-      xp-needed: "&6%xp% XP &7needed"
-
-      rank-info:
-        name: "&b&lRanks"
-        lore-header: "&7Rank System:"
-        lore-diamond: "%diamond_status%&bDIAMOND &7- 2500+ XP"
-        lore-gold: "%gold_status%&6GOLD &7- 1000+ XP"
-        lore-silver: "%silver_status%&7SILVER &7- 500+ XP"
-        lore-bronze: "%bronze_status%&cBRONZE &7- 0+ XP"
-      ranks-name: "&b&lRanks"
-      ranks-system: "&7Rank System:"
-      ranks-diamond: "&bDIAMOND &7- 2500+ XP"
-      ranks-gold: "&6GOLD &7- 1000+ XP"
-      ranks-silver: "&7SILVER &7- 500+ XP"
-      ranks-bronze: "&cBRONZE &7- 0+ XP"
-
-      back: "&c&lBack"
-
-    # Leaderboard GUI
-    leaderboard:
-      title: "&6&l⚖ LEADERBOARD ⚖"
-
-      # Rank prefixes
-      rank-1: "&6&l#1 "
-      rank-2: "&7&l#2 "
-      rank-3: "&c&l#3 "
-      rank-n: "&e#%rank% "
-
-      # Decorative
-      separator: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
-
-      # Empty state
-      empty-name: "&c&lEmpty Leaderboard"
-      empty-lore: "&7No reviews have been made yet!"
-      empty:
-        name: "&c&lEmpty Leaderboard"
-        lore: "&7No reviews have been made yet!"
-
-      # Player entry
-      # Simple message versions (for code compatibility)
-      rank: "&7Rank: %rank_color%&l%rank%"
-      level: "&7Level: &e%level% &8(&6%xp% XP&8)"
-      stats-title: "&6&lSTATISTICS:"
-      total: "&7Total Reviews: &e%total%"
-      guilty: "&7  &c✘ Guilty: &c%guilty%"
-      innocent: "&7  &a✔ Innocent: &a%innocent%"
-      skip: "&7  &e⊗ Skip: &e%skip%"
-      accuracy: "&7Accuracy: &6%accuracy%%"
-      time: "&7Total Time: &b%hours%h %minutes%m"
-      average: "&7Average: &b%avg_seconds% seconds"
-      badge-1: "&6&l✦ TOP REVIEWER ✦"
-      badge-2: "&7&l★ SECOND BEST ★"
-      badge-3: "&c&l♦ THIRD BEST ♦"
-
-      player-entry:
-        name: "%rank_prefix%%player%"
-        lore-header: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
-        lore-rank: "&7Rank: %rank_color%&l%rank%"
-        lore-level: "&7Level: &e%level% &8(&6%xp% XP&8)"
-        lore-stats-header: "&6&lSTATISTICS:"
-        lore-total: "&7Total Reviews: &e%total%"
-        lore-guilty: "&7  &c✘ Guilty: &c%guilty%"
-        lore-innocent: "&7  &a✔ Innocent: &a%innocent%"
-        lore-skip: "&7  &e⊗ Skip: &e%skip%"
-        lore-accuracy: "&7Accuracy: &6%accuracy%%"
-        lore-time: "&7Total Time: &b%hours%h %minutes%m"
-        lore-average: "&7Average: &b%avg_seconds% seconds"
-        lore-footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
-        lore-badge-first: "&6&l✦ TOP REVIEWER ✦"
-        lore-badge-second: "&7&l★ SECOND BEST ★"
-        lore-badge-third: "&c&l♦ THIRD BEST ♦"
-      # Info item
-      info-name: "&e&lInformation"
-      info-lore1: "&7Leaderboard shows players"
-      info-lore2: "&7with the most reviews."
-      info-sorting: "&eSorting: &7Total Reviews"
-      info:
-        name: "&e&lInformation"
-        lore-desc1: "&7Leaderboard shows players"
-        lore-desc2: "&7with the most reviews."
-        lore-sorting: "&eSorting: &7Total Reviews"
-
-      # Back button
-      back: "&c&lBack"
 
 # ======================
 # Miscellaneous Messages

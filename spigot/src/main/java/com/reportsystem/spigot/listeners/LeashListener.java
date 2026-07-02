@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.InteractEntityAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -42,7 +43,7 @@ public class LeashListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Entity leashed: " + entity.getType());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity leashed: " + entity.getType());
         }
     }
 
@@ -66,7 +67,7 @@ public class LeashListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Entity unleashed: " + entity.getType());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity unleashed: " + entity.getType());
         }
     }
 }

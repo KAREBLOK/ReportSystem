@@ -6,6 +6,7 @@ import java.util.Map;
  * Enchanting table kullanımı (item enchanting)
  */
 public class EnchantAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String itemBefore;  // Serialized ItemStack before enchanting
     private final String itemAfter;   // Serialized ItemStack after enchanting

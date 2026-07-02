@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.VehicleAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -46,7 +47,7 @@ public class VehicleListener implements Listener {
                     );
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Player mounted " + vehicleType);
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player mounted " + vehicleType);
                 }
             }
         }
@@ -73,7 +74,7 @@ public class VehicleListener implements Listener {
                     );
                     session.addAction(action);
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Player dismounted " + vehicleType);
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player dismounted " + vehicleType);
                 }
             }
         }
@@ -103,7 +104,7 @@ public class VehicleListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Player mounted " + vehicleType +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player mounted " + vehicleType +
                         " (Entity) at " + mountLoc);
             }
         }
@@ -133,7 +134,7 @@ public class VehicleListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Player dismounted " + vehicleType +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player dismounted " + vehicleType +
                         " (Entity) at " + mountLoc);
             }
         }
@@ -168,7 +169,7 @@ public class VehicleListener implements Listener {
                         );
                         session.addAction(action);
 
-                        plugin.getLogger().info("[RECORDING-DEBUG] Vehicle placed: " + vehicleType +
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Vehicle placed: " + vehicleType +
                                 " at " + loc + " by " + player.getName());
                         break; // Sadece en yakın oyuncu kaydeder
                     }

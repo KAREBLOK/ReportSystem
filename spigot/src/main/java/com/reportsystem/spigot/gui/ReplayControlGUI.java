@@ -37,18 +37,20 @@ public class ReplayControlGUI extends GUI {
         inventory = Bukkit.createInventory(this, size, title);
 
         // Background
-        String bgMaterial = guiConfig.getConfig().getString("background.material", "GRAY_STAINED_GLASS_PANE");
-        Material bgMat = Material.getMaterial(bgMaterial);
-        if (bgMat != null) {
-            ItemStack bg = new ItemStack(bgMat);
-            ItemMeta bgMeta = bg.getItemMeta();
-            if (bgMeta != null) {
-                String bgName = guiConfig.getConfig().getString("background.name", " ");
-                bgMeta.setDisplayName(ChatColor.translateAlternateColorCodes('&', bgName));
-                bg.setItemMeta(bgMeta);
-            }
-            for (int i = 0; i < inventory.getSize(); i++) {
-                inventory.setItem(i, bg);
+        if (guiConfig.isBackgroundEnabled()) {
+            String bgMaterial = guiConfig.getConfig().getString("background.material", "GRAY_STAINED_GLASS_PANE");
+            Material bgMat = Material.getMaterial(bgMaterial);
+            if (bgMat != null) {
+                ItemStack bg = new ItemStack(bgMat);
+                ItemMeta bgMeta = bg.getItemMeta();
+                if (bgMeta != null) {
+                    String bgName = guiConfig.getConfig().getString("background.name", " ");
+                    bgMeta.setDisplayName(ChatColor.translateAlternateColorCodes('&', bgName));
+                    bg.setItemMeta(bgMeta);
+                }
+                for (int i = 0; i < inventory.getSize(); i++) {
+                    inventory.setItem(i, bg);
+                }
             }
         }
 
@@ -102,10 +104,10 @@ public class ReplayControlGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString(path + ".name", "");
+            String name = guiConfig.getConfigString(path + ".name", "");
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-            List<String> lore = guiConfig.getConfig().getStringList(path + ".lore");
+            List<String> lore = guiConfig.getConfigStringList(path + ".lore");
             List<String> processedLore = lore.stream()
                     .map(line -> ChatColor.translateAlternateColorCodes('&', line))
                     .collect(Collectors.toList());
@@ -125,11 +127,11 @@ public class ReplayControlGUI extends GUI {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             String speedValue = String.valueOf(replayPlayer.getPlaybackSpeed());
-            String name = guiConfig.getConfig().getString("controls.speed.name", "&bHız: %speed%x");
+            String name = guiConfig.getConfigString("controls.speed.name", "&bSpeed: %speed%x");
             name = name.replace("%speed%", speedValue);
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-            List<String> lore = guiConfig.getConfig().getStringList("controls.speed.lore");
+            List<String> lore = guiConfig.getConfigStringList("controls.speed.lore");
             if (!lore.isEmpty()) {
                 List<String> processedLore = lore.stream()
                         .map(line -> line.replace("%speed%", speedValue))
@@ -151,10 +153,10 @@ public class ReplayControlGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString("controls.info.name", "&6Replay Info");
+            String name = guiConfig.getConfigString("controls.info.name", "&6Replay Info");
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-            List<String> lore = guiConfig.getConfig().getStringList("controls.info.lore");
+            List<String> lore = guiConfig.getConfigStringList("controls.info.lore");
             if (!lore.isEmpty()) {
                 String playerName = replayPlayer.getReplay().getRecordedPlayer();
                 String duration = formatDuration(replayPlayer.getTotalTime());

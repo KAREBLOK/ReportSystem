@@ -1,0 +1,39 @@
+# Overwatch Liderlik Tablosu GUI
+title: "&8&nLiderlik Tablosu"
+
+# Sıralama ön ekleri
+rank-1: "&6&l#1 "
+rank-2: "&7&l#2 "
+rank-3: "&c&l#3 "
+rank-n: "&e#%rank% "
+
+# Dekoratif
+separator: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
+
+# Boş durum
+empty-name: "&c&lHenüz Veri Yok"
+empty-lore: "&7Henüz hiç inceleme yapılmamış!"
+
+# Oyuncu girişi lore
+rank: " &8▪ &7Rütbe: %rank_color%&l%rank%"
+level: " &8▪ &7Seviye: &a%level% &8(&6%xp% XP&8)"
+stats-title: ""
+total: " &8▪ &7Toplam: &a%total%"
+guilty: " &8▪ &7Suçlu: &c%guilty%"
+innocent: " &8▪ &7Masum: &a%innocent%"
+skip: " &8▪ &7Atlandı: &e%skip%"
+accuracy: " &8▪ &7Doğruluk: &6%accuracy%%"
+time: " &8▪ &7Süre: &b%hours%sa %minutes%dk"
+average: " &8▪ &7Ortalama: &b%avg_seconds%sn"
+badge-1: "&6&l✦ EN İYİ İNCELEMECİ ✦"
+badge-2: "&7&l★ İKİNCİ EN İYİ ★"
+badge-3: "&c&l♦ ÜÇÜNCÜ EN İYİ ♦"
+
+# Bilgi öğesi (slot 40)
+info-name: "&e&lBilgilendirme"
+info-lore1: "&7Liderlik tablosu en çok"
+info-lore2: "&7inceleme yapan oyuncuları gösterir."
+info-sorting: " &8▪ &7Sıralama: &aToplam XP"
+
+# Geri butonu (slot 49)
+back: "&8←"

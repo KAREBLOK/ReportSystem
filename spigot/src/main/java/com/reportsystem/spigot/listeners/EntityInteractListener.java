@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.AnimationAction;
 import com.reportsystem.common.replay.actions.InteractEntityAction;
 import com.reportsystem.spigot.recording.RecordingManager;
@@ -44,7 +45,7 @@ public class EntityInteractListener implements Listener {
                 Sheep sheep = (Sheep) target;
                 if (!sheep.isSheared()) {
                     type = InteractEntityAction.InteractionType.SHEAR;
-                    plugin.getLogger().info("[RECORDING-DEBUG] Shearing sheep detected in interact event");
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shearing sheep detected in interact event");
                 }
             } else if (target instanceof Villager) {
                 type = InteractEntityAction.InteractionType.TRADE;
@@ -74,7 +75,7 @@ public class EntityInteractListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Entity interaction: " + type + " with " + target.getType());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity interaction: " + type + " with " + target.getType());
         }
     }
 
@@ -99,7 +100,7 @@ public class EntityInteractListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Entity attack: " + target.getType());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity attack: " + target.getType());
             }
         }
     }
@@ -124,7 +125,7 @@ public class EntityInteractListener implements Listener {
             if (target instanceof Sheep) {
                 Sheep sheep = (Sheep) target;
                 entityTypeData = target.getType().name() + ":" + sheep.getColor().name();
-                plugin.getLogger().info("[RECORDING-DEBUG] Sheep color: " + sheep.getColor().name());
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sheep color: " + sheep.getColor().name());
             }
 
             // Interaction'ı kaydet
@@ -138,7 +139,7 @@ public class EntityInteractListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Entity shear: " + entityTypeData +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity shear: " + entityTypeData +
                     " at " + target.getLocation());
         }
     }

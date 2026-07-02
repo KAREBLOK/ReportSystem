@@ -6,6 +6,7 @@ import java.util.UUID;
  * Hayvan komutları ve özel etkileşimler (sit, shoulder parrot, horse armor, llama carpet)
  */
 public class EntityCommandAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum CommandType {
         SIT,                // Kedi/kurt oturma

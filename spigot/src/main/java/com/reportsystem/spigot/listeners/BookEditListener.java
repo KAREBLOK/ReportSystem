@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.BookEditAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -42,7 +43,7 @@ public class BookEditListener implements Listener {
             BookEditAction action = new BookEditAction(title, author, pages, signed);
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Book edited: " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Book edited: " +
                     (signed ? "Signed" : "Draft") + ", " + pages.size() + " pages");
         }
     }

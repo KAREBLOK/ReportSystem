@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class RecordingManager {
 
@@ -43,12 +44,38 @@ public class RecordingManager {
      * Oyuncu için kayıt başlatır
      */
     public void startRecording(Player player, int reportId, int durationSeconds, String reporterName, String reason) {
+        startRecording(player, reportId, durationSeconds, reporterName, reason, null);
+    }
+
+    /**
+     * Oyuncu için kayıt başlatır (dünya override desteği ile)
+     * 
+     * @param overrideWorldName /report anındaki dünya adı - GUI gecikmesi nedeniyle
+     *                          oyuncu dünya değiştirebilir
+     */
+    public void startRecording(Player player, int reportId, int durationSeconds, String reporterName, String reason,
+            String overrideWorldName) {
         UUID playerUUID = player.getUniqueId();
+
+        // PERFORMANS: Eşzamanlı kayıt sınırı kontrolü
+        int maxRecordings = plugin.getConfigManager().getMaxRecordings();
+        if (activeRecordings.size() >= maxRecordings && !activeRecordings.containsKey(playerUUID)) {
+            plugin.getLogger().warning("[RECORDING] Eşzamanlı kayıt limiti aşıldı (" + maxRecordings +
+                    "). " + player.getName() + " için kayıt başlatılamıyor.");
+            return;
+        }
 
         // Zaten kayıt var mı kontrol et
         if (recordingInfoMap.containsKey(playerUUID)) {
-            plugin.getLogger().warning("[RECORDING] " + player.getName() + " için zaten aktif kayıt var, önce durdurulacak.");
-            stopRecording(playerUUID);
+            plugin.getLogger()
+                    .warning("[RECORDING] " + player.getName() + " için zaten aktif kayıt var, önce durdurulacak.");
+            // PERFORMANS: .join() ana thread'i bloklar — async callback kullan
+            stopRecording(playerUUID).thenRun(() -> {
+                plugin.getLogger().info("[RECORDING] Eski kayıt durduruldu: " + player.getName());
+            }).exceptionally(e -> {
+                plugin.getLogger().warning("[RECORDING] Eski kayıt durdurulurken hata: " + e.getMessage());
+                return null;
+            });
         }
 
         plugin.getLogger().info("[RECORDING] Kayıt başlatılıyor: " + player.getName() +
@@ -56,7 +83,10 @@ public class RecordingManager {
 
         // Session oluştur
         RecordingSession session = new RecordingSession(player.getName());
-        session.setWorldName(player.getWorld().getName());
+        // /report anındaki dünyayı kullan (oyuncu GUI açıkken ölüp dünya
+        // değiştirebilir)
+        String worldName = (overrideWorldName != null) ? overrideWorldName : player.getWorld().getName();
+        session.setWorldName(worldName);
         session.setStartTime(System.currentTimeMillis());
 
         // İlk konum ve ekipmanları kaydet
@@ -67,8 +97,7 @@ public class RecordingManager {
                     player.getLocation().getZ(),
                     player.getLocation().getYaw(),
                     player.getLocation().getPitch(),
-                    player.isOnGround()
-            );
+                    player.isOnGround());
             session.addAction(initialLocation);
 
             recordAllEquipment(player, session);
@@ -96,7 +125,7 @@ public class RecordingManager {
                 plugin,
                 () -> trackSpawnedEntities(session),
                 20L, // 1 saniye sonra başla
-                10L  // Her 0.5 saniyede bir çalıştır
+                10L // Her 0.5 saniyede bir çalıştır
         );
         entityTrackingTasks.put(playerUUID, trackingTaskId);
         plugin.getLogger().info("[RECORDING] Entity tracking task başlatıldı: #" + trackingTaskId);
@@ -117,40 +146,31 @@ public class RecordingManager {
                             // Kayıt başarıyla tamamlandı, yetkililere bildirim gönder
                             RecordingInfo recordingInfo = info;
                             if (recordingInfo != null && recordingInfo.getReportId() > 0) {
-                                plugin.getLogger().info("[RECORDING] Kayıt başarıyla tamamlandı, bildirim gönderiliyor...");
+                                plugin.getLogger()
+                                        .info("[RECORDING] Kayıt başarıyla tamamlandı, bildirim gönderiliyor...");
 
-                                // Yetkililere bildirim gönder (advancement toast - local server)
-                                plugin.getAdvancementNotification().sendToStaff(
-                                    org.bukkit.Material.WRITABLE_BOOK,
-                                    "Yeni Rapor!",
-                                    player.getName() + " için rapor oluşturuldu (#" + recordingInfo.getReportId() + ")",
-                                    com.reportsystem.spigot.utils.AdvancementNotification.FrameType.TASK,
-                                    "reportsystem.notify"
-                                );
-
-                                // Staff mesaj bildirimi (chat notification)
+                                // Yetkililere toast bildirim gönder (messages dosyasından okunur)
                                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                    Player reporter = Bukkit.getPlayer(recordingInfo.getReporterName());
-                                    if (reporter != null) {
-                                        plugin.getReportCommand().notifyStaff(
-                                            reporter,
+                                    plugin.getReportCommand().notifyStaff(
+                                            recordingInfo.getReporterName(),
                                             player.getName(),
                                             recordingInfo.getReason(),
-                                            recordingInfo.getReportId()
-                                        );
-                                    }
+                                            recordingInfo.getReportId());
                                 });
 
                                 // Discord webhook bildirimi
                                 if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
                                     plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                                        com.reportsystem.common.models.Report report =
-                                            plugin.getReportService().getReportById(recordingInfo.getReportId());
+                                        com.reportsystem.common.models.Report report = plugin.getReportService()
+                                                .getReportById(recordingInfo.getReportId());
                                         if (report != null) {
-                                            plugin.getLogger().info("[Webhook] Sending new report notification for report #" + recordingInfo.getReportId());
+                                            plugin.getLogger()
+                                                    .info("[Webhook] Sending new report notification for report #"
+                                                            + recordingInfo.getReportId());
                                             plugin.getWebhookManager().sendNewReportNotification(report);
                                         } else {
-                                            plugin.getLogger().warning("[Webhook] Could not fetch report #" + recordingInfo.getReportId() + " from database!");
+                                            plugin.getLogger().warning("[Webhook] Could not fetch report #"
+                                                    + recordingInfo.getReportId() + " from database!");
                                         }
                                     });
                                 }
@@ -158,18 +178,16 @@ public class RecordingManager {
                                 // BungeeCord'a bildirim gönder (network-wide)
                                 if (plugin.getConfigManager().isBungeeCordEnabled()) {
                                     sendNotificationToBungee(
-                                        recordingInfo.getReportId(),
-                                        player.getName(),
-                                        recordingInfo.getReporterName(),
-                                        recordingInfo.getReason()
-                                    );
+                                            recordingInfo.getReportId(),
+                                            player.getName(),
+                                            recordingInfo.getReporterName(),
+                                            recordingInfo.getReason());
                                 }
                             }
                         }
                     });
                 },
-                durationSeconds * 20L
-        );
+                durationSeconds * 20L);
     }
 
     /**
@@ -195,7 +213,8 @@ public class RecordingManager {
             int oldId = info.reportId;
             info.reportId = newReportId;
             info.reason = reason;
-            plugin.getLogger().info("[RECORDING] Report ID ve sebep güncellendi: " + oldId + " -> " + newReportId + " | Sebep: " + reason);
+            plugin.getLogger().info("[RECORDING] Report ID ve sebep güncellendi: " + oldId + " -> " + newReportId
+                    + " | Sebep: " + reason);
         } else {
             plugin.getLogger().warning("[RECORDING] Güncellenecek kayıt bulunamadı: " + playerUUID);
         }
@@ -223,7 +242,8 @@ public class RecordingManager {
             org.bukkit.Location lastLoc = lastLocations.get(entityUUID);
 
             // Pozisyon değişti mi? (0.1 blok threshold)
-            if (lastLoc == null || lastLoc.distance(currentLoc) > 0.1) {
+            if (lastLoc == null || !lastLoc.getWorld().equals(currentLoc.getWorld())
+                    || lastLoc.distance(currentLoc) > 0.1) {
                 // Entity hareket etti, güncellemeyi kaydet
                 EntityUpdateAction updateAction = new EntityUpdateAction(
                         entityUUID,
@@ -232,12 +252,11 @@ public class RecordingManager {
                         currentLoc.getY(),
                         currentLoc.getZ(),
                         currentLoc.getYaw(),
-                        currentLoc.getPitch()
-                );
+                        currentLoc.getPitch());
                 session.addAction(updateAction);
                 session.updateEntityLocation(entityUUID, currentLoc);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Entity moved: " + entity.getType() +
+                plugin.debug("[RECORDING-DEBUG] Entity moved: " + entity.getType() +
                         " from " + (lastLoc != null ? lastLoc.toVector() : "initial") +
                         " to " + currentLoc.toVector());
             }
@@ -300,25 +319,19 @@ public class RecordingManager {
                 plugin.getLogger().warning("[RECORDING] Report ID hala geçici değerde (-999), " +
                         "5 saniye daha beklenecek...");
 
-                // 5 saniye daha bekle
-                return CompletableFuture.supplyAsync(() -> {
-                    try {
-                        Thread.sleep(5000); // 5 saniye bekle
-
-                        // Tekrar kontrol et
-                        Integer lateReportId = ReportCommand.getPendingReportId(playerUUID);
-                        if (lateReportId != null && lateReportId > 0) {
-                            plugin.getLogger().info("[RECORDING] Geç gelen Report ID alındı: #" + lateReportId);
-                            return saveReplayAsync(session, lateReportId).join();
-                        } else {
-                            plugin.getLogger().severe("[RECORDING] Report ID alınamadı, kayıt iptal edildi!");
-                            return false;
-                        }
-                    } catch (InterruptedException e) {
-                        plugin.getLogger().severe("[RECORDING] Bekleme sırasında hata: " + e.getMessage());
-                        return false;
+                // 5 saniye sonra Bukkit scheduler ile tekrar kontrol et (Thread.sleep yerine)
+                CompletableFuture<Boolean> delayedFuture = new CompletableFuture<>();
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    Integer lateReportId = ReportCommand.getPendingReportId(playerUUID);
+                    if (lateReportId != null && lateReportId > 0) {
+                        plugin.getLogger().info("[RECORDING] Geç gelen Report ID alındı: #" + lateReportId);
+                        saveReplayAsync(session, lateReportId).thenAccept(delayedFuture::complete);
+                    } else {
+                        plugin.getLogger().severe("[RECORDING] Report ID alınamadı, kayıt iptal edildi!");
+                        delayedFuture.complete(false);
                     }
-                });
+                }, 100L); // 5 saniye = 100 tick
+                return delayedFuture;
             }
 
             // Report ID geçersizse
@@ -359,7 +372,7 @@ public class RecordingManager {
                         String.format("%.2f KB (%.2f MB)", sizeKB, sizeMB) + " (Report #" + reportId + ")");
 
                 // Boyut limiti kontrolü
-                int maxFileSizeMB = plugin.getConfig().getInt("replay.max-file-size", 50);
+                int maxFileSizeMB = plugin.getConfig().getInt("replay.max-file-size", 5);
                 if (maxFileSizeMB > 0 && sizeMB > maxFileSizeMB) {
                     plugin.getLogger().warning("[RECORDING] ⚠ Replay boyutu çok büyük! " +
                             String.format("%.2f MB > %d MB limit", sizeMB, maxFileSizeMB) +
@@ -376,13 +389,28 @@ public class RecordingManager {
                         session.getEndTime(),
                         session.getActions().size(),
                         data,
-                        true
-                );
+                        true);
 
                 // Veritabanına kaydet
                 replayDAO.saveReplay(replay);
 
-                plugin.getLogger().info("[RECORDING] ✓ Replay başarıyla veritabanına kaydedildi (Report #" + reportId + ")");
+                plugin.getLogger()
+                        .info("[RECORDING] ✓ Replay başarıyla veritabanına kaydedildi (Report #" + reportId + ")");
+
+                // Web replay auto-generate
+                if (plugin instanceof com.reportsystem.spigot.ReportSystemSpigot) {
+                    com.reportsystem.spigot.ReportSystemSpigot spigotPlugin = (com.reportsystem.spigot.ReportSystemSpigot) plugin;
+                    if (spigotPlugin.getConfigManager().isWebReplayEnabled()
+                            && spigotPlugin.getConfigManager().isWebReplayAutoGenerate()) {
+                        spigotPlugin.getReplayManager().generateWebReplay(reportId)
+                                .thenAccept(url -> {
+                                    if (url != null) {
+                                        plugin.getLogger().info("[WebReplay] Otomatik export tamamlandi: " + url);
+                                    }
+                                });
+                    }
+                }
+
                 return true;
 
             } catch (IOException e) {
@@ -426,7 +454,8 @@ public class RecordingManager {
     }
 
     /**
-     * Oyuncunun tam inventory'sini kaydeder (36 slot + 4 armor + 1 offhand = 41 slot)
+     * Oyuncunun tam inventory'sini kaydeder (36 slot + 4 armor + 1 offhand = 41
+     * slot)
      */
     private void recordFullInventory(Player player, RecordingSession session) {
         org.bukkit.inventory.PlayerInventory inv = player.getInventory();
@@ -456,10 +485,8 @@ public class RecordingManager {
         }
 
         // Create InventorySnapshotAction
-        com.reportsystem.common.replay.actions.InventorySnapshotAction inventoryAction =
-                new com.reportsystem.common.replay.actions.InventorySnapshotAction(
-                        convertInventoryMapToSnapshotFormat(inventoryMap)
-                );
+        com.reportsystem.common.replay.actions.InventorySnapshotAction inventoryAction = new com.reportsystem.common.replay.actions.InventorySnapshotAction(
+                convertInventoryMapToSnapshotFormat(inventoryMap));
 
         session.addAction(inventoryAction);
 
@@ -469,8 +496,8 @@ public class RecordingManager {
     /**
      * Convert inventory map to InventorySnapshotAction format
      */
-    private Map<Integer, com.reportsystem.common.replay.actions.InventorySnapshotAction.ItemData>
-            convertInventoryMapToSnapshotFormat(Map<Integer, EquipmentAction.ItemData> source) {
+    private Map<Integer, com.reportsystem.common.replay.actions.InventorySnapshotAction.ItemData> convertInventoryMapToSnapshotFormat(
+            Map<Integer, EquipmentAction.ItemData> source) {
 
         Map<Integer, com.reportsystem.common.replay.actions.InventorySnapshotAction.ItemData> result = new HashMap<>();
 
@@ -485,8 +512,7 @@ public class RecordingManager {
                     item.getEnchantments(),
                     item.getItemStackData(),
                     item.getCustomModelData(),
-                    item.isUnbreakable()
-            ));
+                    item.isUnbreakable()));
         }
 
         return result;
@@ -543,8 +569,7 @@ public class RecordingManager {
                     enchantments,
                     itemStackData,
                     customModelData,
-                    unbreakable
-            );
+                    unbreakable);
 
         } catch (Exception e) {
             plugin.getLogger().warning("[RECORDING] Failed to convert item: " + e.getMessage());
@@ -583,11 +608,24 @@ public class RecordingManager {
 
     /**
      * Tüm aktif kayıtları durdurur
+     * Shutdown sırasında async save'lerin tamamlanmasını bekler (DB kapanmadan önce)
      */
     public void stopAll() {
         Set<UUID> activeUUIDs = new HashSet<>(recordingInfoMap.keySet());
+        List<CompletableFuture<Boolean>> saveFutures = new ArrayList<>();
         for (UUID uuid : activeUUIDs) {
-            stopRecording(uuid);
+            saveFutures.add(stopRecording(uuid));
+        }
+
+        // Async save'leri bekle — shutdown'da database kapanmadan flush garantile
+        if (!saveFutures.isEmpty()) {
+            try {
+                CompletableFuture.allOf(saveFutures.toArray(new CompletableFuture[0]))
+                        .get(10, TimeUnit.SECONDS);
+                plugin.getLogger().info("[RECORDING] " + saveFutures.size() + " aktif kayıt flush edildi.");
+            } catch (Exception e) {
+                plugin.getLogger().warning("[RECORDING] Shutdown save timeout/error: " + e.getMessage());
+            }
         }
 
         // Tüm NearbyPlayerTracker'ları durdur
@@ -613,7 +651,8 @@ public class RecordingManager {
         // Bu metot şu anda bir şey yapmıyor çünkü kayıtlar
         // durdurulduğunda otomatik olarak kaydediliyor
         // İleride incremental save eklenebilir
-        plugin.getLogger().info("[RECORDING] Auto-save check completed. Active recordings: " + activeRecordings.size());
+        ReportSystemSpigot.getInstance()
+                .debug("[RECORDING] Auto-save check completed. Active recordings: " + activeRecordings.size());
     }
 
     /**
@@ -663,11 +702,25 @@ public class RecordingManager {
             this.reason = reason;
         }
 
-        public int getReportId() { return reportId; }
-        public RecordingSession getSession() { return session; }
-        public long getStartTime() { return startTime; }
-        public String getReporterName() { return reporterName; }
-        public String getReason() { return reason; }
+        public int getReportId() {
+            return reportId;
+        }
+
+        public RecordingSession getSession() {
+            return session;
+        }
+
+        public long getStartTime() {
+            return startTime;
+        }
+
+        public String getReporterName() {
+            return reporterName;
+        }
+
+        public String getReason() {
+            return reason;
+        }
     }
 
     /**

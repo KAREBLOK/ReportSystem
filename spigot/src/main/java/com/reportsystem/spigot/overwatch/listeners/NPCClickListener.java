@@ -2,6 +2,15 @@ package com.reportsystem.spigot.overwatch.listeners;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.overwatch.gui.OverwatchMenuGUI;
+
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerAbstract;
+import com.github.retrooper.packetevents.event.PacketListenerPriority;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
+
+import org.bukkit.Bukkit;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -10,93 +19,114 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 
-/**
- * Listener for NPC clicks and protection
- * Opens Overwatch Menu GUI when player right-clicks NPC
- * Prevents armor manipulation and damage
- */
-public class NPCClickListener implements Listener {
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class NPCClickListener extends PacketListenerAbstract implements Listener {
 
     private final ReportSystemSpigot plugin;
+    private final Map<UUID, Long> clickCooldown = new ConcurrentHashMap<>();
 
     public NPCClickListener(ReportSystemSpigot plugin) {
+        super(PacketListenerPriority.HIGH);
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onNPCClick(PlayerInteractAtEntityEvent event) {
-        Player player = event.getPlayer();
-        Entity clickedEntity = event.getRightClicked();
+    @Override
+    public void onPacketReceive(PacketReceiveEvent event) {
+        if (event.getPacketType() != PacketType.Play.Client.INTERACT_ENTITY)
+            return;
 
-        // Check if it's an armor stand
-        if (!(clickedEntity instanceof ArmorStand)) {
+        WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
+
+        // Only handle INTERACT (skip INTERACT_AT and ATTACK to avoid duplicates)
+        if (packet.getAction() != WrapperPlayClientInteractEntity.InteractAction.INTERACT) {
+            // Still cancel INTERACT_AT for NPC entities to prevent further processing
+            if (packet.getAction() == WrapperPlayClientInteractEntity.InteractAction.INTERACT_AT) {
+                if (plugin.getNPCManager().getNPCByEntityId(packet.getEntityId()) != null) {
+                    event.setCancelled(true);
+                }
+            }
             return;
         }
 
-        plugin.getLogger().info("[NPC-CLICK] Player " + player.getName() + " clicked armor stand, checking if it's an NPC...");
-        plugin.getLogger().info("[NPC-CLICK] Total active NPCs in memory: " + plugin.getNPCManager().getActiveNPCs().size());
+        int entityId = packet.getEntityId();
+        String npcId = plugin.getNPCManager().getNPCByEntityId(entityId);
 
-        // Check if it's an Overwatch NPC
-        String npcId = plugin.getNPCManager().getNPCAtLocation(clickedEntity);
+        if (npcId == null)
+            return;
 
-        if (npcId == null) {
-            plugin.getLogger().info("[NPC-CLICK] Not an Overwatch NPC, allowing normal interaction");
-            return; // Not an Overwatch NPC
-        }
-
-        plugin.getLogger().info("[NPC-CLICK] Found Overwatch NPC: " + npcId);
-
-        // Cancel event to prevent normal interaction
         event.setCancelled(true);
 
-        // Check permission
-        if (!player.hasPermission("reportsystem.overwatch")) {
-            player.sendMessage("§c[Overwatch] Bu NPC'yi kullanma yetkiniz yok!");
+        Player player = (Player) event.getPlayer();
+        // event.getPlayer() handshake/disconnect aninda null donebilir
+        if (player == null) {
             return;
         }
 
-        // Open Overwatch Menu GUI
-        new OverwatchMenuGUI(plugin, player).open();
+        // Cooldown: 500ms between clicks
+        long now = System.currentTimeMillis();
+        Long lastClick = clickCooldown.get(player.getUniqueId());
+        if (lastClick != null && now - lastClick < 500)
+            return;
+        clickCooldown.put(player.getUniqueId(), now);
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline())
+                return;
+
+            if (!player.hasPermission("reportsystem.overwatch")) {
+                player.sendMessage(plugin.getMessageManager().colorize(
+                        plugin.getMessageManager().getMessage("overwatch.npc.no-permission")));
+                return;
+            }
+
+            new OverwatchMenuGUI(plugin, player).open();
+        });
     }
 
     /**
-     * Prevent players from taking/swapping armor from Overwatch NPCs
+     * Show NPCs to player on join
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        // Delay to ensure player is fully loaded
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player player = event.getPlayer();
+            if (player.isOnline() && plugin.getNPCManager() != null) {
+                plugin.getNPCManager().showAllNPCsToPlayer(player);
+            }
+        }, 20L); // 1 second after join
+    }
+
+    /**
+     * Prevent players from taking/swapping armor from hologram armor stands
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onArmorStandManipulate(PlayerArmorStandManipulateEvent event) {
         ArmorStand armorStand = event.getRightClicked();
 
-        // Check if it's an Overwatch NPC or hologram
-        String npcId = plugin.getNPCManager().getNPCAtLocation(armorStand);
-
-        if (npcId != null || isOverwatchHologram(armorStand)) {
-            // Cancel event to prevent armor manipulation
+        if (isOverwatchHologram(armorStand)) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent players from damaging Overwatch NPCs
+     * Prevent players from damaging hologram armor stands
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         Entity damaged = event.getEntity();
 
-        // Check if damaged entity is an armor stand
-        if (!(damaged instanceof ArmorStand)) {
+        if (!(damaged instanceof ArmorStand))
             return;
-        }
 
         ArmorStand armorStand = (ArmorStand) damaged;
 
-        // Check if it's an Overwatch NPC or hologram
-        String npcId = plugin.getNPCManager().getNPCAtLocation(armorStand);
-
-        if (npcId != null || isOverwatchHologram(armorStand)) {
-            // Cancel damage event
+        if (isOverwatchHologram(armorStand)) {
             event.setCancelled(true);
         }
     }
@@ -105,9 +135,35 @@ public class NPCClickListener implements Listener {
      * Check if armor stand is an Overwatch hologram
      */
     private boolean isOverwatchHologram(ArmorStand armorStand) {
-        // Holograms are invisible, have custom name, and marker mode
-        return armorStand.isMarker() &&
-               !armorStand.isVisible() &&
-               armorStand.hasGravity() == false;
+        return armorStand.getScoreboardTags().contains("overwatch_hologram");
+    }
+
+    /**
+     * Clean up orphaned holograms that were saved to the world (e.g. from server
+     * crashes)
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onChunkLoad(org.bukkit.event.world.ChunkLoadEvent event) {
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (plugin.getNPCManager() == null)
+                return;
+
+            for (Entity entity : event.getChunk().getEntities()) {
+                if (entity instanceof ArmorStand && isOverwatchHologram((ArmorStand) entity)) {
+                    // Check if this entity is tracked by an active NPC
+                    boolean tracked = false;
+                    for (com.reportsystem.spigot.overwatch.NPCManager.NPCData npcData : plugin.getNPCManager()
+                            .getActiveNPCs().values()) {
+                        if (npcData.getHologramLines() != null && npcData.getHologramLines().contains(entity)) {
+                            tracked = true;
+                            break;
+                        }
+                    }
+                    if (!tracked) {
+                        entity.remove();
+                    }
+                }
+            }
+        }, 10L); // wait 10 ticks to ensure tracker is updated
     }
 }

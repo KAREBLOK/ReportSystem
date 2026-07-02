@@ -60,12 +60,17 @@ public class ReplayInteractionListener extends PacketListenerAbstract {
 
         int clickedEntityId = packet.getEntityId();
 
-        plugin.getLogger().info("[REPLAY-INTERACTION] Player " + viewer.getName() +
+        plugin.debug("[REPLAY-INTERACTION] Player " + viewer.getName() +
                 " clicked entity ID: " + clickedEntityId);
+
+        // NPC Manager null kontrolü
+        if (replayPlayer.getNpcManager() == null) {
+            return;
+        }
 
         // Check if this is the main recorded player NPC
         if (clickedEntityId == replayPlayer.getNpcManager().getEntityId()) {
-            plugin.getLogger().info("[REPLAY-INTERACTION] Clicked main NPC");
+            plugin.debug("[REPLAY-INTERACTION] Clicked main NPC");
             Bukkit.getScheduler().runTask(plugin, () -> {
                 showPlayerEquipment(viewer, replayPlayer, null);
             });
@@ -75,7 +80,7 @@ public class ReplayInteractionListener extends PacketListenerAbstract {
         // Check if this is a nearby player NPC
         UUID nearbyPlayerUUID = replayPlayer.getNpcManager().getNearbyPlayerByEntityId(clickedEntityId);
         if (nearbyPlayerUUID != null) {
-            plugin.getLogger().info("[REPLAY-INTERACTION] Clicked nearby player NPC: " + nearbyPlayerUUID);
+            plugin.debug("[REPLAY-INTERACTION] Clicked nearby player NPC: " + nearbyPlayerUUID);
             Bukkit.getScheduler().runTask(plugin, () -> {
                 showPlayerEquipment(viewer, replayPlayer, nearbyPlayerUUID);
             });
@@ -201,7 +206,7 @@ public class ReplayInteractionListener extends PacketListenerAbstract {
         // Open inventory
         viewer.openInventory(inv);
 
-        plugin.getLogger().info("[REPLAY-INTERACTION] Showing full inventory for " + playerName + " to " + viewer.getName() +
+        plugin.debug("[REPLAY-INTERACTION] Showing full inventory for " + playerName + " to " + viewer.getName() +
                 " - Total items: " + inventory.size());
     }
 

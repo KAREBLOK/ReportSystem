@@ -33,20 +33,8 @@ public class SpigotMessageListener implements PluginMessageListener, PluginMessa
 
     @Override
     public void onReportCreated(int reportId, String reporter, String reported, String reason, String server) {
-        // Yetkililere bildirim
-        String notification = ChatColor.translateAlternateColorCodes('&',
-                "&8[&6Rapor&8] &7(&e" + server + "&7) &f" + reporter + " &7➜ &c" + reported +
-                        "\n&7Sebep: &f" + reason + " &8(#" + reportId + ")");
-
-        for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission("reportsystem.notify")) {
-                staff.sendMessage(notification);
-
-                // Ses efekti
-                staff.playSound(staff.getLocation(),
-                        org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
-            }
-        }
+        // Yetkililere toast bildirim (MessageManager üzerinden, messages dosyasından okunur)
+        plugin.getMessageManager().sendStaffNotification(reportId, reporter, reported, reason, server);
 
         plugin.getLogger().info("[REPORT] #" + reportId + " - " + reporter + " reported " +
                 reported + " from " + server + ": " + reason);
@@ -54,14 +42,8 @@ public class SpigotMessageListener implements PluginMessageListener, PluginMessa
 
     @Override
     public void onReportStatusUpdate(int reportId, String newStatus) {
-        String message = ChatColor.translateAlternateColorCodes('&',
-                "&8[&6Rapor&8] &7Rapor #" + reportId + " durumu güncellendi: &e" + newStatus);
-
-        for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission("reportsystem.notify")) {
-                staff.sendMessage(message);
-            }
-        }
+        // Durum güncelleme toast bildirimi
+        plugin.getMessageManager().sendStatusUpdateToast(reportId, newStatus);
     }
 
     @Override

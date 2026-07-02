@@ -1,6 +1,8 @@
 package com.reportsystem.common.replay.actions;
 
 public class WeatherAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
+
     public enum WeatherType {
         CLEAR,
         RAIN,

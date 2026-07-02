@@ -2,9 +2,11 @@ package com.reportsystem.spigot.overwatch.gui;
 
 import com.reportsystem.common.models.overwatch.OverwatchStats;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.gui.GUIConfig;
 import com.reportsystem.spigot.overwatch.OverwatchManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -16,115 +18,125 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Main Overwatch Menu GUI - Opens when player clicks NPC
+ * Main Overwatch Menu GUI - DeluxeMenu inspired clean design
+ * Layout (45 slots / 5 rows):
+ *   Row 1: .... HEAD ....         (slot 4 = player head)
+ *   Row 2: .BBBBBBB.              (slots 10-16 = black glass separator)
+ *   Row 3: .. REVIEW . STATS . BOARD ..  (slots 20, 22, 24)
+ *   Row 4: .... TUTORIAL ....     (slot 31)
+ *   Row 5: .... BACK ....         (slot 40)
  */
 public class OverwatchMenuGUI implements InventoryHolder {
 
     private final ReportSystemSpigot plugin;
     private final Player player;
     private final Inventory inventory;
+    private final FileConfiguration cfg;
 
     public OverwatchMenuGUI(ReportSystemSpigot plugin, Player player) {
         this.plugin = plugin;
         this.player = player;
+        this.cfg = new GUIConfig(plugin, "overwatch-menu").getConfig();
 
-        String title = plugin.getMessageManager().getMessage("overwatch.gui.menu.title");
-        this.inventory = Bukkit.createInventory(this, 27, plugin.getMessageManager().colorize(title));
+        String title = cfg.getString("title", "&8&nOverwatch");
+        this.inventory = Bukkit.createInventory(this, 45, plugin.getMessageManager().colorize(title));
 
         setupItems();
     }
 
     private void setupItems() {
-        // Fill with glass panes
-        ItemStack grayGlass = createItem(Material.GRAY_STAINED_GLASS_PANE, " ", null);
-        for (int i = 0; i < 27; i++) {
-            inventory.setItem(i, grayGlass);
+        // Black glass separator (row 2: slots 10-16)
+        ItemStack blackGlass = createItem(Material.BLACK_STAINED_GLASS_PANE, "&7", null);
+        for (int i = 10; i <= 16; i++) {
+            inventory.setItem(i, blackGlass);
         }
 
-        // Start Reviewing (Slot 11)
-        List<String> reviewLore = new ArrayList<>();
-        reviewLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.start-review.lore-desc1"));
-        reviewLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.start-review.lore-desc2"));
-        reviewLore.add("");
-        int pendingQueue = plugin.getOverwatchManager().getPendingQueueCount();
-        String pendingMsg = plugin.getMessageManager().getMessage("overwatch.gui.menu.start-review.lore-pending")
-                .replace("%count%", String.valueOf(pendingQueue));
-        reviewLore.add(pendingMsg);
-        reviewLore.add("");
-        reviewLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.start-review.lore-click"));
-
-        String reviewName = plugin.getMessageManager().getMessage("overwatch.gui.menu.start-review.name");
-        inventory.setItem(11, createItem(Material.ENDER_PEARL, reviewName, reviewLore));
-
-        // My Statistics (Slot 13)
-        List<String> statsLore = new ArrayList<>();
+        // Player Head (Slot 4) - overview
         Optional<OverwatchStats> statsOpt = plugin.getOverwatchManager().getReviewerStats(player.getUniqueId());
+        List<String> headLore = new ArrayList<>();
+        headLore.add("");
 
         if (statsOpt.isPresent()) {
             OverwatchStats stats = statsOpt.get();
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-level")
-                    .replace("%level%", String.valueOf(stats.getLevel())));
-
-            String rankMsg = plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-rank")
+            headLore.add(cfg.getString("player-head.lore-level", "").replace("%level%", String.valueOf(stats.getLevel())));
+            headLore.add(cfg.getString("player-head.lore-rank", "")
                     .replace("%rank_color%", getRankColor(stats.getRank()))
-                    .replace("%rank%", stats.getRank());
-            statsLore.add(rankMsg);
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-xp")
-                    .replace("%xp%", String.valueOf(stats.getXp())));
-            statsLore.add("");
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-total")
-                    .replace("%total%", String.valueOf(stats.getTotalReviews())));
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-guilty")
-                    .replace("%guilty%", String.valueOf(stats.getGuiltyVerdicts())));
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-innocent")
-                    .replace("%innocent%", String.valueOf(stats.getInnocentVerdicts())));
-
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-skip")
-                    .replace("%skip%", String.valueOf(stats.getSkippedVerdicts())));
+                    .replace("%rank%", stats.getRank()));
+            headLore.add(cfg.getString("player-head.lore-xp", "").replace("%xp%", String.valueOf(stats.getXp())));
+            headLore.add(cfg.getString("player-head.lore-total", "").replace("%total%", String.valueOf(stats.getTotalReviews())));
         } else {
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-no-stats1"));
+            headLore.add(cfg.getString("stats.lore-no-stats1", ""));
+        }
+        headLore.add("");
+
+        String headName = cfg.getString("player-head.name", "&b%player%").replace("%player%", player.getName());
+        inventory.setItem(4, createItem(Material.PLAYER_HEAD, headName, headLore));
+
+        // Start Reviewing (Slot 20)
+        List<String> reviewLore = new ArrayList<>();
+        reviewLore.add("");
+        reviewLore.add(cfg.getString("start-review.lore-desc1", ""));
+        reviewLore.add(cfg.getString("start-review.lore-desc2", ""));
+        reviewLore.add("");
+        int pendingQueue = plugin.getOverwatchManager().getPendingQueueCount();
+        reviewLore.add(cfg.getString("start-review.lore-pending", "").replace("%count%", String.valueOf(pendingQueue)));
+        reviewLore.add("");
+        reviewLore.add(cfg.getString("start-review.lore-click", ""));
+
+        inventory.setItem(20, createItem(Material.ENDER_PEARL, cfg.getString("start-review.name", ""), reviewLore));
+
+        // My Statistics (Slot 22)
+        List<String> statsLore = new ArrayList<>();
+        statsLore.add("");
+        if (statsOpt.isPresent()) {
+            OverwatchStats stats = statsOpt.get();
+            statsLore.add(cfg.getString("stats.lore-level", "").replace("%level%", String.valueOf(stats.getLevel())));
+            statsLore.add(cfg.getString("stats.lore-rank", "")
+                    .replace("%rank_color%", getRankColor(stats.getRank()))
+                    .replace("%rank%", stats.getRank()));
+            statsLore.add(cfg.getString("stats.lore-xp", "").replace("%xp%", String.valueOf(stats.getXp())));
             statsLore.add("");
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-no-stats2"));
-            statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-no-stats3"));
+            statsLore.add(cfg.getString("stats.lore-total", "").replace("%total%", String.valueOf(stats.getTotalReviews())));
+            statsLore.add(cfg.getString("stats.lore-guilty", "").replace("%guilty%", String.valueOf(stats.getGuiltyVerdicts())));
+            statsLore.add(cfg.getString("stats.lore-innocent", "").replace("%innocent%", String.valueOf(stats.getInnocentVerdicts())));
+            statsLore.add(cfg.getString("stats.lore-skip", "").replace("%skip%", String.valueOf(stats.getSkippedVerdicts())));
+        } else {
+            statsLore.add(cfg.getString("stats.lore-no-stats1", ""));
+            statsLore.add("");
+            statsLore.add(cfg.getString("stats.lore-no-stats2", ""));
+            statsLore.add(cfg.getString("stats.lore-no-stats3", ""));
         }
         statsLore.add("");
-        statsLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.lore-click"));
+        statsLore.add(cfg.getString("stats.lore-click", ""));
 
-        String statsName = plugin.getMessageManager().getMessage("overwatch.gui.menu.stats.name");
-        inventory.setItem(13, createItem(Material.PLAYER_HEAD, statsName, statsLore));
+        inventory.setItem(22, createItem(Material.BOOK, cfg.getString("stats.name", ""), statsLore));
 
-        // Leaderboard (Slot 15)
+        // Leaderboard (Slot 24)
         List<String> leaderboardLore = new ArrayList<>();
-        leaderboardLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.leaderboard.lore-desc1"));
-        leaderboardLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.leaderboard.lore-desc2"));
         leaderboardLore.add("");
-        leaderboardLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.leaderboard.lore-click"));
+        leaderboardLore.add(cfg.getString("leaderboard.lore-desc1", ""));
+        leaderboardLore.add(cfg.getString("leaderboard.lore-desc2", ""));
+        leaderboardLore.add("");
+        leaderboardLore.add(cfg.getString("leaderboard.lore-click", ""));
 
-        String leaderboardName = plugin.getMessageManager().getMessage("overwatch.gui.menu.leaderboard.name");
-        inventory.setItem(15, createItem(Material.GOLDEN_APPLE, leaderboardName, leaderboardLore));
+        inventory.setItem(24, createItem(Material.GOLDEN_APPLE, cfg.getString("leaderboard.name", ""), leaderboardLore));
 
-        // How it Works (Slot 22)
+        // How it Works (Slot 31)
         List<String> tutorialLore = new ArrayList<>();
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-header"));
         tutorialLore.add("");
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-step1"));
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-step2"));
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-step3"));
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-step4"));
+        tutorialLore.add(cfg.getString("tutorial.lore-header", ""));
         tutorialLore.add("");
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-consensus-header"));
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-consensus-desc1"));
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-consensus-desc2"));
+        tutorialLore.add(cfg.getString("tutorial.lore-step1", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step2", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step3", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step4", ""));
         tutorialLore.add("");
-        tutorialLore.add(plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.lore-click"));
+        tutorialLore.add(cfg.getString("tutorial.lore-click", ""));
 
-        String tutorialName = plugin.getMessageManager().getMessage("overwatch.gui.menu.tutorial.name");
-        inventory.setItem(22, createItem(Material.BOOK, tutorialName, tutorialLore));
+        inventory.setItem(31, createItem(Material.KNOWLEDGE_BOOK, cfg.getString("tutorial.name", ""), tutorialLore));
+
+        // Back Button (Slot 40)
+        inventory.setItem(40, createItem(Material.ARROW, cfg.getString("back", "&8←"), null));
     }
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
@@ -159,17 +171,20 @@ public class OverwatchMenuGUI implements InventoryHolder {
 
     public void handleClick(int slot) {
         switch (slot) {
-            case 11: // Start Reviewing
+            case 20: // Start Reviewing
                 startReviewing();
                 break;
-            case 13: // My Statistics
+            case 22: // My Statistics
                 new OverwatchStatsGUI(plugin, player, player.getUniqueId()).open();
                 break;
-            case 15: // Leaderboard
+            case 24: // Leaderboard
                 new OverwatchLeaderboardGUI(plugin, player).open();
                 break;
-            case 22: // Tutorial
+            case 31: // Tutorial
                 showTutorial();
+                break;
+            case 40: // Back
+                player.closeInventory();
                 break;
         }
     }
@@ -186,17 +201,17 @@ public class OverwatchMenuGUI implements InventoryHolder {
                     .replace("%id%", String.valueOf(reportId));
             player.sendMessage(plugin.getMessageManager().colorize(loadingMsg));
 
-            // Start replay in 1 second (give player time to prepare)
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                boolean started = plugin.getReplayManager().startReplay(reportId, player);
-
-                if (started) {
-                    // Register this as an Overwatch review session
-                    plugin.getOverwatchReplayListener().startReview(player, reportId);
-                } else {
-                    String failedMsg = plugin.getMessageManager().getMessage("overwatch.review.replay-failed");
-                    player.sendMessage(plugin.getMessageManager().colorize(failedMsg));
-                }
+                plugin.getReplayManager().startReplay(reportId, player).thenAccept(started -> {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (started) {
+                            plugin.getOverwatchReplayListener().startReview(player, reportId);
+                        } else {
+                            String failedMsg = plugin.getMessageManager().getMessage("overwatch.review.replay-failed");
+                            player.sendMessage(plugin.getMessageManager().colorize(failedMsg));
+                        }
+                    });
+                });
             }, 20L);
 
         } else {

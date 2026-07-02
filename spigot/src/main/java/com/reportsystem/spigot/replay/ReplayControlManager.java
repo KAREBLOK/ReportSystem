@@ -1,33 +1,60 @@
 package com.reportsystem.spigot.replay;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
-import org.bukkit.ChatColor;
+import com.reportsystem.spigot.gui.GUIConfig;
+import com.reportsystem.spigot.managers.MessageManager;
+import org.bukkit.Location;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.GameMode;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.ChatColor;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class ReplayControlManager {
 
     private final ReportSystemSpigot plugin;
     private final ReplayManager replayManager;
-    private final Map<UUID, BossBar> progressBars = new HashMap<>();
-    private final Map<UUID, ItemStack[]> savedInventories = new HashMap<>();
-    private final Map<UUID, BukkitRunnable> updateTasks = new HashMap<>();
+    private final GUIConfig guiConfig;
+    private final Map<UUID, BossBar> progressBars = new ConcurrentHashMap<>();
+    private final Map<UUID, ItemStack[]> savedInventories = new ConcurrentHashMap<>();
+    private final Map<UUID, BukkitRunnable> updateTasks = new ConcurrentHashMap<>();
+
+    // Oyuncu durumu kaydetme (replay bitince geri yuklenir)
+    private final Map<UUID, GameMode> savedGameModes = new ConcurrentHashMap<>();
+    private final Map<UUID, Double> savedHealth = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> savedFoodLevels = new ConcurrentHashMap<>();
+    private final Map<UUID, Float> savedSaturation = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> savedAllowFlight = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> savedFlying = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> savedFireTicks = new ConcurrentHashMap<>();
 
     public ReplayControlManager(ReportSystemSpigot plugin, ReplayManager replayManager) {
         this.plugin = plugin;
         this.replayManager = replayManager;
+        this.guiConfig = new GUIConfig(plugin, "replay-hotbar");
+    }
+
+    private MessageManager msg() {
+        return plugin.getMessageManager();
+    }
+
+    private FileConfiguration cfg() {
+        return guiConfig.getConfig();
     }
 
     /**
@@ -36,194 +63,154 @@ public class ReplayControlManager {
     public void giveControlItems(Player player, ReplayPlayer replayPlayer) {
         UUID playerUUID = player.getUniqueId();
 
-        // Mevcut envanteri kaydet
+        // Mevcut durumu kaydet
         savedInventories.put(playerUUID, player.getInventory().getContents().clone());
-        plugin.getLogger().info("[REPLAY-CONTROL] Saved inventory for " + player.getName());
+        savedGameModes.put(playerUUID, player.getGameMode());
+        savedHealth.put(playerUUID, player.getHealth());
+        savedFoodLevels.put(playerUUID, player.getFoodLevel());
+        savedSaturation.put(playerUUID, player.getSaturation());
+        savedAllowFlight.put(playerUUID, player.getAllowFlight());
+        savedFlying.put(playerUUID, player.isFlying());
+        savedFireTicks.put(playerUUID, player.getFireTicks());
+        plugin.debug("[REPLAY-CONTROL] Saved player state for " + player.getName());
 
-        // Envanteri temizle
+        // Replay izleme moduna gec
         player.getInventory().clear();
+        player.setGameMode(GameMode.ADVENTURE);
+        player.setHealth(player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue());
+        player.setFoodLevel(20);
+        player.setSaturation(20.0f);
+        player.setFireTicks(0);
+        player.setAllowFlight(true);
+        player.setFlying(true);
 
-        // Kontrol itemlerini ver - YENİ DÜZEN
-        player.getInventory().setItem(0, createPlayPauseItem(replayPlayer.isPaused())); // Play/Pause
-        player.getInventory().setItem(1, createInfoItem(replayPlayer)); // Replay Bilgileri
+        // Kontrol itemlerini ver
+        setControlItems(player, replayPlayer);
 
-        player.getInventory().setItem(3, createRewindItem()); // Geri sar
-        player.getInventory().setItem(4, createTeleportItem()); // Işınlanma
-        player.getInventory().setItem(5, createForwardItem()); // İleri sar
-
-        player.getInventory().setItem(7, createSpeedItem(replayPlayer.getPlaybackSpeed())); // Hız kontrolü
-        player.getInventory().setItem(8, createStopItem()); // Durdur
-
-        // Progress bar oluştur
+        // Progress bar olustur
         createProgressBar(player, replayPlayer);
 
-        // Hotbar güncelleme task'ı
+        // Hotbar guncelleme task'i
         startHotbarUpdateTask(player, replayPlayer);
 
-        plugin.getLogger().info("[REPLAY-CONTROL] Control items given to " + player.getName());
+        plugin.debug("[REPLAY-CONTROL] Control items given to " + player.getName());
     }
 
     /**
-     * Geri sarma itemi oluşturur (5 saniye)
+     * Kontrol itemlerini hotbar'a yerlestirir
      */
+    private void setControlItems(Player player, ReplayPlayer replayPlayer) {
+        player.getInventory().setItem(0, createPlayPauseItem(replayPlayer.isPaused()));
+        player.getInventory().setItem(1, createInfoItem(replayPlayer));
+        player.getInventory().setItem(3, createRewindItem());
+        player.getInventory().setItem(4, createTeleportItem());
+        player.getInventory().setItem(5, createForwardItem());
+        player.getInventory().setItem(7, createSpeedItem(replayPlayer.getPlaybackSpeed()));
+        player.getInventory().setItem(8, createStopItem());
+    }
+
     private ItemStack createRewindItem() {
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) item.getItemMeta();
-
-        // MHF_ArrowLeft kafası
         meta.setOwner("MHF_ArrowLeft");
-        meta.setDisplayName(ChatColor.RED + "◀ 5 Saniye Geri");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Replay'i 5 saniye geri sar",
-                "",
-                ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Geri sar"
-        ));
+        meta.setDisplayName(msg().colorize(cfg().getString("items.rewind.name", "&c◀ 5 Saniye Geri")));
+        List<String> lore = cfg().getStringList("items.rewind.lore");
+        meta.setLore(lore.stream().map(msg()::colorize).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * İleri sarma itemi oluşturur (5 saniye)
-     */
     private ItemStack createForwardItem() {
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) item.getItemMeta();
-
-        // MHF_ArrowRight kafası
         meta.setOwner("MHF_ArrowRight");
-        meta.setDisplayName(ChatColor.GREEN + "5 Saniye İleri ▶");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Replay'i 5 saniye ileri sar",
-                "",
-                ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "İleri sar"
-        ));
+        meta.setDisplayName(msg().colorize(cfg().getString("items.forward.name", "&a5 Saniye İleri ▶")));
+        List<String> lore = cfg().getStringList("items.forward.lore");
+        meta.setLore(lore.stream().map(msg()::colorize).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Play/Pause itemi oluşturur
-     */
     private ItemStack createPlayPauseItem(boolean isPaused) {
         ItemStack item;
         ItemMeta meta;
+        String key = isPaused ? "items.play" : "items.pause";
 
         if (isPaused) {
             item = new ItemStack(Material.LIME_DYE);
-            meta = item.getItemMeta();
-            meta.setDisplayName(ChatColor.GREEN + "▶ OYNAT");
-            meta.setLore(Arrays.asList(
-                    ChatColor.GRAY + "Replay'i devam ettir",
-                    "",
-                    ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Oynat"
-            ));
         } else {
             item = new ItemStack(Material.GRAY_DYE);
-            meta = item.getItemMeta();
-            meta.setDisplayName(ChatColor.GRAY + "⏸ DURAKLAT");
-            meta.setLore(Arrays.asList(
-                    ChatColor.GRAY + "Replay'i duraklat",
-                    "",
-                    ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Duraklat"
-            ));
         }
-
+        meta = item.getItemMeta();
+        meta.setDisplayName(msg().colorize(cfg().getString(key + ".name", "")));
+        List<String> lore = cfg().getStringList(key + ".lore");
+        meta.setLore(lore.stream().map(msg()::colorize).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Hız kontrolü itemi oluşturur
-     */
     private ItemStack createSpeedItem(double currentSpeed) {
         ItemStack item = new ItemStack(Material.RABBIT_FOOT);
         ItemMeta meta = item.getItemMeta();
-
-        meta.setDisplayName(ChatColor.AQUA + "⚡ Hız: " + ChatColor.WHITE + currentSpeed + "x");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Replay oynatma hızını değiştir",
-                "",
-                ChatColor.YELLOW + "Sol Tık: " + ChatColor.WHITE + "Hızlandır",
-                ChatColor.YELLOW + "Sağ Tık: " + ChatColor.WHITE + "Yavaşlat",
-                "",
-                ChatColor.DARK_GRAY + "Hızlar: 0.25x, 0.5x, 1.0x, 2.0x, 4.0x"
-        ));
-
+        String speedStr = String.valueOf(currentSpeed);
+        meta.setDisplayName(msg().colorize(cfg().getString("items.speed.name", "&b⚡ Hız: &f%speed%x")
+                .replace("%speed%", speedStr)));
+        List<String> lore = cfg().getStringList("items.speed.lore");
+        meta.setLore(lore.stream().map(line -> msg().colorize(line
+                .replace("%speed%", speedStr))).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Bilgi itemi oluşturur - Artık GUI açar
-     */
     private ItemStack createInfoItem(ReplayPlayer replayPlayer) {
-        ItemStack item = new ItemStack(Material.BOOK);
+        ItemStack item = new ItemStack(Material.COMPARATOR);
         ItemMeta meta = item.getItemMeta();
-
         long elapsedSeconds = replayPlayer.getElapsedTime() / 1000;
         long totalSeconds = replayPlayer.getTotalTime() / 1000;
+        String speedStr = String.valueOf(replayPlayer.getPlaybackSpeed());
 
-        meta.setDisplayName(ChatColor.YELLOW + "📊 Replay Bilgileri");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Oyuncu: " + ChatColor.WHITE + replayPlayer.getReplay().getRecordedPlayer(),
-                ChatColor.GRAY + "Süre: " + ChatColor.WHITE + formatTime(elapsedSeconds) + " / " + formatTime(totalSeconds),
-                ChatColor.GRAY + "İlerleme: " + ChatColor.WHITE + String.format("%.1f%%", replayPlayer.getProgress() * 100),
-                ChatColor.GRAY + "Hız: " + ChatColor.WHITE + replayPlayer.getPlaybackSpeed() + "x",
-                "",
-                ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Detaylı bilgileri aç"
-        ));
-
+        meta.setDisplayName(msg().colorize(cfg().getString("items.settings.name", "&eReplay Ayarları")));
+        List<String> lore = cfg().getStringList("items.settings.lore");
+        meta.setLore(lore.stream().map(line -> msg().colorize(line
+                .replace("%player%", replayPlayer.getReplay().getRecordedPlayer())
+                .replace("%elapsed%", formatTime(elapsedSeconds))
+                .replace("%total%", formatTime(totalSeconds))
+                .replace("%progress%", String.format("%.1f%%", replayPlayer.getProgress() * 100))
+                .replace("%speed%", speedStr)
+        )).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Işınlanma itemi oluşturur
-     */
     private ItemStack createTeleportItem() {
         ItemStack item = new ItemStack(Material.ENDER_PEARL);
         ItemMeta meta = item.getItemMeta();
-
-        meta.setDisplayName(ChatColor.LIGHT_PURPLE + "🌀 Işınlanma");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Replay'deki oyuncuların yanına ışınlan",
-                "",
-                ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Işınlanma menüsünü aç"
-        ));
-
+        meta.setDisplayName(msg().colorize(cfg().getString("items.teleport.name", "&d🌀 Işınlanma")));
+        List<String> lore = cfg().getStringList("items.teleport.lore");
+        meta.setLore(lore.stream().map(msg()::colorize).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Durdurma itemi oluşturur
-     */
     private ItemStack createStopItem() {
         ItemStack item = new ItemStack(Material.BARRIER);
         ItemMeta meta = item.getItemMeta();
-
-        meta.setDisplayName(ChatColor.RED + "■ DURDUR");
-        meta.setLore(Arrays.asList(
-                ChatColor.GRAY + "Replay'i durdur ve çık",
-                "",
-                ChatColor.YELLOW + "Tık: " + ChatColor.WHITE + "Hemen çık"
-        ));
-
+        meta.setDisplayName(msg().colorize(cfg().getString("items.stop.name", "&c■ DURDUR")));
+        List<String> lore = cfg().getStringList("items.stop.lore");
+        meta.setLore(lore.stream().map(msg()::colorize).collect(Collectors.toList()));
         item.setItemMeta(meta);
         return item;
     }
 
     /**
-     * Progress bar oluşturur
+     * Progress bar olusturur
      */
     private void createProgressBar(Player player, ReplayPlayer replayPlayer) {
         UUID playerUUID = player.getUniqueId();
 
-        // Önceki boss bar'ı kaldır
         BossBar oldBar = progressBars.remove(playerUUID);
         if (oldBar != null) {
             oldBar.removeAll();
-            plugin.getLogger().info("[REPLAY-CONTROL] Removed old boss bar for " + player.getName());
         }
 
         BossBar bossBar = plugin.getServer().createBossBar(
@@ -235,55 +222,47 @@ public class ReplayControlManager {
         bossBar.addPlayer(player);
         bossBar.setProgress(0.0);
         progressBars.put(playerUUID, bossBar);
-
-        plugin.getLogger().info("[REPLAY-CONTROL] Created boss bar for " + player.getName());
     }
 
     /**
-     * Hotbar güncelleme task'ı
+     * Hotbar guncelleme task'i
      */
     private void startHotbarUpdateTask(Player player, ReplayPlayer replayPlayer) {
         UUID playerUUID = player.getUniqueId();
 
-        // Önceki task'ı durdur
         BukkitRunnable oldTask = updateTasks.remove(playerUUID);
         if (oldTask != null) {
             oldTask.cancel();
-            plugin.getLogger().info("[REPLAY-CONTROL] Cancelled old update task for " + player.getName());
         }
 
         BukkitRunnable updateTask = new BukkitRunnable() {
             @Override
             public void run() {
                 if (!player.isOnline() || replayPlayer.getState() == ReplayPlayer.ReplayState.STOPPED) {
-                    plugin.getLogger().info("[REPLAY-CONTROL] Stopping update task for " + player.getName() +
-                            " (online: " + player.isOnline() + ", state: " + replayPlayer.getState() + ")");
                     this.cancel();
                     updateTasks.remove(playerUUID);
                     return;
                 }
 
-                // Replay bitmiş mi kontrol et
                 if (replayPlayer.getState() == ReplayPlayer.ReplayState.FINISHED) {
-                    plugin.getLogger().info("[REPLAY-CONTROL] Replay finished, stopping update task for " + player.getName());
                     this.cancel();
                     updateTasks.remove(playerUUID);
                     return;
                 }
 
-                // Play/Pause butonunu güncelle
-                player.getInventory().setItem(0, createPlayPauseItem(replayPlayer.isPaused()));
+                // 1. sahis modunda veya GUI acikken hotbar guncelleme
+                boolean isFirstPerson = replayPlayer.getNpcManager() != null && replayPlayer.getNpcManager().isFirstPersonEnabled();
+                boolean hasGuiOpen = player.getOpenInventory().getType() != org.bukkit.event.inventory.InventoryType.CRAFTING;
 
-                // Bilgi butonunu güncelle
-                player.getInventory().setItem(1, createInfoItem(replayPlayer));
+                if (!hasGuiOpen && !isFirstPerson) {
+                    player.getInventory().setItem(0, createPlayPauseItem(replayPlayer.isPaused()));
+                    player.getInventory().setItem(1, createInfoItem(replayPlayer));
+                    player.getInventory().setItem(7, createSpeedItem(replayPlayer.getPlaybackSpeed()));
+                }
 
-                // Hız butonunu güncelle
-                player.getInventory().setItem(7, createSpeedItem(replayPlayer.getPlaybackSpeed()));
-
-                // Progress bar güncelle
+                // Progress bar guncelle
                 BossBar bossBar = progressBars.get(playerUUID);
                 if (bossBar != null) {
-                    // Eğer duraklatılmışsa progress'i güncelleme
                     if (!replayPlayer.isPaused()) {
                         double progress = replayPlayer.getProgress();
                         bossBar.setProgress(Math.max(0, Math.min(1, progress)));
@@ -301,73 +280,124 @@ public class ReplayControlManager {
                     }
 
                     bossBar.setTitle(title);
-
-                    // Durum rengini değiştir
-                    if (replayPlayer.isPaused()) {
-                        bossBar.setColor(BarColor.RED);
-                    } else {
-                        bossBar.setColor(BarColor.YELLOW);
-                    }
+                    bossBar.setColor(replayPlayer.isPaused() ? BarColor.RED : BarColor.YELLOW);
                 }
             }
         };
 
         updateTasks.put(playerUUID, updateTask);
-        updateTask.runTaskTimer(plugin, 0L, 5L); // Her 5 tick'te bir güncelle
-
-        plugin.getLogger().info("[REPLAY-CONTROL] Started update task for " + player.getName());
+        updateTask.runTaskTimer(plugin, 0L, 5L);
     }
 
     /**
-     * Kontrol itemlerini kaldırır ve eski envanteri geri yükler - TAMAMİYLE YENİDEN YAZILDI
+     * Kontrol itemlerini kaldirir ve eski envanteri geri yukler
      */
+    /**
+     * Sadece replay UI'ini temizler (BossBar, update task, hotbar) - state geri yuklenmez.
+     * Overwatch review icin kullanilir: oyuncu adventure modda ve ucuşta kalir.
+     */
+    public void stopReplayUI(Player player) {
+        UUID playerUUID = player.getUniqueId();
+
+        BukkitRunnable updateTask = updateTasks.remove(playerUUID);
+        if (updateTask != null) updateTask.cancel();
+
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+
+        BossBar bossBar = progressBars.remove(playerUUID);
+        if (bossBar != null) bossBar.removeAll();
+
+        player.getInventory().clear();
+        plugin.debug("[REPLAY-CONTROL] Stopped replay UI for " + player.getName() + " (state preserved)");
+    }
+
+    /**
+     * Kaydedilmis state'i temizler (restore etmeden). Overwatch review bitisinde kullanilir.
+     */
+    public void clearSavedState(UUID playerUUID) {
+        savedInventories.remove(playerUUID);
+        savedGameModes.remove(playerUUID);
+        savedHealth.remove(playerUUID);
+        savedFoodLevels.remove(playerUUID);
+        savedSaturation.remove(playerUUID);
+        savedAllowFlight.remove(playerUUID);
+        savedFlying.remove(playerUUID);
+        savedFireTicks.remove(playerUUID);
+        updateTasks.remove(playerUUID);
+        progressBars.remove(playerUUID);
+    }
+
     public void removeControlItems(Player player) {
         UUID playerUUID = player.getUniqueId();
 
-        plugin.getLogger().info("[REPLAY-CONTROL] Starting cleanup for " + player.getName());
+        plugin.debug("[REPLAY-CONTROL] Starting cleanup for " + player.getName());
 
-        // 1. Update task'ını durdur
         BukkitRunnable updateTask = updateTasks.remove(playerUUID);
         if (updateTask != null) {
             updateTask.cancel();
-            plugin.getLogger().info("[REPLAY-CONTROL] Update task cancelled for " + player.getName());
         }
 
-        // 2. Boss bar'ı kaldır - ÖNEMLİ: Bu boss bar'ı tamamen siler
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+
         BossBar bossBar = progressBars.remove(playerUUID);
         if (bossBar != null) {
-            bossBar.removeAll(); // Tüm oyunculardan kaldır
-            plugin.getLogger().info("[REPLAY-CONTROL] Boss bar removed for " + player.getName());
+            bossBar.removeAll();
         }
 
-        // 3. Envanteri restore et - SYNC olarak yapılmalı
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            ItemStack[] savedInventory = savedInventories.remove(playerUUID);
-            if (savedInventory != null) {
-                // Envanteri tamamen temizle
-                player.getInventory().clear();
+        restorePlayerState(player, playerUUID);
 
-                // 1 tick bekle ve eski envanteri geri yükle
-                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    player.getInventory().setContents(savedInventory);
-                    player.updateInventory();
-                    plugin.getLogger().info("[REPLAY-CONTROL] Inventory restored for " + player.getName());
-                }, 1L);
-
-            } else {
-                // Eğer kaydedilmiş envanter yoksa temizle
-                player.getInventory().clear();
-                player.updateInventory();
-                plugin.getLogger().info("[REPLAY-CONTROL] Inventory cleared for " + player.getName() + " (no saved inventory)");
-            }
-        });
-
-        plugin.getLogger().info("[REPLAY-CONTROL] Cleanup completed for " + player.getName());
+        plugin.debug("[REPLAY-CONTROL] Cleanup completed for " + player.getName());
     }
 
     /**
-     * Zaman formatı
+     * Oyuncu durumunu geri yukler (gamemode, can, yemek, fly, envanter)
      */
+    private void restorePlayerState(Player player, UUID playerUUID) {
+        GameMode savedGM = savedGameModes.remove(playerUUID);
+        if (savedGM != null) {
+            player.setGameMode(savedGM);
+        }
+
+        Boolean wasAllowFlight = savedAllowFlight.remove(playerUUID);
+        Boolean wasFlying = savedFlying.remove(playerUUID);
+        if (wasAllowFlight != null) {
+            player.setAllowFlight(wasAllowFlight);
+        }
+        if (wasFlying != null && Boolean.TRUE.equals(wasAllowFlight)) {
+            player.setFlying(wasFlying);
+        }
+
+        Double savedHP = savedHealth.remove(playerUUID);
+        Integer savedFood = savedFoodLevels.remove(playerUUID);
+        Float savedSat = savedSaturation.remove(playerUUID);
+        Integer savedFire = savedFireTicks.remove(playerUUID);
+
+        if (savedHP != null) {
+            double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
+            player.setHealth(Math.min(savedHP, maxHealth));
+        }
+        if (savedFood != null) player.setFoodLevel(savedFood);
+        if (savedSat != null) player.setSaturation(savedSat);
+        if (savedFire != null) player.setFireTicks(savedFire);
+
+        ItemStack[] savedInventory = savedInventories.remove(playerUUID);
+        if (savedInventory != null) {
+            player.getInventory().clear();
+            if (plugin.isEnabled()) {
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    player.getInventory().setContents(savedInventory);
+                    player.updateInventory();
+                }, 1L);
+            } else {
+                player.getInventory().setContents(savedInventory);
+                player.updateInventory();
+            }
+        } else {
+            player.getInventory().clear();
+            player.updateInventory();
+        }
+    }
+
     private String formatTime(long seconds) {
         long minutes = seconds / 60;
         long secs = seconds % 60;
@@ -375,13 +405,49 @@ public class ReplayControlManager {
     }
 
     /**
-     * Tüm progress barları ve envanteri temizle - TAMAMİYLE YENİDEN YAZILDI
+     * 1. sahis moduna girerken hotbar'i temizle
+     * Cikis egilme tusu (sneak) ile yapilir, envantere ozel item konmaz
+     */
+    public void enterFirstPersonMode(Player player, ReplayPlayer replayPlayer) {
+        player.getInventory().clear();
+        // GUI kapanma eventi envanter guncellemeyi ezebilir, 1 tick sonra temizle
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            player.getInventory().clear();
+            player.getInventory().setHeldItemSlot(0);
+            player.updateInventory();
+
+            // Envanter temizlendikten sonra NPC'nin el itemlerini viewer'a gonder
+            // Bukkit clear() kendi equipment paketlerini gonderir, bizimkileri ezer
+            // Bu yuzden clear SONRASI tekrar gondermemiz lazim
+            if (replayPlayer.getNpcManager() != null) {
+                replayPlayer.getNpcManager().resendFirstPersonEquipment(player);
+            }
+        }, 1L);
+    }
+
+    /**
+     * 1. sahis modundan cikarken kontrol itemlerini geri ver ve NPC'nin yanina isinla
+     */
+    public void exitFirstPersonMode(Player player, ReplayPlayer replayPlayer) {
+        // NPC'nin son konumunun yakinina isinla
+        Location npcLoc = replayPlayer.getLastLocation();
+        if (npcLoc != null) {
+            Location tpLoc = npcLoc.clone().add(0, 2, 0);
+            player.teleport(tpLoc);
+        }
+
+        player.getInventory().clear();
+        setControlItems(player, replayPlayer);
+        player.updateInventory();
+    }
+
+    /**
+     * Tum progress barlari ve envanteri temizle
      */
     public void cleanup() {
-        plugin.getLogger().info("[REPLAY-CONTROL] Starting full cleanup - " + progressBars.size() +
+        plugin.debug("[REPLAY-CONTROL] Starting full cleanup - " + progressBars.size() +
                 " boss bars, " + savedInventories.size() + " inventories, " + updateTasks.size() + " tasks");
 
-        // 1. Tüm update task'larını durdur
         for (Map.Entry<UUID, BukkitRunnable> entry : updateTasks.entrySet()) {
             BukkitRunnable task = entry.getValue();
             if (task != null) {
@@ -389,30 +455,31 @@ public class ReplayControlManager {
             }
         }
         updateTasks.clear();
-        plugin.getLogger().info("[REPLAY-CONTROL] All update tasks cancelled");
 
-        // 2. Tüm boss bar'ları kaldır
         for (Map.Entry<UUID, BossBar> entry : progressBars.entrySet()) {
             BossBar bar = entry.getValue();
             if (bar != null) {
-                bar.removeAll(); // Tüm oyunculardan kaldır
+                bar.removeAll();
             }
         }
         progressBars.clear();
-        plugin.getLogger().info("[REPLAY-CONTROL] All boss bars removed");
 
-        // 3. Tüm inventory'leri geri yükle
-        for (Map.Entry<UUID, ItemStack[]> entry : savedInventories.entrySet()) {
-            Player player = plugin.getServer().getPlayer(entry.getKey());
+        for (UUID playerUUID : new HashMap<>(savedInventories).keySet()) {
+            Player player = plugin.getServer().getPlayer(playerUUID);
             if (player != null && player.isOnline()) {
-                player.getInventory().clear();
-                player.getInventory().setContents(entry.getValue());
-                player.updateInventory();
-                plugin.getLogger().info("[REPLAY-CONTROL] Restored inventory for: " + player.getName());
+                player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+                restorePlayerState(player, playerUUID);
             }
         }
         savedInventories.clear();
+        savedGameModes.clear();
+        savedHealth.clear();
+        savedFoodLevels.clear();
+        savedSaturation.clear();
+        savedAllowFlight.clear();
+        savedFlying.clear();
+        savedFireTicks.clear();
 
-        plugin.getLogger().info("[REPLAY-CONTROL] Full cleanup completed");
+        plugin.debug("[REPLAY-CONTROL] Full cleanup completed");
     }
 }

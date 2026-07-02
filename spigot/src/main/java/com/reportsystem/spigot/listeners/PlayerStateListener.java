@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.AnimationAction;
 import com.reportsystem.common.replay.actions.EntityStateAction;
 import com.reportsystem.common.replay.actions.PlayerStateAction;
@@ -50,7 +51,7 @@ public class PlayerStateListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Sneak: " + event.isSneaking());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sneak: " + event.isSneaking());
         }
     }
 
@@ -66,7 +67,7 @@ public class PlayerStateListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Sprint: " + event.isSprinting());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Sprint: " + event.isSprinting());
         }
     }
 
@@ -84,7 +85,7 @@ public class PlayerStateListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Glide: " + event.isGliding());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Glide: " + event.isGliding());
         }
     }
 
@@ -108,7 +109,7 @@ public class PlayerStateListener implements Listener {
                 );
                 session.addAction(poseAction);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Swimming state changed: " + isSwimming);
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Swimming state changed: " + isSwimming);
             }
         }
     }
@@ -123,7 +124,7 @@ public class PlayerStateListener implements Listener {
             AnimationAction action = new AnimationAction(AnimationAction.AnimationType.SWING_MAIN_HAND);
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Animation: SWING_MAIN_HAND");
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Animation: SWING_MAIN_HAND");
         }
     }
 
@@ -139,7 +140,7 @@ public class PlayerStateListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Flight: " + event.isFlying());
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Flight: " + event.isFlying());
         }
     }
 
@@ -162,7 +163,7 @@ public class PlayerStateListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Velocity: " +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Velocity: " +
                         String.format("%.2f, %.2f, %.2f", velocity.getX(), velocity.getY(), velocity.getZ()));
             }
         }

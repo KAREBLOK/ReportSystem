@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.CraftAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -55,7 +56,7 @@ public class CraftingListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Item crafted: " + result.getType().name() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Item crafted: " + result.getType().name() +
                         " x" + amount + (isShiftClick ? " (shift-click)" : ""));
             }
         }

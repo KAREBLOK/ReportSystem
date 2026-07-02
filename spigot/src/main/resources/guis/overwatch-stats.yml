@@ -1,0 +1,77 @@
+# Overwatch İstatistik GUI
+title: "&8&n%player%"
+
+# İstatistik yok
+no-stats-name: "&c&lİstatistik Yok"
+no-stats-lore1: "&7Bu oyuncu henüz"
+no-stats-lore2: "&7hiç inceleme yapmamış!"
+back: "&8←"
+
+# Oyuncu başlığı (slot 4)
+player-name: "&b&l%player%"
+rank-lore: " &8▪ &7Rütbe: %rank_color%&l%rank%"
+level-lore: " &8▪ &7Seviye: &a%level%"
+xp-lore: " &8▪ &7XP: &a%xp% &8/ &a%next_xp%"
+
+# Toplam inceleme (slot 20)
+total-name: "&6&lToplam İnceleme"
+total-desc1: "&7Toplam incelediğin"
+total-desc2: "&7rapor sayısı"
+total-count: " &8▪ &a%count% &7rapor"
+
+# Suçlu kararları (slot 21)
+guilty-name: "&c&lSuçlu Kararları"
+guilty-desc1: "&7Suçlu bulduğun"
+guilty-desc2: "&7oyuncu sayısı"
+guilty-count: " &8▪ &c%count% &7suçlu"
+guilty-percent: " &8▪ &8(&c%percent%%&8)"
+
+# Masum kararları (slot 22)
+innocent-name: "&a&lMasum Kararları"
+innocent-desc1: "&7Temiz bulduğun"
+innocent-desc2: "&7oyuncu sayısı"
+innocent-count: " &8▪ &a%count% &7masum"
+innocent-percent: " &8▪ &8(&a%percent%%&8)"
+
+# Atlanan kararlar (slot 23)
+skip-name: "&e&lAtlanan Kararlar"
+skip-desc: "&7Atladığın rapor sayısı"
+skip-count: " &8▪ &e%count% &7atlandı"
+skip-percent: " &8▪ &8(&e%percent%%&8)"
+
+# Doğruluk (slot 24)
+accuracy-name: "&6&lDoğruluk Oranı"
+accuracy-desc1: "&7Diğer incelemecilerle"
+accuracy-desc2: "&7uyum oranın"
+accuracy-value: " &8▪ &6%accuracy%% &7doğruluk"
+accuracy-weight: " &8▪ &7Oy Ağırlığı: &a%weight%x"
+accuracy-hidden: " &8▪ &8%remaining% inceleme sonrası görünür"
+
+# İnceleme süresi (slot 30)
+time-name: "&b&lİnceleme Süresi"
+time-desc: "&7Toplam inceleme süresi"
+time-total: " &8▪ &a%hours%sa %minutes%dk %seconds%sn"
+time-average: " &8▪ &7Ortalama: &a%avg_seconds% saniye"
+
+# Tarihler (slot 31)
+dates-name: "&d&lTarihler"
+dates-first: " &8▪ &7İlk inceleme:"
+dates-first-value: "     &a%date%"
+dates-last: " &8▪ &7Son inceleme:"
+dates-last-value: "     &a%date%"
+
+# XP sistemi (slot 32)
+xp-name: "&a&lXP Sistemi"
+xp-desc: "&7XP kazanma detayları:"
+xp-guilty: " &8▪ &aSuçlu/Masum: &e+15 XP"
+xp-skip: " &8▪ &eAtla: &e+5 XP"
+xp-next: "&7Bir sonraki seviye:"
+xp-needed: " &8▪ &6%xp% XP &7gerekiyor"
+
+# Rütbe bilgisi (slot 33)
+ranks-name: "&b&lRütbeler"
+ranks-system: "&7Rütbe Sistemi:"
+ranks-diamond: "&bDIAMOND &8- &72500+ XP"
+ranks-gold: "&6GOLD &8- &71000+ XP"
+ranks-silver: "&7SILVER &8- &7500+ XP"
+ranks-bronze: "&cBRONZE &8- &70+ XP"

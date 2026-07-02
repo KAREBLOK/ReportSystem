@@ -6,6 +6,7 @@ import java.util.UUID;
  * Spawned entity'lerin pozisyon güncellemelerini kaydetmek için kullanılır
  */
 public class EntityUpdateAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final UUID entityUuid;
     private final String entityType;

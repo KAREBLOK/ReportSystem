@@ -1,7 +1,6 @@
 package com.reportsystem.common.database;
 
 import com.reportsystem.common.models.Replay;
-import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.*;
@@ -9,22 +8,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+// NOT: SQLite ve MySQL replay semalari uyumsuz. Veritabani tipi degistirmek veri kaybina neden olur.
 public class MySQLReplayDAO implements ReplayDAO {
 
     private final HikariDataSource dataSource;
 
-    public MySQLReplayDAO(String host, int port, String database, String username, String password) {
-        HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false&autoReconnect=true");
-        hikariConfig.setUsername(username);
-        hikariConfig.setPassword(password);
-        hikariConfig.setMaximumPoolSize(10);
-        hikariConfig.setMinimumIdle(2);
-        hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setIdleTimeout(600000);
-        hikariConfig.setMaxLifetime(1800000);
-
-        this.dataSource = new HikariDataSource(hikariConfig);
+    public MySQLReplayDAO(HikariDataSource dataSource) {
+        this.dataSource = dataSource;
         createTables();
     }
 
@@ -35,6 +25,7 @@ public class MySQLReplayDAO implements ReplayDAO {
                 report_id INT NOT NULL,
                 recorded_player VARCHAR(16) NOT NULL,
                 recorded_player_uuid VARCHAR(36) NOT NULL,
+                world_name VARCHAR(64) NOT NULL DEFAULT 'world',
                 duration BIGINT NOT NULL,
                 created_at BIGINT NOT NULL,
                 action_count INT NOT NULL,
@@ -44,12 +35,18 @@ public class MySQLReplayDAO implements ReplayDAO {
                 INDEX idx_report_id (report_id),
                 INDEX idx_player (recorded_player),
                 INDEX idx_created_at (created_at)
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """;
 
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
+            // Mevcut tabloya world_name kolonu ekle (yoksa)
+            try {
+                stmt.execute("ALTER TABLE replays ADD COLUMN world_name VARCHAR(64) NOT NULL DEFAULT 'world' AFTER recorded_player_uuid");
+            } catch (SQLException ignored) {
+                // Kolon zaten varsa hata verir, sessizce devam et
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -57,8 +54,8 @@ public class MySQLReplayDAO implements ReplayDAO {
 
     @Override
     public void saveReplay(Replay replay) throws SQLException {
-        String sql = "INSERT INTO replays(report_id, recorded_player, recorded_player_uuid, duration, " +
-                "created_at, action_count, view_count, data, compressed) VALUES(?,?,?,?,?,?,?,?,?)";
+        String sql = "INSERT INTO replays(report_id, recorded_player, recorded_player_uuid, world_name, duration, " +
+                "created_at, action_count, view_count, data, compressed) VALUES(?,?,?,?,?,?,?,?,?,?)";
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -66,12 +63,13 @@ public class MySQLReplayDAO implements ReplayDAO {
             pstmt.setInt(1, replay.getReportId());
             pstmt.setString(2, replay.getRecordedPlayer());
             pstmt.setString(3, replay.getRecordedPlayerUuid());
-            pstmt.setLong(4, replay.getDuration());
-            pstmt.setLong(5, replay.getCreatedAt());
-            pstmt.setInt(6, replay.getActionCount());
-            pstmt.setInt(7, replay.getViewCount());
-            pstmt.setBytes(8, replay.getData());
-            pstmt.setBoolean(9, replay.isCompressed());
+            pstmt.setString(4, replay.getWorldName());
+            pstmt.setLong(5, replay.getDuration());
+            pstmt.setLong(6, replay.getCreatedAt());
+            pstmt.setInt(7, replay.getActionCount());
+            pstmt.setInt(8, replay.getViewCount());
+            pstmt.setBytes(9, replay.getData());
+            pstmt.setBoolean(10, replay.isCompressed());
 
             pstmt.executeUpdate();
         }
@@ -192,7 +190,7 @@ public class MySQLReplayDAO implements ReplayDAO {
     }
 
     private Replay mapResultSetToReplay(ResultSet rs) throws SQLException {
-        return new Replay(
+        Replay replay = new Replay(
                 rs.getInt("id"),
                 rs.getInt("report_id"),
                 rs.getString("recorded_player"),
@@ -204,11 +202,11 @@ public class MySQLReplayDAO implements ReplayDAO {
                 rs.getBytes("data"),
                 rs.getBoolean("compressed")
         );
+        replay.setWorldName(rs.getString("world_name"));
+        return replay;
     }
 
     public void close() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
-        }
+        // Pool kapatma MySQLDatabase tarafından yönetilir
     }
 }

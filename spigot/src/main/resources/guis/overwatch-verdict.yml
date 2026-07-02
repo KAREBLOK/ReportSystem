@@ -1,0 +1,67 @@
+# Overwatch Karar GUI
+title: "&8&nOverwatch - Karar Ver"
+
+# Rapor bilgisi (slot 4)
+report-info:
+  name: "&6&lRapor &8#%id%"
+  lore-reported: " &8▪ &7Raporlanan: &c%reported%"
+  lore-reporter: " &8▪ &7Raporlayan: &e%reporter%"
+  lore-reason: " &8▪ &7Sebep: &f%reason%"
+  lore-server: " &8▪ &7Sunucu: &b%server%"
+
+# Suçlu butonu (slot 20)
+guilty:
+  name: "&c&l✘ SUÇLU"
+  lore-desc1: "&7Bu oyuncu hile kullanıyor."
+  lore-desc2: "&cAçıkça hile kullanıyor"
+  lore-desc3: "&cve cezalandırılmalı."
+  lore-click: "&e► Kategori seçmek için tıkla"
+
+# Masum butonu (slot 22)
+innocent:
+  name: "&a&l✔ MASUM"
+  lore-desc1: "&7Bu oyuncu temiz."
+  lore-desc2: "&aHile kullanmıyor."
+  lore-desc3: "&aYanlış rapor veya şüphe yok."
+  lore-click: "&e► Onaylamak için tıkla"
+
+# Atla butonu (slot 24)
+skip:
+  name: "&e&l⊗ ATLA"
+  lore-desc1: "&7Emin değilim."
+  lore-desc2: "&eYeterli kanıt yok"
+  lore-desc3: "&eveya karar veremiyorum."
+  lore-note: "&8Not: Atlamak daha az XP kazandırır"
+  lore-click: "&e► Atlamak için tıkla"
+
+# Geri butonu (slot 49)
+back:
+  name: "&8←"
+  lore: "&7Ana menüye dön"
+
+# Kategori seçim başlığı (slot 4)
+category-title: "&c&lKategori Seç"
+
+# Kategoriler
+category-combat:
+  name: "&c&lCombat Hacks"
+  lore-desc1: "&7KillAura, Velocity, AutoClicker,"
+  lore-desc2: "&7Reach, Criticals vb."
+
+category-movement:
+  name: "&e&lMovement Hacks"
+  lore-desc1: "&7Fly, Speed, Jesus, Glide,"
+  lore-desc2: "&7NoFall, Spider vb."
+
+category-visual:
+  name: "&b&lVisual Hacks"
+  lore-desc1: "&7XRay, ESP, Tracers, Wallhack,"
+  lore-desc2: "&7ChestESP, Freecam vb."
+
+category-other:
+  name: "&7&lDiğer"
+  lore-desc1: "&7Diğer hile türleri veya"
+  lore-desc2: "&7kategoriye girmeyen hileler."
+
+category-back:
+  name: "&8←"

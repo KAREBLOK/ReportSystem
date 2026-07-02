@@ -10,6 +10,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
 
@@ -30,6 +31,9 @@ public class AnimatedBanManager implements Listener {
 
     // Animasyonlu ban ile öldürülen oyuncular (drop'u engellemek için)
     private final Set<UUID> dyingPlayers = new HashSet<>();
+
+    // Freeze task referansı (cancel için)
+    private BukkitTask freezeTask;
 
     public AnimatedBanManager(JavaPlugin plugin, PunishmentManager punishmentManager) {
         this.plugin = plugin;
@@ -148,14 +152,17 @@ public class AnimatedBanManager implements Listener {
             fallingAnvil.setDropItem(false);
             fallingAnvil.setHurtEntities(false); // Vanilla hasar verme
 
-            // Örs düşerken ses ve efekt
+            // Örs düşerken ses ve efekt (200 tick = 10 saniye timeout)
             new BukkitRunnable() {
+                int ticks = 0;
                 @Override
                 public void run() {
-                    if (!fallingAnvil.isValid() || fallingAnvil.isOnGround()) {
+                    ticks += 5; // Her 5 tick'te bir çalışıyor
+
+                    if (!fallingAnvil.isValid() || fallingAnvil.isOnGround() || ticks >= 200) {
                         cancel();
 
-                        // Örs yere düştüğünde
+                        // Örs yere düştüğünde (veya timeout)
                         if (target.isOnline()) {
                             onAnvilLanded(target, reason, executor, durationMillis);
                         }
@@ -200,9 +207,8 @@ public class AnimatedBanManager implements Listener {
         target.setHealth(0.0);
 
         // Ölüm mesajı
-        String deathMessage = ChatColor.DARK_RED + "" + ChatColor.BOLD + "☠ " +
-            ChatColor.RED + target.getName() +
-            ChatColor.GRAY + " tanrıların gazabına uğradı!";
+        com.reportsystem.spigot.managers.MessageManager mm = ((com.reportsystem.spigot.ReportSystemSpigot) plugin).getMessageManager();
+        String deathMessage = mm.colorize(mm.getMessage("punishments.ban.death-message").replace("%player%", target.getName()));
 
         for (Player online : Bukkit.getOnlinePlayers()) {
             online.sendMessage(deathMessage);
@@ -217,9 +223,10 @@ public class AnimatedBanManager implements Listener {
             unfreezePlayer(target);
 
             // Ban mesajı oluştur
-            String banMessage = ChatColor.DARK_RED + "" + ChatColor.BOLD + "⚡ BAN ⚡\n" +
-                ChatColor.RED + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                ChatColor.GRAY + "Yetkili: " + ChatColor.WHITE + executor.getName();
+            com.reportsystem.spigot.managers.MessageManager mm2 = ((com.reportsystem.spigot.ReportSystemSpigot) plugin).getMessageManager();
+            String banMessage = mm2.colorize(mm2.getMessage("punishments.ban.animated-screen")
+                    .replace("%reason%", reason)
+                    .replace("%staff%", executor.getName()));
 
             // Ban at
             plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -337,7 +344,7 @@ public class AnimatedBanManager implements Listener {
      * Freeze task - Her tick freeze edilen oyuncuları aynı yere teleport et
      */
     private void startFreezeTask() {
-        new BukkitRunnable() {
+        this.freezeTask = new BukkitRunnable() {
             @Override
             public void run() {
                 for (Map.Entry<Player, FreezeData> entry : frozenPlayers.entrySet()) {
@@ -354,6 +361,22 @@ public class AnimatedBanManager implements Listener {
                 }
             }
         }.runTaskTimer(plugin, 1L, 1L); // Her tick
+    }
+
+    /**
+     * Plugin kapanırken freeze task'ı iptal et ve tüm frozen oyuncuları serbest bırak
+     */
+    public void shutdown() {
+        if (freezeTask != null) {
+            freezeTask.cancel();
+            freezeTask = null;
+        }
+
+        // Tüm frozen oyuncuları serbest bırak (kopya ile iterate et, ConcurrentModificationException önle)
+        for (Map.Entry<Player, FreezeData> entry : new HashMap<>(frozenPlayers).entrySet()) {
+            unfreezePlayer(entry.getKey());
+        }
+        frozenPlayers.clear();
     }
 
     /**

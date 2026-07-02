@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.BedAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -38,7 +39,7 @@ public class BedListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Player entered bed at: " + bedLoc);
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player entered bed at: " + bedLoc);
             }
         }
     }
@@ -58,7 +59,7 @@ public class BedListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Player left bed");
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Player left bed");
         }
     }
 }

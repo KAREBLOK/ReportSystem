@@ -31,10 +31,16 @@ public class OverwatchManager {
             if (queueItem.isPresent()) {
                 int reportId = queueItem.get().getReportId();
 
-                // Assign to reviewer
-                overwatchDAO.assignReportToReviewer(reportId, reviewer.getUniqueId(), plugin.getServerName());
+                // Assign to reviewer (returns false if another reviewer grabbed it first)
+                boolean assigned = overwatchDAO.assignReportToReviewer(reportId, reviewer.getUniqueId(), plugin.getServerName());
 
-                plugin.getLogger().info("[OVERWATCH] Assigned report #" + reportId +
+                if (!assigned) {
+                    plugin.debug("[OVERWATCH] Report #" + reportId +
+                            " was already assigned to another reviewer (race condition)");
+                    return Optional.empty();
+                }
+
+                plugin.debug("[OVERWATCH] Assigned report #" + reportId +
                         " to reviewer " + reviewer.getName());
 
                 return Optional.of(reportId);
@@ -78,7 +84,7 @@ public class OverwatchManager {
             // Check if we have enough reviews for consensus
             processConsensus(reportId);
 
-            plugin.getLogger().info("[OVERWATCH] Verdict submitted by " + reviewer.getName() +
+            plugin.debug("[OVERWATCH] Verdict submitted by " + reviewer.getName() +
                     " for report #" + reportId + ": " + verdict);
 
         } catch (SQLException e) {
@@ -118,9 +124,11 @@ public class OverwatchManager {
 
             // Notify player
             String rankColor = getRankColor(stats.getRank());
-            reviewer.sendMessage("§a[Overwatch] §7İnceleme tamamlandı! §e+" +
-                    xpGained + " XP §8| " +
-                    rankColor + stats.getRank() + " §7Seviye " + stats.getLevel());
+            reviewer.sendMessage(plugin.getMessageManager().colorize(
+                    plugin.getMessageManager().getMessage("overwatch.review.completed")
+                            .replace("%xp%", String.valueOf(xpGained))
+                            .replace("%rank%", rankColor + stats.getRank())
+                            .replace("%level%", String.valueOf(stats.getLevel()))));
 
             // Execute reward commands if enabled
             if (plugin.getConfigManager().isRewardCommandsEnabled()) {
@@ -171,7 +179,7 @@ public class OverwatchManager {
                 String processedCommand = replacePlaceholders(command, playerName, verdict, xpGained, currentLevel, currentRank);
                 executeConsoleCommand(processedCommand);
             }
-            plugin.getLogger().info("[OVERWATCH] Player " + playerName + " leveled up to " + currentLevel);
+            plugin.debug("[OVERWATCH] Player " + playerName + " leveled up to " + currentLevel);
         }
 
         // Check for rank-up
@@ -181,7 +189,7 @@ public class OverwatchManager {
                 String processedCommand = replacePlaceholders(command, playerName, verdict, xpGained, currentLevel, currentRank);
                 executeConsoleCommand(processedCommand);
             }
-            plugin.getLogger().info("[OVERWATCH] Player " + playerName + " ranked up to " + currentRank);
+            plugin.debug("[OVERWATCH] Player " + playerName + " ranked up to " + currentRank);
         }
     }
 
@@ -205,14 +213,14 @@ public class OverwatchManager {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command);
             });
-            plugin.getLogger().info("[OVERWATCH] Executed reward command: " + command);
+            plugin.debug("[OVERWATCH] Executed reward command: " + command);
         } catch (Exception e) {
             plugin.getLogger().warning("[OVERWATCH] Failed to execute command: " + command + " - " + e.getMessage());
         }
     }
 
     /**
-     * Process consensus and execute action if needed
+     * Process consensus with weighted voting and update reviewer accuracies
      */
     private void processConsensus(int reportId) {
         try {
@@ -221,41 +229,57 @@ public class OverwatchManager {
             // Minimum reviewer requirement
             int minReviewers = plugin.getConfig().getInt("overwatch.min-reviewers", 3);
             if (reviews.size() < minReviewers) {
-                plugin.getLogger().info("[OVERWATCH] Report #" + reportId +
+                plugin.debug("[OVERWATCH] Report #" + reportId +
                         " needs " + (minReviewers - reviews.size()) + " more reviews");
                 return;
             }
 
-            // Calculate consensus
-            long guiltyCount = reviews.stream()
-                    .filter(r -> "GUILTY".equalsIgnoreCase(r.getVerdict()))
-                    .count();
+            // Calculate WEIGHTED consensus
+            double guiltyWeight = 0;
+            double totalWeight = 0;
 
-            double consensusPercentage = (guiltyCount / (double) reviews.size()) * 100.0;
+            for (OverwatchReview review : reviews) {
+                if ("SKIP".equalsIgnoreCase(review.getVerdict())) continue;
 
-            plugin.getLogger().info("[OVERWATCH] Report #" + reportId +
-                    " consensus: " + String.format("%.1f", consensusPercentage) + "% guilty (" +
-                    guiltyCount + "/" + reviews.size() + ")");
+                double weight = getReviewerWeight(review.getReviewerUUID());
+                totalWeight += weight;
+                if ("GUILTY".equalsIgnoreCase(review.getVerdict())) {
+                    guiltyWeight += weight;
+                }
+            }
 
-            // Mark as completed - NO AUTO-PUNISHMENT
-            // Admins will see voting results in /reports command
+            double consensusPercentage = totalWeight > 0 ? (guiltyWeight / totalWeight) * 100.0 : 0;
+            boolean consensusGuilty = consensusPercentage >= plugin.getConfig().getDouble("overwatch.consensus-threshold", 70.0);
+
+            // Raw counts for logging
+            long rawGuiltyCount = reviews.stream()
+                    .filter(r -> "GUILTY".equalsIgnoreCase(r.getVerdict())).count();
+
+            plugin.debug("[OVERWATCH] Report #" + reportId +
+                    " weighted consensus: " + String.format("%.1f", consensusPercentage) + "% guilty (" +
+                    rawGuiltyCount + "/" + reviews.size() + " votes, weighted: " +
+                    String.format("%.1f", guiltyWeight) + "/" + String.format("%.1f", totalWeight) + ")");
+
+            // Mark as completed
             overwatchDAO.completeQueueItem(reportId);
 
-            // Log voting results (no automatic action taken)
+            // Log voting results
             OverwatchAction action = new OverwatchAction(
                 reportId,
                 "VOTING_COMPLETED",
-                "Voting completed: " + guiltyCount + " guilty, " +
-                (reviews.size() - guiltyCount) + " innocent/skip (" +
-                String.format("%.1f", consensusPercentage) + "% guilty)",
+                "Voting completed: " + rawGuiltyCount + " guilty, " +
+                (reviews.size() - rawGuiltyCount) + " innocent/skip (" +
+                String.format("%.1f", consensusPercentage) + "% weighted guilty)",
                 consensusPercentage,
                 reviews.size(),
-                (int) guiltyCount,
+                (int) rawGuiltyCount,
                 System.currentTimeMillis(),
                 "SYSTEM"
             );
-
             overwatchDAO.logAction(action);
+
+            // Update reviewer accuracies based on consensus result
+            updateReviewerAccuracies(reviews, consensusGuilty);
 
         } catch (SQLException e) {
             plugin.getLogger().severe("[OVERWATCH] Failed to process consensus: " + e.getMessage());
@@ -263,8 +287,47 @@ public class OverwatchManager {
         }
     }
 
-    // AUTO-PUNISHMENT REMOVED
-    // Admins will see voting results in /reports command instead
+    /**
+     * Get reviewer's vote weight from their stats
+     */
+    private double getReviewerWeight(String reviewerUuid) {
+        try {
+            Optional<OverwatchStats> stats = overwatchDAO.getStatsByUuid(reviewerUuid);
+            return stats.map(OverwatchStats::getVoteWeight).orElse(1.0);
+        } catch (SQLException e) {
+            return 1.0;
+        }
+    }
+
+    /**
+     * Consensus sonrası her reviewer'ın doğruluk oranını güncelle
+     * Doğru oy veren → correctVerdicts++, yanlış veren → değişmez
+     */
+    private void updateReviewerAccuracies(List<OverwatchReview> reviews, boolean consensusGuilty) {
+        String correctVerdict = consensusGuilty ? "GUILTY" : "INNOCENT";
+
+        for (OverwatchReview review : reviews) {
+            if ("SKIP".equalsIgnoreCase(review.getVerdict())) continue;
+
+            try {
+                Optional<OverwatchStats> statsOpt = overwatchDAO.getStatsByUuid(review.getReviewerUUID());
+                if (statsOpt.isEmpty()) continue;
+
+                OverwatchStats stats = statsOpt.get();
+
+                if (correctVerdict.equalsIgnoreCase(review.getVerdict())) {
+                    stats.addCorrectVerdict();
+                } else {
+                    stats.recalculateAccuracy();
+                }
+
+                overwatchDAO.createOrUpdateStats(stats);
+            } catch (SQLException e) {
+                plugin.getLogger().warning("[OVERWATCH] Failed to update accuracy for " +
+                        review.getReviewerName() + ": " + e.getMessage());
+            }
+        }
+    }
 
     /**
      * Add report to overwatch queue
@@ -272,7 +335,7 @@ public class OverwatchManager {
     public void addReportToQueue(int reportId, int priority) {
         try {
             overwatchDAO.addToQueue(reportId, priority);
-            plugin.getLogger().info("[OVERWATCH] Added report #" + reportId + " to queue (priority: " + priority + ")");
+            plugin.debug("[OVERWATCH] Added report #" + reportId + " to queue (priority: " + priority + ")");
         } catch (SQLException e) {
             plugin.getLogger().severe("[OVERWATCH] Failed to add report to queue: " + e.getMessage());
             e.printStackTrace();
@@ -285,7 +348,7 @@ public class OverwatchManager {
     public void removeReportFromQueue(int reportId) {
         try {
             overwatchDAO.removeFromQueue(reportId);
-            plugin.getLogger().info("[OVERWATCH] Removed report #" + reportId + " from queue");
+            plugin.debug("[OVERWATCH] Removed report #" + reportId + " from queue");
         } catch (SQLException e) {
             plugin.getLogger().severe("[OVERWATCH] Failed to remove report from queue: " + e.getMessage());
             e.printStackTrace();
@@ -299,7 +362,7 @@ public class OverwatchManager {
     public void unassignReport(int reportId) {
         try {
             overwatchDAO.unassignReport(reportId);
-            plugin.getLogger().info("[OVERWATCH] Unassigned report #" + reportId + " - returned to PENDING queue");
+            plugin.debug("[OVERWATCH] Unassigned report #" + reportId + " - returned to PENDING queue");
         } catch (SQLException e) {
             plugin.getLogger().severe("[OVERWATCH] Failed to unassign report: " + e.getMessage());
             e.printStackTrace();
@@ -312,7 +375,7 @@ public class OverwatchManager {
     public void updateQueueStatus(int reportId, String status) {
         try {
             overwatchDAO.updateQueueStatus(reportId, status);
-            plugin.getLogger().info("[OVERWATCH] Updated queue status for report #" + reportId + " to " + status);
+            plugin.debug("[OVERWATCH] Updated queue status for report #" + reportId + " to " + status);
         } catch (SQLException e) {
             plugin.getLogger().severe("[OVERWATCH] Failed to update queue status: " + e.getMessage());
             e.printStackTrace();
@@ -373,6 +436,17 @@ public class OverwatchManager {
             return overwatchDAO.getTotalPunishedCount();
         } catch (SQLException e) {
             return 0;
+        }
+    }
+
+    /**
+     * Get reviewer stats by UUID string (for consensus processing)
+     */
+    public Optional<OverwatchStats> getReviewerStatsByUuid(String uuid) {
+        try {
+            return overwatchDAO.getStatsByUuid(uuid);
+        } catch (SQLException e) {
+            return Optional.empty();
         }
     }
 

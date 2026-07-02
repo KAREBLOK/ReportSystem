@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public class ReplayManager {
@@ -31,13 +32,19 @@ public class ReplayManager {
     private final RecordingManager recordingManager;
 
     // Aktif replay'ler (viewer UUID -> ReplayPlayer)
-    private final Map<UUID, ReplayPlayer> activeReplays = new HashMap<>();
+    private final Map<UUID, ReplayPlayer> activeReplays = new ConcurrentHashMap<>();
+
+    // Replay başlatılıyor durumu (spam önleme)
+    private final java.util.Set<UUID> startingReplays = ConcurrentHashMap.newKeySet();
 
     // Viewer'ların orijinal konumları (replay bitince geri dönmek için)
-    private final Map<UUID, Location> viewerOriginalLocations = new HashMap<>();
+    private final Map<UUID, Location> viewerOriginalLocations = new ConcurrentHashMap<>();
 
     // Viewer'ların orijinal sunucuları (BungeeCord - cross-server replay için)
-    private final Map<UUID, String> viewerOriginalServers = new HashMap<>();
+    private final Map<UUID, String> viewerOriginalServers = new ConcurrentHashMap<>();
+
+    // Oyuncu replay tercihleri (replay'ler arası kalıcı)
+    private final Map<UUID, ReplayPreferences> playerPreferences = new ConcurrentHashMap<>();
 
     public ReplayManager(JavaPlugin plugin, ReplayDAO replayDAO, RecordingManager recordingManager) {
         this.plugin = plugin;
@@ -63,132 +70,182 @@ public class ReplayManager {
     /**
      * Bir rapor için replay başlatır
      */
-    public boolean startReplay(int reportId, Player viewer) {
-        try {
-            plugin.getLogger().info("[REPLAY] Starting replay for report #" + reportId + " - viewer: " + viewer.getName());
+    public CompletableFuture<Boolean> startReplay(int reportId, Player viewer) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Starting replay request for report #" + reportId + " - viewer: " + viewer.getName());
 
-            // Replay'i veritabanından çek
-            ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+        UUID uuid = viewer.getUniqueId();
 
-            // Cross-server kontrolü - Report'u çek ve sunucu kontrolü yap
-            if (spigotPlugin.getConfigManager().isBungeeCordEnabled()) {
-                try {
-                    com.reportsystem.common.models.Report report = spigotPlugin.getReportService().getReportById(reportId);
-                    if (report != null && report.getServerName() != null) {
-                        String currentServer = spigotPlugin.getServerName();
-                        String replayServer = report.getServerName();
-
-                        // Eğer replay farklı sunucudaysa, oyuncuyu oraya gönder
-                        if (!currentServer.equalsIgnoreCase(replayServer)) {
-                            plugin.getLogger().info("[REPLAY] Replay is on different server. Current: " + currentServer +
-                                    ", Replay: " + replayServer + " - Sending player to " + replayServer);
-
-                            // Save original server (to return after replay ends)
-                            viewerOriginalServers.put(viewer.getUniqueId(), currentServer);
-                            plugin.getLogger().info("[REPLAY] Saved original server '" + currentServer + "' for " + viewer.getName());
-
-                            // Pending replay kaydet
-                            spigotPlugin.storePendingReplay(viewer.getUniqueId(), reportId);
-
-                            // Oyuncuyu hedef sunucuya gönder
-                            sendPlayerToServer(viewer, replayServer);
-
-                            viewer.sendMessage("§e✦ Replay " + replayServer + " sunucusunda. Oraya gönderiliyorsunuz...");
-                            return true;
-                        }
-                    }
-                } catch (Exception e) {
-                    plugin.getLogger().log(Level.WARNING, "[REPLAY] Could not check server name for cross-server replay", e);
-                    // Hata olursa devam et, aynı sunucudaymış gibi davran
-                }
-            }
-
-            Optional<Replay> replayOpt = replayDAO.getReplayByReportId(reportId);
-            if (!replayOpt.isPresent()) {
-                plugin.getLogger().warning("[REPLAY] Replay not found in database for report #" + reportId);
-                spigotPlugin.getMessageManager().sendMessage(viewer, "replay.not-found");
-                return false;
-            }
-
-            Replay replay = replayOpt.get();
-            plugin.getLogger().info("[REPLAY] Replay found - ID: " + replay.getId() +
-                ", Player: " + replay.getRecordedPlayer() +
-                ", Compressed: " + replay.isCompressed() +
-                ", Data size: " + (replay.getData() != null ? replay.getData().length : 0) + " bytes");
-
-            // Data check
-            if (replay.getData() == null || replay.getData().length == 0) {
-                plugin.getLogger().severe("[REPLAY] Replay data is null or empty for report #" + reportId);
-                spigotPlugin.getMessageManager().sendMessage(viewer, "replay.data-empty");
-                return false;
-            }
-
-            // Already watching a replay?
-            if (activeReplays.containsKey(viewer.getUniqueId())) {
-                spigotPlugin.getMessageManager().sendMessage(viewer, "replay.already-watching");
-                return false;
-            }
-
-            plugin.getLogger().info("[REPLAY] Creating ReplayPlayer instance...");
-
-            // Create ReplayPlayer
-            ReplayPlayer replayPlayer = new ReplayPlayer(plugin, replay);
-
-            plugin.getLogger().info("[REPLAY] ReplayPlayer created successfully - actions count: " + replayPlayer.getActions().size());
-
-            // Save viewer's original location (to restore after replay ends)
-            viewerOriginalLocations.put(viewer.getUniqueId(), viewer.getLocation().clone());
-            plugin.getLogger().info("[REPLAY] Saved original location for " + viewer.getName());
-
-            // Find first location and calculate safe teleportation position
-            Location startLocation = findSafeStartLocation(replayPlayer, viewer);
-
-            // Start replay
-            replayPlayer.start(startLocation, viewer);
-
-            // Teleport viewer to safe position
-            teleportViewerToReplayStart(viewer, startLocation, replayPlayer, reportId);
-
-            // Give control items
-            controlManager.giveControlItems(viewer, replayPlayer);
-
-            // Add to active replays list
-            activeReplays.put(viewer.getUniqueId(), replayPlayer);
-
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.started");
-            return true;
-
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "[REPLAY] Database error while loading replay for report #" + reportId, e);
-            ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-database");
-            spigotPlugin.getMessageManager().sendMessage(viewer, "general.error.details", "%error%", e.getMessage());
-            return false;
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "[REPLAY] IOException while deserializing replay data for report #" + reportId, e);
-            ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-read");
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-corrupt", "%error%", e.getMessage());
-            return false;
-        } catch (ClassNotFoundException e) {
-            plugin.getLogger().log(Level.SEVERE, "[REPLAY] ClassNotFoundException - replay action class not found for report #" + reportId, e);
-            ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-class");
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-version", "%error%", e.getMessage());
-            return false;
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[REPLAY] Unexpected error while starting replay for report #" + reportId, e);
-            ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
-            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-unexpected");
-            spigotPlugin.getMessageManager().sendMessage(viewer, "general.error.details", "%error%", e.getClass().getSimpleName() + " - " + e.getMessage());
-            return false;
+        // Already watching a replay or already starting one?
+        if (activeReplays.containsKey(uuid) || !startingReplays.add(uuid)) {
+            ((ReportSystemSpigot) plugin).getMessageManager().sendMessage(viewer, "replay.already-watching");
+            future.complete(false);
+            return future;
         }
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                // Cross-server kontrolü
+                ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+                if (spigotPlugin.getConfigManager().isBungeeCordEnabled()) {
+                    try {
+                        com.reportsystem.common.models.Report report = spigotPlugin.getReportService().getReportById(reportId);
+                        if (report != null && report.getServerName() != null) {
+                            String currentServer = spigotPlugin.getServerName();
+                            String replayServer = report.getServerName();
+
+                            if (!currentServer.equalsIgnoreCase(replayServer)) {
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    try {
+                                        viewerOriginalServers.put(uuid, currentServer);
+                                        spigotPlugin.storePendingReplay(uuid, reportId);
+                                        sendPlayerToServer(viewer, replayServer);
+                                        viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.cross-server").replace("%server%", replayServer)));
+                                        future.complete(true);
+                                    } finally {
+                                        startingReplays.remove(uuid);
+                                    }
+                                });
+                                return;
+                            }
+                        }
+                    } catch (Exception e) {
+                        plugin.getLogger().log(Level.WARNING, "[REPLAY] Could not check server name for cross-server replay", e);
+                    }
+                }
+
+                // Veritabanından asenkron olarak çek
+                Optional<Replay> replayOpt = replayDAO.getReplayByReportId(reportId);
+                if (!replayOpt.isPresent()) {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getLogger().warning("[REPLAY] Replay not found in database for report #" + reportId);
+                        spigotPlugin.getMessageManager().sendMessage(viewer, "replay.not-found");
+                        startingReplays.remove(uuid);
+                        future.complete(false);
+                    });
+                    return;
+                }
+
+                Replay replay = replayOpt.get();
+                if (replay.getData() == null || replay.getData().length == 0) {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.getLogger().severe("[REPLAY] Replay data is null or empty for report #" + reportId);
+                        spigotPlugin.getMessageManager().sendMessage(viewer, "replay.data-empty");
+                        startingReplays.remove(uuid);
+                        future.complete(false);
+                    });
+                    return;
+                }
+
+                // Deserialization (Ağır İşlem - Async devam eder)
+                ReplayPlayer replayPlayer = new ReplayPlayer(plugin, replay);
+
+                // Bukkit API işlemlerini ana thread'e döndür
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    try {
+                        if (!viewer.isOnline()) {
+                            future.complete(false);
+                            return;
+                        }
+
+                        viewerOriginalLocations.put(uuid, viewer.getLocation().clone());
+                        Location startLocation = findSafeStartLocation(replayPlayer, viewer);
+
+                        if (startLocation == null) {
+                            viewerOriginalLocations.remove(uuid);
+                            spigotPlugin.getMessageManager().sendMessage(viewer, "replay.world-missing");
+                            startingReplays.remove(uuid);
+                            future.complete(false);
+                            return;
+                        }
+
+                        boolean crossWorld = !startLocation.getWorld().equals(viewer.getWorld());
+
+                        if (crossWorld) {
+                            viewer.teleportAsync(startLocation).thenAccept(success -> {
+                                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                                    try {
+                                        if (!viewer.isOnline()) {
+                                            future.complete(false);
+                                            return;
+                                        }
+                                        viewer.setFallDistance(0f);
+                                        finishReplayStart(viewer, replayPlayer, startLocation, reportId);
+                                        future.complete(true);
+                                    } finally {
+                                        startingReplays.remove(uuid);
+                                    }
+                                }, 20L);
+                            });
+                        } else {
+                            finishReplayStart(viewer, replayPlayer, startLocation, reportId);
+                            teleportViewerToReplayStart(viewer, startLocation, replayPlayer, reportId);
+                            future.complete(true);
+                            startingReplays.remove(uuid);
+                        }
+                    } catch (Exception e) {
+                        plugin.getLogger().log(Level.SEVERE, "[REPLAY] Error in main thread startReplay finalizer", e);
+                        future.complete(false);
+                        startingReplays.remove(uuid);
+                    }
+                });
+
+            } catch (Exception e) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    plugin.getLogger().log(Level.SEVERE, "[REPLAY] Error while starting replay for report #" + reportId, e);
+                    ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+                    spigotPlugin.getMessageManager().sendMessage(viewer, "replay.error-unexpected");
+                    spigotPlugin.getMessageManager().sendMessage(viewer, "general.error.details", "%error%", e.getMessage());
+                    startingReplays.remove(uuid);
+                    future.complete(false);
+                });
+            }
+        });
+        return future;
+    }
+
+    private void finishReplayStart(Player viewer, ReplayPlayer replayPlayer, Location startLocation, int reportId) {
+        replayPlayer.start(startLocation, viewer);
+        hideViewerFromPlayers(viewer);
+        controlManager.giveControlItems(viewer, replayPlayer);
+        applyPreferences(viewer, replayPlayer);
+        activeReplays.put(viewer.getUniqueId(), replayPlayer);
+
+        ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+
+        // Anti-cheat bypass — replay sirasinda Timer/Blink/Flight false-positive'lerini engelle
+        if (spigotPlugin.getAntiCheatBypassManager() != null) {
+            spigotPlugin.getAntiCheatBypassManager().exempt(viewer);
+        }
+
+        viewer.playSound(startLocation, Sound.ENTITY_ENDERMAN_TELEPORT, 0.7f, 1.2f);
+        String title = spigotPlugin.getMessageManager().getMessage("replay.title-started");
+        String subtitle = spigotPlugin.getMessageManager().getMessage("replay.subtitle-started")
+                .replace("%player%", replayPlayer.getReplay().getRecordedPlayer())
+                .replace("%report_id%", String.valueOf(reportId));
+        viewer.sendTitle(
+                spigotPlugin.getMessageManager().colorize(title),
+                spigotPlugin.getMessageManager().colorize(subtitle),
+                10, 40, 10);
+        spigotPlugin.getMessageManager().sendMessage(viewer, "replay.started");
     }
 
     /**
-     * Replay başlangıcı için güvenli konum bulur
+     * Replay başlangıcı için güvenli konum bulur (Gereksiz chunk yüklemeleri optimize edildi)
      */
     private Location findSafeStartLocation(ReplayPlayer replayPlayer, Player viewer) {
+        // Replay'in kaydedildiği dünyayı al
+        String replayWorldName = replayPlayer.getReplay().getWorldName();
+        org.bukkit.World replayWorld = Bukkit.getWorld(replayWorldName);
+
+        // Dünya bulunamazsa replay'i başlatmayı reddet
+        // (fallback olarak viewer'ın dünyasını kullanmak koordinatları anlamsız kılar)
+        if (replayWorld == null) {
+            plugin.getLogger().warning("[REPLAY] Replay dünyası bulunamadı: " + replayWorldName +
+                    " - Replay başlatılamıyor (dünya silinmiş veya yüklenmemiş).");
+            return null;
+        }
+
         // İlk location action'ını bul
         LocationAction firstLocation = null;
         for (ReplayAction action : replayPlayer.getActions()) {
@@ -201,7 +258,7 @@ public class ReplayManager {
         if (firstLocation != null) {
             // Ana karakterin başlangıç konumu
             Location characterLocation = new Location(
-                    viewer.getWorld(),
+                    replayWorld,
                     firstLocation.getX(),
                     firstLocation.getY(),
                     firstLocation.getZ(),
@@ -209,52 +266,27 @@ public class ReplayManager {
                     firstLocation.getPitch()
             );
 
-            // Güvenli izleyici konumu hesapla (karakterin 3-5 blok yanında)
-            return calculateSafeViewerPosition(characterLocation);
+            // İzleyici zaten SPECTATOR modunda olacağı için (duvarın içinden geçebilir),
+            // sunucuyu dondurmamak adına Senkron Chunk yükleme (getChunkAt().load()) veya 
+            // isSafeLocation üzerinden detaylı blok kontrolleri kaldırıldı.
+            // Sadece karaktere hafifçe offset vererek (3 blok arkasında kalarak) döndürüyoruz.
+            // Chunk'lar teleportAsync ile asenkron yüklenecek (Lag oluşmayacak).
+
+            double yawRad = Math.toRadians(characterLocation.getYaw());
+            double offsetX = -Math.sin(yawRad) * 3.0; // Arkaya doğru gitmesi için -
+            double offsetZ = Math.cos(yawRad) * 3.0;  // Arkaya doğru gitmesi için +
+            
+            Location viewerStartLoc = characterLocation.clone().add(offsetX, 1.0, offsetZ);
+            
+            // Baktığı yönü karaktere doğru ayarla
+            org.bukkit.util.Vector direction = characterLocation.toVector().subtract(viewerStartLoc.toVector());
+            viewerStartLoc.setDirection(direction);
+
+            return viewerStartLoc;
         } else {
             // Fallback: viewer'ın mevcut konumu
             return viewer.getLocation();
         }
-    }
-
-    /**
-     * Karakterin yanında güvenli izleyici konumu hesaplar
-     */
-    private Location calculateSafeViewerPosition(Location characterLocation) {
-        // Farklı mesafeler ve açılar dene
-        double[] distances = {3.0, 4.0, 5.0, 2.0}; // Önce 3-5 blok, sonra 2 blok
-        double[] angles = {0, 45, 90, 135, 180, 225, 270, 315}; // 8 farklı yön
-
-        for (double distance : distances) {
-            for (double angle : angles) {
-                // Açıyı radyana çevir
-                double radians = Math.toRadians(angle);
-
-                // Yeni konum hesapla
-                double offsetX = Math.cos(radians) * distance;
-                double offsetZ = Math.sin(radians) * distance;
-
-                Location testLocation = characterLocation.clone().add(offsetX, 0, offsetZ);
-
-                // Güvenli mi kontrol et
-                if (isSafeLocation(testLocation)) {
-                    // Karaktere bakacak şekilde yaw hesapla
-                    testLocation.setYaw(calculateYawToLookAt(testLocation, characterLocation));
-                    testLocation.setPitch(0); // Düz bakış
-
-                    plugin.getLogger().info("[REPLAY-TELEPORT] Güvenli konum bulundu: " +
-                            String.format("%.1f, %.1f, %.1f (mesafe: %.1f, açı: %.0f°)",
-                                    testLocation.getX(), testLocation.getY(), testLocation.getZ(), distance, angle));
-
-                    return testLocation;
-                }
-            }
-        }
-
-        // Hiç güvenli konum bulunamadıysa, karakterin biraz üstü
-        Location fallback = characterLocation.clone().add(0, 2, 0);
-        plugin.getLogger().warning("[REPLAY-TELEPORT] Güvenli konum bulunamadı, fallback kullanılıyor");
-        return fallback;
     }
 
     /**
@@ -263,15 +295,15 @@ public class ReplayManager {
     public void deleteOldReplays(int days) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                plugin.getLogger().info("[REPLAY] Auto-delete check for replays older than " + days + " days");
+                ReportSystemSpigot.getInstance().debug("[REPLAY] Auto-delete check for replays older than " + days + " days");
 
                 // ReplayDAO metodu çağır
                 int deletedCount = replayDAO.deleteOldReplays(days);
 
                 if (deletedCount > 0) {
-                    plugin.getLogger().info("[REPLAY] Deleted " + deletedCount + " old replays");
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] Deleted " + deletedCount + " old replays");
                 } else {
-                    plugin.getLogger().info("[REPLAY] No old replays found to delete");
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] No old replays found to delete");
                 }
             } catch (SQLException e) {
                 plugin.getLogger().log(Level.SEVERE, "[REPLAY] Database error while deleting old replays", e);
@@ -279,72 +311,6 @@ public class ReplayManager {
                 plugin.getLogger().log(Level.SEVERE, "[REPLAY] Unexpected error while deleting old replays", e);
             }
         });
-    }
-
-    /**
-     * Konumun güvenli olup olmadığını kontrol eder
-     */
-    private boolean isSafeLocation(Location location) {
-        org.bukkit.World world = location.getWorld();
-        if (world == null) return false;
-
-        int blockX = location.getBlockX();
-        int blockY = location.getBlockY();
-        int blockZ = location.getBlockZ();
-
-        // Oyuncunun ayakları ve kafası için blokları kontrol et
-        Material groundBlock = world.getBlockAt(blockX, blockY - 1, blockZ).getType();
-        Material feetBlock = world.getBlockAt(blockX, blockY, blockZ).getType();
-        Material headBlock = world.getBlockAt(blockX, blockY + 1, blockZ).getType();
-
-        // Zemin katı olmalı (air olmamalı)
-        boolean hasGround = !groundBlock.isAir() && groundBlock.isSolid();
-
-        // Ayaklar ve kafa air olmalı (geçilebilir)
-        boolean feetClear = feetBlock.isAir() || isPassable(feetBlock);
-        boolean headClear = headBlock.isAir() || isPassable(headBlock);
-
-        // Y koordinatı reasonable aralıkta olmalı
-        boolean validHeight = blockY >= -64 && blockY <= 320;
-
-        // Lava veya diğer tehlikeli blokların içinde olmamalı
-        boolean notDangerous = !isDangerousBlock(feetBlock) && !isDangerousBlock(headBlock);
-
-        return hasGround && feetClear && headClear && validHeight && notDangerous;
-    }
-
-    /**
-     * Blokun geçilebilir olup olmadığını kontrol eder
-     */
-    private boolean isPassable(Material material) {
-        return material.isAir() ||
-                material == Material.WATER ||
-                material == Material.TALL_GRASS ||
-                material == Material.SHORT_GRASS ||
-                material.name().contains("SIGN") ||
-                material.name().contains("TORCH");
-    }
-
-    /**
-     * Blokun tehlikeli olup olmadığını kontrol eder
-     */
-    private boolean isDangerousBlock(Material material) {
-        return material == Material.LAVA ||
-                material == Material.FIRE ||
-                material == Material.MAGMA_BLOCK ||
-                material == Material.CACTUS ||
-                material == Material.SWEET_BERRY_BUSH;
-    }
-
-    /**
-     * A konumundan B konumuna bakmak için gereken yaw açısını hesaplar
-     */
-    private float calculateYawToLookAt(Location from, Location to) {
-        double deltaX = to.getX() - from.getX();
-        double deltaZ = to.getZ() - from.getZ();
-
-        double yaw = Math.atan2(-deltaX, deltaZ) * 180.0 / Math.PI;
-        return (float) yaw;
     }
 
     /**
@@ -365,6 +331,7 @@ public class ReplayManager {
         // 10 tick sonra teleport et (smooth geçiş için)
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             viewer.teleport(targetLocation);
+            viewer.setFallDistance(0f);
 
             // Teleportasyon sonrası efektler
             targetLocation.getWorld().spawnParticle(
@@ -386,7 +353,7 @@ public class ReplayManager {
                     spigotPlugin.getMessageManager().colorize(subtitle),
                     10, 40, 10);
 
-            plugin.getLogger().info("[REPLAY-TELEPORT] " + viewer.getName() + " teleported to replay start location");
+            ReportSystemSpigot.getInstance().debug("[REPLAY-TELEPORT] " + viewer.getName() + " teleported to replay start location");
 
         }, 10L);
     }
@@ -399,7 +366,7 @@ public class ReplayManager {
         ReplayPlayer replayPlayer = activeReplays.get(viewerUUID); // remove yerine get kullan
 
         if (replayPlayer != null) {
-            plugin.getLogger().info("[REPLAY] Stopping replay for " + viewer.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Stopping replay for " + viewer.getName());
 
             // 1. ÖNCE ReplayPlayer'ı durdur (bu NPC'leri ve blokları temizleyecek)
             replayPlayer.stop();
@@ -416,12 +383,12 @@ public class ReplayManager {
                 String currentServer = spigotPlugin.getServerName();
 
                 if (!currentServer.equalsIgnoreCase(originalServer)) {
-                    plugin.getLogger().info("[REPLAY] Sending " + viewer.getName() +
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] Sending " + viewer.getName() +
                             " back to original server '" + originalServer + "' from '" + currentServer + "'");
 
                     plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                         if (viewer.isOnline()) {
-                            viewer.sendMessage("§a✦ Replay bitti! " + originalServer + " sunucusuna geri dönüyorsunuz...");
+                            viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
                             sendPlayerToServer(viewer, originalServer);
                         }
                     }, 10L);
@@ -438,33 +405,25 @@ public class ReplayManager {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                     if (viewer.isOnline()) {
                         viewer.teleport(originalLocation);
-                        plugin.getLogger().info("[REPLAY] Restored original location for " + viewer.getName());
+                        showViewerToPlayers(viewer);
+                        reshowOverwatchNPCs(viewer);
+                        ReportSystemSpigot.getInstance().debug("[REPLAY] Restored original location for " + viewer.getName());
 
                         // Send message
-                        viewer.sendMessage("§a✦ Replay bitti! Başlangıç konumunuza döndürüldünüz.");
+                        viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-location")));
                     }
                 }, 10L); // 10 tick bekle, NPC'lerin temizlenmesi için
             } else {
-                // Fallback: Force chunk refresh if no original location saved
-                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    if (viewer.isOnline()) {
-                        Location loc = viewer.getLocation();
-                        viewer.teleport(loc.clone().add(0, 0.1, 0));
-                        viewer.teleport(loc);
-                        plugin.getLogger().info("[REPLAY] Force teleport completed for " + viewer.getName());
-                    }
-                }, 10L);
+                // Konum yok ama yine de göster
+                showViewerToPlayers(viewer);
+                reshowOverwatchNPCs(viewer);
+                plugin.getLogger().warning("[REPLAY] No original location found for " + viewer.getName());
             }
 
-            // Double check - activeReplays'den kaldırıldığından emin ol
-            if (activeReplays.containsKey(viewerUUID)) {
-                activeReplays.remove(viewerUUID);
-                plugin.getLogger().warning("[REPLAY] Had to force remove " + viewer.getName() + " from activeReplays");
-            }
-
-            plugin.getLogger().info("[REPLAY] Replay stop completed for " + viewer.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Replay stop completed for " + viewer.getName());
         } else {
-            viewer.sendMessage("§cŞu anda bir replay izlemiyorsunuz!");
+            ReportSystemSpigot spigot = (ReportSystemSpigot) plugin;
+            viewer.sendMessage(spigot.getMessageManager().colorize(spigot.getMessageManager().getMessage("replay.not-watching")));
         }
     }
 
@@ -502,14 +461,15 @@ public class ReplayManager {
      * Tüm aktif replay'leri durdurur (plugin kapanırken) - GÜNCELLENEN METOD
      */
     public void stopAllReplays() {
-        plugin.getLogger().info("[REPLAY] Stopping all active replays");
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Stopping all active replays");
 
         // Her viewer için kontrol itemlerini temizle
         for (Map.Entry<UUID, ReplayPlayer> entry : activeReplays.entrySet()) {
             Player viewer = Bukkit.getPlayer(entry.getKey());
             if (viewer != null && viewer.isOnline()) {
                 controlManager.removeControlItems(viewer);
-                viewer.sendMessage("§cReplay durduruldu (sunucu kapanıyor)!");
+                ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+                viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.stopped-shutdown")));
             }
         }
 
@@ -525,7 +485,7 @@ public class ReplayManager {
         // Tüm kaydedilmiş konumları ve sunucuları temizle
         viewerOriginalLocations.clear();
         viewerOriginalServers.clear();
-        plugin.getLogger().info("[REPLAY] Cleared all saved viewer locations and servers");
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Cleared all saved viewer locations and servers");
 
         plugin.getLogger().info("Tüm aktif replay'ler durduruldu ve temizlendi.");
     }
@@ -577,6 +537,12 @@ public class ReplayManager {
     public void handlePlayerQuit(Player player) {
         UUID playerUuid = player.getUniqueId();
 
+        // Anti-cheat bypass'i temizle (set'te kalmasin)
+        ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+        if (spigotPlugin.getAntiCheatBypassManager() != null) {
+            spigotPlugin.getAntiCheatBypassManager().unexempt(playerUuid);
+        }
+
         // Aktif kaydı durdur
         if (recordingManager.isRecording(playerUuid)) {
             recordingManager.stopRecording(playerUuid);
@@ -585,7 +551,7 @@ public class ReplayManager {
         // İzlediği replay'i durdur
         ReplayPlayer replayPlayer = activeReplays.remove(playerUuid);
         if (replayPlayer != null) {
-            plugin.getLogger().info("[REPLAY] Player quit during replay: " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Player quit during replay: " + player.getName());
 
             // Kontrol itemlerini temizle
             controlManager.removeControlItems(player);
@@ -599,7 +565,7 @@ public class ReplayManager {
             // Clean up saved original location and server (player quit, no need to restore)
             viewerOriginalLocations.remove(playerUuid);
             viewerOriginalServers.remove(playerUuid);
-            plugin.getLogger().info("[REPLAY] Cleaned up saved location and server for quit player " + player.getName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Cleaned up saved location and server for quit player " + player.getName());
 
             // Double check - activeReplays'den tamamen kaldırıldığından emin ol
             if (activeReplays.containsKey(playerUuid)) {
@@ -634,7 +600,7 @@ public class ReplayManager {
      */
     public void removeActiveReplay(UUID playerUUID) {
         if (activeReplays.remove(playerUUID) != null) {
-            plugin.getLogger().info("[REPLAY] Removed player from activeReplays: " + playerUUID);
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Removed player from activeReplays: " + playerUUID);
         }
     }
 
@@ -645,6 +611,11 @@ public class ReplayManager {
         UUID viewerUUID = viewer.getUniqueId();
         ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
 
+        // Anti-cheat bypass kaldir (replay bitti, normal kurallar geri donsun)
+        if (spigotPlugin.getAntiCheatBypassManager() != null) {
+            spigotPlugin.getAntiCheatBypassManager().unexempt(viewer);
+        }
+
         // Check if viewer needs to return to original server (BungeeCord)
         String originalServer = viewerOriginalServers.remove(viewerUUID);
 
@@ -653,12 +624,14 @@ public class ReplayManager {
             String currentServer = spigotPlugin.getServerName();
 
             if (!currentServer.equalsIgnoreCase(originalServer)) {
-                plugin.getLogger().info("[REPLAY] Sending " + viewer.getName() +
+                ReportSystemSpigot.getInstance().debug("[REPLAY] Sending " + viewer.getName() +
                         " back to original server '" + originalServer + "' from '" + currentServer + "'");
+
+                showViewerToPlayers(viewer);
 
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                     if (viewer.isOnline()) {
-                        viewer.sendMessage("§a✦ Replay bitti! " + originalServer + " sunucusuna geri dönüyorsunuz...");
+                        viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
                         sendPlayerToServer(viewer, originalServer);
                     }
                 }, 10L);
@@ -675,22 +648,116 @@ public class ReplayManager {
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 if (viewer.isOnline()) {
                     viewer.teleport(originalLocation);
-                    plugin.getLogger().info("[REPLAY] Restored original location for " + viewer.getName() +
+                    viewer.setFallDistance(0f);
+
+                    // Teleporttan SONRA göster - önce gösterince spawn paketi gönderilmiyordu
+                    showViewerToPlayers(viewer);
+
+                    // Overwatch NPC'lerini tekrar göster (packet entity'ler teleport sonrası kaybolur)
+                    reshowOverwatchNPCs(viewer);
+
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] Restored original location for " + viewer.getName() +
                             " - World: " + originalLocation.getWorld().getName() +
                             " - Location: " + String.format("%.1f, %.1f, %.1f",
                                     originalLocation.getX(), originalLocation.getY(), originalLocation.getZ()));
 
                     // Send message
-                    viewer.sendMessage("§a✦ Replay bitti! Başlangıç konumunuza döndürüldünüz.");
+                    viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-location")));
                 }
             }, 10L); // 10 tick bekle, NPC'lerin temizlenmesi için
         } else {
+            // Konum yok ama yine de göster
+            showViewerToPlayers(viewer);
+            reshowOverwatchNPCs(viewer);
             plugin.getLogger().warning("[REPLAY] No original location found for " + viewer.getName() +
                     " - cannot restore location");
         }
     }
 
 
+
+    /**
+     * Replay izleyen oyuncuyu diğer tüm oyunculardan gizler
+     * ve diğer tüm oyuncuları viewer'dan gizler (scoreboard BELOW_NAME çakışmasını önler)
+     */
+    private void hideViewerFromPlayers(Player viewer) {
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            if (!online.equals(viewer)) {
+                online.hidePlayer(plugin, viewer);  // Viewer'ı diğerlerinden gizle
+                viewer.hidePlayer(plugin, online);   // Diğerlerini viewer'dan gizle (BELOW_NAME kalp sorunu için)
+            }
+        }
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Hidden " + viewer.getName() + " from all players (bidirectional)");
+    }
+
+    /**
+     * Replay biten oyuncuyu tekrar herkese gösterir
+     * ve diğer tüm oyuncuları viewer'a tekrar gösterir
+     */
+    private void showViewerToPlayers(Player viewer) {
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            if (!online.equals(viewer)) {
+                online.showPlayer(plugin, viewer);  // Viewer'ı tekrar göster
+                viewer.showPlayer(plugin, online);   // Diğerlerini viewer'a tekrar göster
+            }
+        }
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Showing " + viewer.getName() + " to all players again (bidirectional)");
+    }
+
+    public Location getOriginalLocation(UUID playerUUID) {
+        return viewerOriginalLocations.get(playerUUID);
+    }
+
+    public void setOriginalLocation(UUID playerUUID, Location location) {
+        viewerOriginalLocations.put(playerUUID, location);
+    }
+
+    public void clearOriginalLocation(UUID playerUUID) {
+        viewerOriginalLocations.remove(playerUUID);
+    }
+
+    public ReplayPreferences getPreferences(UUID playerUUID) {
+        return playerPreferences.computeIfAbsent(playerUUID, k -> new ReplayPreferences());
+    }
+
+    /**
+     * Kayitli tercihleri yeni baslamis replay'e uygular
+     */
+    private void applyPreferences(org.bukkit.entity.Player viewer, ReplayPlayer replayPlayer) {
+        ReplayPreferences prefs = playerPreferences.get(viewer.getUniqueId());
+        if (prefs == null) return;
+
+        // Glow
+        if (prefs.isGlowEnabled()) {
+            replayPlayer.getNpcManager().setGlowEnabled(true);
+        }
+
+        // Gece gorusu
+        if (prefs.isNightVision()) {
+            viewer.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                    org.bukkit.potion.PotionEffectType.NIGHT_VISION, Integer.MAX_VALUE, 0, false, false));
+        }
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY] Applied preferences for " + viewer.getName() +
+                " - Glow: " + prefs.isGlowEnabled() +
+                ", NightVision: " + prefs.isNightVision());
+    }
+
+    /**
+     * Replay sonrası Overwatch NPC'lerini tekrar gösterir (packet entity'ler teleport sonrası kaybolur)
+     */
+    private void reshowOverwatchNPCs(Player viewer) {
+        ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+        if (spigotPlugin.getNPCManager() != null) {
+            // Teleport sonrası client'ın chunk yüklemesi için kısa gecikme
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (viewer.isOnline()) {
+                    spigotPlugin.getNPCManager().showAllNPCsToPlayer(viewer);
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] Re-sent Overwatch NPC packets to " + viewer.getName());
+                }
+            }, 5L);
+        }
+    }
 
     // Getter'lar
     public ReplayControlManager getControlManager() {
@@ -706,6 +773,237 @@ public class ReplayManager {
     }
 
     /**
+     * Web replay dosyasi olusturur (async).
+     * ReplayAction listesini .packets.txt formatina donusturup dosyaya yazar.
+     *
+     * @param reportId rapor ID
+     * @return viewer URL'i
+     */
+    public CompletableFuture<String> generateWebReplay(int reportId) {
+        ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
+
+        if (!spigotPlugin.getConfigManager().isWebReplayEnabled()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<Replay> replayOpt = replayDAO.getReplayByReportId(reportId);
+                if (!replayOpt.isPresent()) {
+                    plugin.getLogger().warning("[WebReplay] Replay bulunamadi: report #" + reportId);
+                    return null;
+                }
+
+                Replay replay = replayOpt.get();
+                if (replay.getData() == null || replay.getData().length == 0) {
+                    plugin.getLogger().warning("[WebReplay] Replay verisi bos: report #" + reportId);
+                    return null;
+                }
+
+                // Aksiyonlari deserialize et - baslangic konumunu bulmak icin
+                java.util.List<com.reportsystem.common.replay.actions.ReplayAction> actions;
+                try {
+                    actions = com.reportsystem.common.replay.ReplaySerializer.deserialize(
+                            replay.getData(), replay.isCompressed());
+                } catch (Exception e) {
+                    plugin.getLogger().warning("[WebReplay] Deserialize hatasi: " + e.getMessage());
+                    actions = null;
+                }
+
+                // Oyuncunun hareket alanini hesapla (tum LocationAction'lardan bounding box)
+                double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, minZ = Double.MAX_VALUE;
+                double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+                boolean foundLocation = false;
+
+                if (actions != null) {
+                    for (com.reportsystem.common.replay.actions.ReplayAction action : actions) {
+                        if (action instanceof com.reportsystem.common.replay.actions.LocationAction
+                                && action.isMainPlayer()) {
+                            com.reportsystem.common.replay.actions.LocationAction loc =
+                                    (com.reportsystem.common.replay.actions.LocationAction) action;
+                            minX = Math.min(minX, loc.getX());
+                            minY = Math.min(minY, loc.getY());
+                            minZ = Math.min(minZ, loc.getZ());
+                            maxX = Math.max(maxX, loc.getX());
+                            maxY = Math.max(maxY, loc.getY());
+                            maxZ = Math.max(maxZ, loc.getZ());
+                            foundLocation = true;
+                        }
+                    }
+                }
+
+                if (!foundLocation) {
+                    minX = 0; minY = 64; minZ = 0;
+                    maxX = 0; maxY = 64; maxZ = 0;
+                }
+
+                // Main thread'de terrain tara (hareket alani + margin)
+                java.util.List<int[]> terrainBlocks = scanTerrainSync(
+                        replay.getWorldName(),
+                        (int) minX, (int) minY, (int) minZ,
+                        (int) maxX, (int) maxY, (int) maxZ);
+
+                com.reportsystem.spigot.webreplay.WebReplayExporter exporter =
+                        new com.reportsystem.spigot.webreplay.WebReplayExporter(
+                                plugin,
+                                spigotPlugin.getConfigManager().getWebReplayStoragePath(),
+                                spigotPlugin.getConfigManager().getWebReplayBaseUrl(),
+                                spigotPlugin.getConfigManager().getWebReplayViewerUrl()
+                        );
+
+                String localUrl = exporter.export(replay, terrainBlocks);
+
+                // API upload (kareblok.tc'ye yukle)
+                String apiUrl = spigotPlugin.getConfigManager().getWebReplayApiUrl();
+                if (apiUrl != null && !apiUrl.isEmpty()) {
+                    try {
+                        // Rapor bilgilerini al
+                        String reporter = "";
+                        String reason = "";
+                        String serverName = "";
+                        try {
+                            com.reportsystem.common.models.Report report =
+                                    spigotPlugin.getReportService().getReportById(reportId);
+                            if (report != null) {
+                                reporter = report.getReporterName() != null ? report.getReporterName() : "";
+                                reason = report.getReason() != null ? report.getReason() : "";
+                                serverName = report.getServerName() != null ? report.getServerName() : "";
+                            }
+                        } catch (Exception ignored) {}
+
+                        String licenseKey = spigotPlugin.getConfigManager().getLicenseKey();
+
+                        java.io.File replayFile = new java.io.File(
+                                spigotPlugin.getConfigManager().getWebReplayStoragePath(),
+                                "replay_" + reportId + ".packets.txt");
+
+                        if (replayFile.exists()) {
+                            com.reportsystem.spigot.webreplay.WebReplayUploader uploader =
+                                    new com.reportsystem.spigot.webreplay.WebReplayUploader(
+                                            plugin, apiUrl, licenseKey);
+
+                            int durationSec = (int)(replay.getDuration() / 1000);
+                            if (durationSec <= 0) durationSec = 45;
+
+                            String viewerUrl = uploader.upload(replayFile, reportId,
+                                    replay.getRecordedPlayer(), reporter, reason, serverName, durationSec);
+
+                            if (viewerUrl != null) {
+                                plugin.getLogger().info("[WebReplay] API upload basarili: " + viewerUrl);
+                                return viewerUrl;
+                            }
+                        }
+                    } catch (Exception uploadEx) {
+                        plugin.getLogger().warning("[WebReplay] API upload hatasi: " + uploadEx.getMessage());
+                    }
+                }
+
+                return localUrl;
+            } catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "[WebReplay] Export hatasi: report #" + reportId, e);
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Main thread'de terrain bloklarini tarar.
+     * Oyuncunun hareket alani (bounding box) + margin kadar alanı tarar.
+     * Async thread'den cagirilir, Bukkit.getScheduler().callSyncMethod() ile main thread'e gider.
+     *
+     * @return her eleman: {x, y, z, blockStateId}
+     */
+    private java.util.List<int[]> scanTerrainSync(String worldName,
+                                                   int bbMinX, int bbMinY, int bbMinZ,
+                                                   int bbMaxX, int bbMaxY, int bbMaxZ) {
+        try {
+            return org.bukkit.Bukkit.getScheduler().callSyncMethod(plugin, () -> {
+                org.bukkit.World world = org.bukkit.Bukkit.getWorld(worldName);
+                if (world == null) {
+                    plugin.getLogger().warning("[WebReplay] Dunya bulunamadi: " + worldName);
+                    return java.util.Collections.<int[]>emptyList();
+                }
+
+                // Terrain tarama: 2 chunk (32 blok) margin — performansli ve stabil
+                int margin = 32;
+                int scanMinX = bbMinX - margin;
+                int scanMaxX = bbMaxX + margin;
+                int scanMinZ = bbMinZ - margin;
+                int scanMaxZ = bbMaxZ + margin;
+                int scanMinY = Math.max(world.getMinHeight(), bbMinY - 15);
+                int scanMaxY = Math.min(world.getMaxHeight() - 1, bbMaxY + 25);
+
+                // Max 96 blok genislik (6 chunk)
+                int maxSpan = 96;
+                if (scanMaxX - scanMinX > maxSpan) {
+                    int centerX = (scanMinX + scanMaxX) / 2;
+                    scanMinX = centerX - maxSpan / 2;
+                    scanMaxX = centerX + maxSpan / 2;
+                }
+                if (scanMaxZ - scanMinZ > maxSpan) {
+                    int centerZ = (scanMinZ + scanMaxZ) / 2;
+                    scanMinZ = centerZ - maxSpan / 2;
+                    scanMaxZ = centerZ + maxSpan / 2;
+                }
+
+                java.util.List<int[]> blocks = new java.util.ArrayList<>(8000);
+                int totalScanned = 0;
+                int maxBlocks = 8000; // Web client performansi icin max blok limiti
+
+                outer:
+                for (int x = scanMinX; x <= scanMaxX; x++) {
+                    for (int z = scanMinZ; z <= scanMaxZ; z++) {
+                        for (int y = scanMinY; y <= scanMaxY; y++) {
+                            org.bukkit.block.Block block = world.getBlockAt(x, y, z);
+                            if (block.getType().isAir()) continue;
+                            totalScanned++;
+
+                            // Sadece gorunen bloklari gonder (en az 1 komsusu air)
+                            if (isExposedToAir(world, x, y, z)) {
+                                int stateId = com.reportsystem.spigot.webreplay.WebReplayBlockStateMap
+                                        .getBlockStateIdFromBlock(block);
+                                blocks.add(new int[]{x, y, z, stateId});
+
+                                if (blocks.size() >= maxBlocks) break outer;
+                            }
+                        }
+                    }
+                }
+
+                plugin.getLogger().info("[WebReplay] Terrain tarandi: " + blocks.size() +
+                        " gorunen blok / " + totalScanned + " toplam (" + worldName + " alan: " +
+                        (scanMaxX - scanMinX + 1) + "x" + (scanMaxY - scanMinY + 1) + "x" + (scanMaxZ - scanMinZ + 1) +
+                        ") [MC " + org.bukkit.Bukkit.getMinecraftVersion() +
+                        ", NMS: " + com.reportsystem.spigot.webreplay.WebReplayBlockStateMap.isNmsAvailable() + "]");
+                return blocks;
+            }).get();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[WebReplay] Terrain tarama hatasi: " + e.getMessage());
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    /**
+     * Blogun en az bir komsusunun air (veya sivi/seffaf) olup olmadigini kontrol eder.
+     * Sadece gorunen (yuzey) bloklari web replay'e gonderilir.
+     */
+    private boolean isExposedToAir(org.bukkit.World world, int x, int y, int z) {
+        return isTransparent(world, x + 1, y, z) ||
+               isTransparent(world, x - 1, y, z) ||
+               isTransparent(world, x, y + 1, z) ||
+               isTransparent(world, x, y - 1, z) ||
+               isTransparent(world, x, y, z + 1) ||
+               isTransparent(world, x, y, z - 1);
+    }
+
+    private boolean isTransparent(org.bukkit.World world, int x, int y, int z) {
+        if (y < world.getMinHeight() || y >= world.getMaxHeight()) return true;
+        org.bukkit.Material type = world.getBlockAt(x, y, z).getType();
+        return type.isAir() || !type.isSolid();
+    }
+
+    /**
      * BungeeCord ile oyuncuyu başka sunucuya gönderir
      */
     private void sendPlayerToServer(Player player, String serverName) {
@@ -718,11 +1016,11 @@ public class ReplayManager {
 
             player.sendPluginMessage(plugin, "BungeeCord", out.toByteArray());
 
-            plugin.getLogger().info("[REPLAY] Sent BungeeCord message to connect player " + player.getName() +
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Sent BungeeCord message to connect player " + player.getName() +
                     " to server: " + serverName);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "[REPLAY] Failed to send player to server: " + serverName, e);
-            player.sendMessage("§c✦ Sunucuya bağlanırken bir hata oluştu!");
+            player.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.server-connect-error")));
         }
     }
 }

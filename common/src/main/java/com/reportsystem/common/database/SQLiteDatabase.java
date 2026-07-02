@@ -23,8 +23,8 @@ public class SQLiteDatabase implements Database {
         File dbFile = new File(dataFolder, "reportsystem.db");
         this.dbManager = new SQLiteDatabaseManager(dbFile.getAbsolutePath());
 
-        // DAO'ları oluştur
-        this.reportDAO = new SQLiteReportDAO(dbFile.getAbsolutePath());
+        // DAO'ları oluştur (paylaşılan connection manager kullanarak)
+        this.reportDAO = new SQLiteReportDAO(dbManager);
         this.replayDAO = new SQLiteReplayDAO(dbManager);
     }
 

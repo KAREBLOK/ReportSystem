@@ -138,11 +138,45 @@ public class ConfigManager {
     }
 
     public int getMaxRecordings() {
-        return config.getInt("replay.max-recordings", 10);
+        return config.getInt("replay.max-recordings", 3);
     }
 
     public int getReplayAutoDeleteDays() {
         return config.getInt("replay.auto-delete-days", 7);
+    }
+
+    // Web Replay Settings
+    public boolean isWebReplayEnabled() {
+        return config.getBoolean("replay.web-replay.enabled", false);
+    }
+
+    public boolean isWebReplayAutoGenerate() {
+        return config.getBoolean("replay.web-replay.auto-generate", false);
+    }
+
+    public String getWebReplayStoragePath() {
+        String path = config.getString("replay.web-replay.storage-path", "");
+        if (path.isEmpty() || path.equals("plugins/ReportSystem/web-replays")) {
+            // Eklentinin kendi klasorunu kullan (plugins/ReportSystem-Spigot/web-replays)
+            return new java.io.File(plugin.getDataFolder(), "web-replays").getAbsolutePath();
+        }
+        return path;
+    }
+
+    public String getWebReplayBaseUrl() {
+        return config.getString("replay.web-replay.base-url", "https://your-cdn.example.com/replays");
+    }
+
+    public String getWebReplayViewerUrl() {
+        return config.getString("replay.web-replay.viewer-url", "https://s.mcraft.fun");
+    }
+
+    public String getWebReplayApiUrl() {
+        return config.getString("replay.web-replay.api-url", "");
+    }
+
+    public String getLicenseKey() {
+        return config.getString("license.license-key", "");
     }
 
     // Punishment Settings
@@ -224,8 +258,128 @@ public class ConfigManager {
         return coloredLore;
     }
 
-    public boolean isStaffNotifyEnabled() {
-        return config.getBoolean("reports.notifications.notify-staff", true);
+    // ============= Notification Toggles =============
+
+    public boolean isTitleNotificationEnabled() {
+        return config.getBoolean("reports.notifications.title-enabled", true);
+    }
+
+    public boolean isActionBarNotificationEnabled() {
+        return config.getBoolean("reports.notifications.actionbar-enabled", false);
+    }
+
+    // ============= Reports =============
+
+    public boolean isRequireOnline() {
+        return config.getBoolean("reports.require-online", true);
+    }
+
+    // ============= Performance =============
+
+    public int getCacheMaxSize() {
+        return config.getInt("performance.cache.max-size", 100);
+    }
+
+    // ============= Replay Quality =============
+
+    public int getReplayTPS() {
+        return config.getInt("replay.quality.tps", 20);
+    }
+
+    public boolean isRecordNearbyPlayers() {
+        return config.getBoolean("replay.quality.record-nearby-players", true);
+    }
+
+    public int getNearbyRadius() {
+        return config.getInt("replay.quality.nearby-radius", 50);
+    }
+
+    public boolean isRecordInventory() {
+        return config.getBoolean("replay.quality.record-inventory", true);
+    }
+
+    public boolean isRecordChat() {
+        return config.getBoolean("replay.quality.record-chat", true);
+    }
+
+    public boolean isRecordBlocks() {
+        return config.getBoolean("replay.quality.record-blocks", true);
+    }
+
+    // ============= Replay Max File Size =============
+
+    public int getMaxFileSize() {
+        return config.getInt("replay.max-file-size", 5);
+    }
+
+    // ============= Overwatch Settings =============
+
+    public boolean isOverwatchEnabled() {
+        return config.getBoolean("overwatch.enabled", true);
+    }
+
+    public int getMinReviewers() {
+        return config.getInt("overwatch.min-reviewers", 3);
+    }
+
+    public double getConsensusThreshold() {
+        return config.getDouble("overwatch.consensus-threshold", 70.0);
+    }
+
+    public int getAutoBanDurationDays() {
+        return config.getInt("overwatch.auto-ban-duration-days", 30);
+    }
+
+    public int getHologramUpdateInterval() {
+        return config.getInt("overwatch.npc.hologram-update-interval", 30);
+    }
+
+    public boolean isAutoAddReports() {
+        return config.getBoolean("overwatch.queue.auto-add-reports", false);
+    }
+
+    public int getDefaultPriority() {
+        return config.getInt("overwatch.queue.default-priority", 0);
+    }
+
+    public int getMaxQueueSize() {
+        return config.getInt("overwatch.queue.max-queue-size", 100);
+    }
+
+    public boolean isAllowSkip() {
+        return config.getBoolean("overwatch.reviewer.allow-skip", true);
+    }
+
+    public int getReviewCooldown() {
+        return config.getInt("overwatch.reviewer.review-cooldown", 10);
+    }
+
+    public int getGuiltyInnocentXP() {
+        return config.getInt("overwatch.xp.guilty-innocent-xp", 15);
+    }
+
+    public int getSkipXP() {
+        return config.getInt("overwatch.xp.skip-xp", 5);
+    }
+
+    public int getXPPerLevel() {
+        return config.getInt("overwatch.xp.xp-per-level", 100);
+    }
+
+    public int getBronzeXP() {
+        return config.getInt("overwatch.xp.bronze-xp", 0);
+    }
+
+    public int getSilverXP() {
+        return config.getInt("overwatch.xp.silver-xp", 500);
+    }
+
+    public int getGoldXP() {
+        return config.getInt("overwatch.xp.gold-xp", 1000);
+    }
+
+    public int getDiamondXP() {
+        return config.getInt("overwatch.xp.diamond-xp", 2500);
     }
 
     // ============= Overwatch Rewards =============

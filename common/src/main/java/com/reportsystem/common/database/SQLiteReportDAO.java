@@ -9,10 +9,10 @@ import java.util.UUID;
 
 public class SQLiteReportDAO implements ReportDAO {
 
-    private final Connection connection;
+    private final SQLiteDatabaseManager dbManager;
 
-    public SQLiteReportDAO(String dbPath) throws SQLException {
-        this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+    public SQLiteReportDAO(SQLiteDatabaseManager dbManager) throws SQLException {
+        this.dbManager = dbManager;
         createTables();
     }
 
@@ -32,6 +32,7 @@ public class SQLiteReportDAO implements ReportDAO {
             )
         """;
 
+        Connection connection = dbManager.getConnection();
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(sql);
 
@@ -53,6 +54,12 @@ public class SQLiteReportDAO implements ReportDAO {
             } catch (SQLException e) {
                 // Kolon zaten varsa ignore
             }
+
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN reporter_notified INTEGER DEFAULT 0");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
         }
     }
 
@@ -60,7 +67,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public Report createReport(String reportedPlayerName, String reporterName, UUID reporterUUID, String reason) {
         String sql = "INSERT INTO reports (reported_player_name, reporter_name, reporter_uuid, reason, timestamp) VALUES (?, ?, ?, ?, ?)";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, reportedPlayerName);
             stmt.setString(2, reporterName);
             stmt.setString(3, reporterUUID.toString());
@@ -86,7 +93,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public Report getReport(int id) {
         String sql = "SELECT * FROM reports WHERE id = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, id);
 
             try (ResultSet rs = stmt.executeQuery()) {
@@ -105,7 +112,7 @@ public class SQLiteReportDAO implements ReportDAO {
         List<Report> reports = new ArrayList<>();
         String sql = "SELECT * FROM reports ORDER BY timestamp DESC LIMIT ? OFFSET ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, perPage);
             stmt.setInt(2, (page - 1) * perPage);
 
@@ -125,7 +132,7 @@ public class SQLiteReportDAO implements ReportDAO {
         List<Report> reports = new ArrayList<>();
         String sql = "SELECT * FROM reports ORDER BY timestamp DESC";
 
-        try (Statement stmt = connection.createStatement();
+        try (Statement stmt = dbManager.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
             while (rs.next()) {
@@ -142,7 +149,7 @@ public class SQLiteReportDAO implements ReportDAO {
         List<Report> reports = new ArrayList<>();
         String sql = "SELECT * FROM reports WHERE reported_player_name = ? ORDER BY timestamp DESC";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, playerName);
 
             try (ResultSet rs = stmt.executeQuery()) {
@@ -161,7 +168,7 @@ public class SQLiteReportDAO implements ReportDAO {
         List<Report> reports = new ArrayList<>();
         String sql = "SELECT * FROM reports WHERE reporter_name = ? ORDER BY timestamp DESC";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, reporterName);
 
             try (ResultSet rs = stmt.executeQuery()) {
@@ -179,7 +186,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public int getReportCount() {
         String sql = "SELECT COUNT(*) FROM reports";
 
-        try (Statement stmt = connection.createStatement();
+        try (Statement stmt = dbManager.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
             if (rs.next()) {
@@ -195,7 +202,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public boolean updateReportStatus(int id, String status) {
         String sql = "UPDATE reports SET status = ? WHERE id = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, status);
             stmt.setInt(2, id);
 
@@ -210,7 +217,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public boolean updateReportServer(int id, String serverName) {
         String sql = "UPDATE reports SET server_name = ? WHERE id = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, serverName);
             stmt.setInt(2, id);
 
@@ -224,7 +231,7 @@ public class SQLiteReportDAO implements ReportDAO {
     @Override
     public boolean updatePunishmentStatus(int reportId, String punishmentType) throws SQLException {
         String sql = "UPDATE reports SET punished = 1, punishment_type = ? WHERE id = ?";
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, punishmentType);
             stmt.setInt(2, reportId);
             return stmt.executeUpdate() > 0;
@@ -235,7 +242,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public boolean deleteReport(int id) {
         String sql = "DELETE FROM reports WHERE id = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, id);
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -249,7 +256,7 @@ public class SQLiteReportDAO implements ReportDAO {
         String sql = "DELETE FROM reports WHERE timestamp < ?";
         long cutoffTime = System.currentTimeMillis() - (days * 24L * 60 * 60 * 1000);
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setLong(1, cutoffTime);
             int deleted = stmt.executeUpdate();
             if (deleted > 0) {
@@ -284,13 +291,20 @@ public class SQLiteReportDAO implements ReportDAO {
             // Eski tablolarda bu kolonlar olmayabilir
         }
 
+        // Raporcu bildirim durumunu oku
+        try {
+            report.setReporterNotified(rs.getInt("reporter_notified") == 1);
+        } catch (SQLException e) {
+            // Eski tablolarda bu kolon olmayabilir
+        }
+
         return report;
     }
 
     @Override
     public int getTotalCount() throws SQLException {
         String sql = "SELECT COUNT(*) FROM reports";
-        try (PreparedStatement ps = connection.prepareStatement(sql);
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
                 return rs.getInt(1);
@@ -302,7 +316,7 @@ public class SQLiteReportDAO implements ReportDAO {
     @Override
     public int getPendingCount() throws SQLException {
         String sql = "SELECT COUNT(*) FROM reports WHERE status = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, "PENDING");
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -316,7 +330,7 @@ public class SQLiteReportDAO implements ReportDAO {
     @Override
     public int getAcceptedCount() throws SQLException {
         String sql = "SELECT COUNT(*) FROM reports WHERE status = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, "ACCEPTED");
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -330,7 +344,7 @@ public class SQLiteReportDAO implements ReportDAO {
     @Override
     public int getRejectedCount() throws SQLException {
         String sql = "SELECT COUNT(*) FROM reports WHERE status = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, "REJECTED");
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -344,7 +358,7 @@ public class SQLiteReportDAO implements ReportDAO {
     @Override
     public int closeOldReports(long cutoffTime) throws SQLException {
         String sql = "UPDATE reports SET status = ? WHERE status = ? AND timestamp < ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, "CLOSED");
             ps.setString(2, "PENDING");
             ps.setLong(3, cutoffTime);
@@ -354,11 +368,66 @@ public class SQLiteReportDAO implements ReportDAO {
     }
 
     @Override
+    public List<Report> getReportsByStatus(String status) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE status = ? ORDER BY timestamp DESC";
+
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
+    }
+
+    @Override
+    public List<Report> getReportsByServer(String serverName) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE server_name = ? ORDER BY timestamp DESC";
+
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, serverName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
+    }
+
+    @Override
+    public List<Report> getReportsByDateRange(long startTime, long endTime) {
+        List<Report> reports = new ArrayList<>();
+        String sql = "SELECT * FROM reports WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp DESC";
+
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setLong(1, startTime);
+            stmt.setLong(2, endTime);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return reports;
+    }
+
+    @Override
     public int countReportsByReporterAndReported(String reporterName, String reportedName) {
         // Sadece PENDING raporları say - yetkili kabul/reddettiğinde yeni rapor oluşturulabilsin
         String sql = "SELECT COUNT(*) FROM reports WHERE reporter_name = ? AND reported_player_name = ? AND status = 'PENDING'";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, reporterName);
             stmt.setString(2, reportedName);
 
@@ -377,7 +446,7 @@ public class SQLiteReportDAO implements ReportDAO {
     public int getTotalReportsForPlayer(String playerName) {
         String sql = "SELECT COUNT(*) FROM reports WHERE reported_player_name = ?";
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
             stmt.setString(1, playerName);
 
             try (ResultSet rs = stmt.executeQuery()) {
@@ -391,13 +460,32 @@ public class SQLiteReportDAO implements ReportDAO {
         return 0;
     }
 
-    public void close() {
-        try {
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
+    @Override
+    public List<Report> getUnnotifiedReportsForReporter(String reporterUuid) throws SQLException {
+        String sql = "SELECT * FROM reports WHERE reporter_uuid = ? AND status = 'ACCEPTED' AND (reporter_notified = 0 OR reporter_notified IS NULL) ORDER BY timestamp DESC";
+        List<Report> reports = new ArrayList<>();
+
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, reporterUuid);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    reports.add(extractReportFromResultSet(rs));
+                }
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
         }
+        return reports;
+    }
+
+    @Override
+    public void markReporterNotified(int reportId) throws SQLException {
+        String sql = "UPDATE reports SET reporter_notified = 1 WHERE id = ?";
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, reportId);
+            stmt.executeUpdate();
+        }
+    }
+
+    public void close() {
+        // Connection kapatma SQLiteDatabaseManager tarafından yönetilir
     }
 }

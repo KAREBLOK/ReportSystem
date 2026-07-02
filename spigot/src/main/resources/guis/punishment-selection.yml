@@ -1,82 +1,85 @@
-# Punishment Selection GUI Configuration
-# Used when staff needs to select a punishment type
+# Ceza Seçim GUI
+title: "&8&nCeza Seç"
+size: 27
 
-title: "&4Ceza Seç - &c%player%"
-size: 36
-
-# Background
+# Arka plan
 background:
-  material: RED_STAINED_GLASS_PANE
-  name: " "
+  enabled: false
 
-# Items
+# Öğeler
 items:
-  # Player info (top center)
+  # Oyuncu bilgisi
   player-info:
     slot: 4
     material: PLAYER_HEAD
     name: "&c%player%"
     lore:
-      - "&7Sebep: &e%reason%"
-      - ""
-      - "&a✓ Rapor onaylandı!"
-      - "&7Şimdi ceza seçebilirsiniz."
+      - ''
+      - ' &8▪ &7Sebep: &e%reason%'
+      - ''
+      - '&a✓ Rapor onaylandı!'
+      - '&7Şimdi ceza seçebilirsiniz.'
 
-  # Punishment options
+  # Ceza seçenekleri
   ban:
-    slot: 11
-    material: IRON_AXE
-    name: "&4⚔ Yasakla (Ban)"
+    slot: 10
+    material: IRON_SWORD
+    name: "&4&l⚔ Yasakla"
     lore:
-      - "&7Oyuncuyu sunucudan yasakla"
-      - ""
-      - "&7Süreli veya kalıcı ban atabilirsiniz"
-      - "&eTıkla ve süre seç!"
+      - ''
+      - '&7Oyuncuyu sunucudan yasakla.'
+      - '&7Süreli veya kalıcı.'
+      - ''
+      - '&e► Süre seçmek için tıkla'
 
   mute:
     slot: 12
-    material: BARRIER
-    name: "&6🔇 Sustur (Mute)"
+    material: PAPER
+    name: "&6&l🔇 Sustur"
     lore:
-      - "&7Oyuncuyu sustur"
-      - ""
-      - "&7Sohbete yazmasını engelle"
-      - "&eTıkla ve süre seç!"
+      - ''
+      - '&7Oyuncunun sohbetini kapat.'
+      - '&7Süreli veya kalıcı.'
+      - ''
+      - '&e► Süre seçmek için tıkla'
 
   kick:
     slot: 14
-    material: LEATHER_BOOTS
-    name: "&c👢 Sunucudan At (Kick)"
+    material: IRON_BOOTS
+    name: "&c&l👢 At"
     lore:
-      - "&7Oyuncuyu sunucudan at"
-      - ""
-      - "&7Tekrar girebilir"
-      - "&eTıkla ve at!"
+      - ''
+      - '&7Oyuncuyu sunucudan at.'
+      - '&7Tekrar girebilir.'
+      - ''
+      - '&e► Atmak için tıkla'
 
   warn:
-    slot: 15
-    material: PAPER
-    name: "&e⚠ Uyar (Warn)"
+    slot: 16
+    material: GOLD_NUGGET
+    name: "&e&l⚠ Uyar"
     lore:
-      - "&7Oyuncuya uyarı ver"
-      - ""
-      - "&7Ceza puanı ekler"
-      - "&eTıkla ve uyar!"
+      - ''
+      - '&7Oyuncuya uyarı ver.'
+      - '&7Ceza puanı ekler.'
+      - ''
+      - '&e► Uyarmak için tıkla'
 
-  # Bottom actions
+  # Alt işlemler
   no-punishment:
-    slot: 30
-    material: LIME_DYE
-    name: "&a✔ Ceza Verme"
+    slot: 20
+    material: SUNFLOWER
+    name: "&a&l✔ Ceza Verme"
     lore:
-      - "&7Raporu kabul et ama"
-      - "&7ceza verme."
-      - ""
-      - "&eTıkla!"
+      - ''
+      - '&7Raporu kabul et ama'
+      - '&7ceza verme.'
+      - ''
+      - '&e► Tıkla'
 
   back:
-    slot: 32
+    slot: 24
     material: ARROW
-    name: "&eGeri Dön"
+    name: "&8←"
     lore:
       - "&7Önceki menüye dön"

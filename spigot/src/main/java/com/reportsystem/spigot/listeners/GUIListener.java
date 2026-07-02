@@ -23,6 +23,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.sql.SQLException;
+import java.util.UUID;
 
 public class GUIListener implements Listener {
 
@@ -73,6 +74,10 @@ public class GUIListener implements Listener {
             handleAnimatedBanGUI(player, (com.reportsystem.spigot.gui.AnimatedBanGUI) holder, item);
         } else if (holder instanceof ReplayControlGUI) {
             handleReplayControlGUI(player, (ReplayControlGUI) holder, slot, clickType.isLeftClick());
+        } else if (holder instanceof ReplayInfoGUI) {
+            ((ReplayInfoGUI) holder).handleClick(event);
+        } else if (holder instanceof ReplayTeleportGUI) {
+            ((ReplayTeleportGUI) holder).handleClick(event);
         }
     }
 
@@ -105,25 +110,26 @@ public class GUIListener implements Listener {
 
     private void handleReportDetailGUI(Player player, ReportDetailGUI gui, int slot) {
         Report report = gui.getReport();
+        GUIConfig config = gui.getGuiConfig();
 
-        if (slot == 22) {
+        if (slot == config.getItemSlot("replay")) {
             // Replay İzle
             if (gui.hasReplay()) {
                 watchReplay(player, report.getId());
             } else {
-                player.sendMessage(ChatColor.RED + "Bu rapor için replay kaydı bulunamadı!");
+                plugin.getMessageManager().sendMessage(player, "replay.not-found");
             }
-        } else if (slot == 29) {
+        } else if (slot == config.getItemSlot("actions.accept")) {
             // Raporu Onayla - Ceza seçim GUI'sini aç
             acceptReportAndShowPunishmentSelection(player, report);
-        } else if (slot == 30) {
+        } else if (slot == config.getItemSlot("actions.reject")) {
             // Raporu Reddet
             rejectReport(player, report);
-        } else if (slot == 42) {
+        } else if (slot == config.getItemSlot("punishments.teleport")) {
             // Oyuncuya Işınlan
             player.closeInventory();
             teleportToPlayer(player, report.getReportedPlayerName());
-        } else if (slot == 49) {
+        } else if (slot == config.getItemSlot("navigation.back")) {
             // Geri Dön
             player.closeInventory();
             new ReportListGUI(plugin, player, 1).open();
@@ -156,7 +162,7 @@ public class GUIListener implements Listener {
                 Report report = gui.getReport();
                 String targetName = gui.getTargetName();
 
-                plugin.getLogger().info("[DEBUG] AnimatedBanGUI click - Duration: " + duration + ", Target: " + targetName);
+                plugin.debug("[DEBUG] AnimatedBanGUI click - Duration: " + duration + ", Target: " + targetName);
 
                 staff.closeInventory();
 
@@ -164,10 +170,10 @@ public class GUIListener implements Listener {
                 if (duration.equals("custom")) {
                     // Kullanıcıdan özel süre al
                     plugin.getChatInputManager().requestInput(staff,
-                        ChatColor.GOLD + "Ban süresini girin (örn: 2h, 15d, 1w):",
+                        plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("reports.chat.enter-duration")),
                         customDuration -> {
                             if (customDuration == null || customDuration.trim().isEmpty()) {
-                                staff.sendMessage(ChatColor.RED + "Geçersiz süre! İşlem iptal edildi.");
+                                plugin.getMessageManager().sendMessage(staff, "reports.chat.invalid-duration");
                                 return;
                             }
                             // Sebep girişi al
@@ -179,7 +185,7 @@ public class GUIListener implements Listener {
                     requestReasonAndExecuteBan(staff, report, targetName, duration);
                 }
             } else {
-                plugin.getLogger().warning("[DEBUG] AnimatedBanGUI click - No ban_duration data! Item: " + item.getType());
+                plugin.debug("[DEBUG] AnimatedBanGUI click - No ban_duration data! Item: " + item.getType());
             }
         }
     }
@@ -197,11 +203,11 @@ public class GUIListener implements Listener {
 
         if (duration.equals("permanent")) {
             durationMillis = -1; // Kalıcı
-            durationText = "KALICI";
+            durationText = plugin.getMessageManager().getMessage("misc.duration.permanent");
         } else {
             durationMillis = plugin.getPunishmentManager().parseDuration(duration);
             if (durationMillis <= 0) {
-                staff.sendMessage(ChatColor.RED + "Geçersiz süre formatı! İşlem iptal edildi.");
+                plugin.getMessageManager().sendMessage(staff, "reports.chat.invalid-duration");
                 return;
             }
             durationText = formatDuration(durationMillis);
@@ -210,7 +216,7 @@ public class GUIListener implements Listener {
         // Hedef oyuncuyu bul
         Player target = Bukkit.getPlayer(targetName);
         if (target == null || !target.isOnline()) {
-            staff.sendMessage(ChatColor.RED + targetName + " çevrimiçi değil! Animasyonlu ban için oyuncunun online olması gerekiyor.");
+            plugin.getMessageManager().sendMessage(staff, "punishments.ban.offline", "%player%", targetName);
             return;
         }
 
@@ -218,11 +224,11 @@ public class GUIListener implements Listener {
         plugin.getAnimatedBanManager().executeAnimatedBan(target, finalReason, staff, durationMillis);
 
         // Başarı mesajı
-        staff.sendMessage(ChatColor.GREEN + "⚡ " + ChatColor.BOLD + "ANIMATED BAN BAŞLATILDI!");
-        staff.sendMessage(ChatColor.GRAY + "Hedef: " + ChatColor.RED + targetName);
-        staff.sendMessage(ChatColor.GRAY + "Süre: " + ChatColor.YELLOW + durationText);
-        staff.sendMessage(ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + finalReason);
-        staff.sendMessage(ChatColor.DARK_RED + "Tanrıların gazabı başlıyor...");
+        plugin.getMessageManager().sendMessage(staff, "punishments.ban.animated-started");
+        plugin.getMessageManager().sendMessage(staff, "punishments.ban.animated-target", "%player%", targetName);
+        plugin.getMessageManager().sendMessage(staff, "punishments.ban.animated-duration", "%duration%", durationText);
+        plugin.getMessageManager().sendMessage(staff, "punishments.ban.animated-reason", "%reason%", finalReason);
+        plugin.getMessageManager().sendMessage(staff, "punishments.ban.animated-message");
 
         // Raporu güncelle
         report.setStatus(Report.Status.ACCEPTED);
@@ -249,6 +255,8 @@ public class GUIListener implements Listener {
                         durationText
                 );
             }
+            // Raporcu'ya bildirim
+            notifyReporterIfOnline(report);
         } catch (SQLException e) {
             plugin.getLogger().warning("Error updating report after animated ban: " + e.getMessage());
         }
@@ -263,10 +271,10 @@ public class GUIListener implements Listener {
         long hours = minutes / 60;
         long days = hours / 24;
 
-        if (days > 0) return days + " gün";
-        if (hours > 0) return hours + " saat";
-        if (minutes > 0) return minutes + " dakika";
-        return seconds + " saniye";
+        if (days > 0) return days + " " + plugin.getMessageManager().getMessage("misc.time.days");
+        if (hours > 0) return hours + " " + plugin.getMessageManager().getMessage("misc.time.hours");
+        if (minutes > 0) return minutes + " " + plugin.getMessageManager().getMessage("misc.time.minutes");
+        return seconds + " " + plugin.getMessageManager().getMessage("misc.time.seconds");
     }
 
     private void handlePunishmentGUI(Player player, PunishmentGUI gui, ItemStack item) {
@@ -292,7 +300,7 @@ public class GUIListener implements Listener {
         if (durationString != null && !durationString.isEmpty()) {
             player.closeInventory();
             String targetName = gui.getTargetName();
-            String defaultReason = gui.getReport() != null ? gui.getReport().getReason() : "Kural ihlali";
+            String defaultReason = gui.getReport() != null ? gui.getReport().getReason() : plugin.getMessageManager().getMessage("punishments.default-reason");
             Report report = gui.getReport();
 
             plugin.getLogger().info("[PunishmentGUI] Duration: " + durationString + ", Target: " + targetName + ", Report: " + (report != null));
@@ -312,15 +320,17 @@ public class GUIListener implements Listener {
                 } else if (punishmentType.equalsIgnoreCase("kick")) {
                     Player targetPlayer = Bukkit.getPlayer(targetName);
                     if (targetPlayer != null && targetPlayer.isOnline()) {
-                        targetPlayer.kickPlayer(ChatColor.RED + "Sunucudan atıldınız!\n\n" +
-                                ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + finalReason + "\n" +
-                                ChatColor.GRAY + "Yetkili: " + ChatColor.WHITE + player.getName());
+                        String kickMsg = plugin.getMessageManager().colorize(
+                                plugin.getMessageManager().getMessage("punishments.kick.player-message")
+                                        .replace("%reason%", finalReason)
+                                        .replace("%staff%", player.getName()));
+                        targetPlayer.kickPlayer(kickMsg);
                         success = true;
                     }
                 }
 
                 if (success) {
-                    player.sendMessage(ChatColor.GREEN + "✓ " + targetName + " için ceza başarıyla uygulandı.");
+                    plugin.getMessageManager().sendMessage(player, "punishments.success-target", "%player%", targetName);
 
                     // Update report status
                     report.setStatus("ACCEPTED");
@@ -347,11 +357,11 @@ public class GUIListener implements Listener {
                         );
                     }
                 } else {
-                    player.sendMessage(ChatColor.RED + "✗ Ceza uygulanamadı.");
+                    plugin.getMessageManager().sendMessage(player, "punishments.failed");
                 }
             } else {
                 // Rapor yoksa chat input iste
-                plugin.getChatInputManager().requestInput(player, "Ceza sebebini girin (varsayılan: " + defaultReason + ")", reason -> {
+                plugin.getChatInputManager().requestInput(player, plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("punishments.ban.enter-reason").replace("%default%", defaultReason)), reason -> {
                     String finalReason = (reason == null || reason.isEmpty()) ? defaultReason : reason;
                     long durationMillis = plugin.getPunishmentManager().parseDuration(durationString);
 
@@ -363,9 +373,9 @@ public class GUIListener implements Listener {
                     }
 
                     if (success) {
-                        player.sendMessage(ChatColor.GREEN + targetName + " için ceza başarıyla uygulandı.");
+                        plugin.getMessageManager().sendMessage(player, "punishments.success-target", "%player%", targetName);
                     } else {
-                        player.sendMessage(ChatColor.RED + "Ceza uygulanamadı.");
+                        plugin.getMessageManager().sendMessage(player, "punishments.failed");
                     }
                 });
             }
@@ -377,7 +387,7 @@ public class GUIListener implements Listener {
     private void createReport(Player reporter, String targetName, String reason) {
         reporter.closeInventory();
         if (reason.length() < plugin.getConfigManager().getMinReasonLength()) {
-            reporter.sendMessage(ChatColor.RED + "Sebep çok kısa!");
+            plugin.getMessageManager().sendMessage(reporter, "reports.reason-too-short", "%min%", String.valueOf(plugin.getConfigManager().getMinReasonLength()));
             return;
         }
 
@@ -434,7 +444,7 @@ public class GUIListener implements Listener {
             plugin.getOverwatchManager().removeReportFromQueue(report.getId());
         }
 
-        staff.sendMessage(ChatColor.YELLOW + "Lütfen bir ceza seçin veya GUI'yi kapatın.");
+        plugin.getMessageManager().sendMessage(staff, "reports.actions.select-punishment");
 
         // Ceza seçim GUI'sini aç (rapor henüz ACCEPTED değil, ceza seçildiğinde işaretlenecek)
         new PunishmentSelectionGUI(staff, report, plugin).open();
@@ -458,9 +468,9 @@ public class GUIListener implements Listener {
             }
 
             staff.closeInventory();
-            staff.sendMessage(ChatColor.RED + "Rapor #" + report.getId() + " reddedildi.");
+            plugin.getMessageManager().sendMessage(staff, "reports.actions.rejected", "%id%", String.valueOf(report.getId()));
         } catch (SQLException e) {
-            staff.sendMessage(ChatColor.RED + "Rapor güncellenirken bir veritabanı hatası oluştu.");
+            plugin.getMessageManager().sendMessage(staff, "reports.actions.database-error");
             e.printStackTrace();
         }
     }
@@ -469,16 +479,16 @@ public class GUIListener implements Listener {
         plugin.getReportService().deleteReport(report.getId());
         plugin.getReplayManager().deleteReplay(report.getId());
         staff.closeInventory();
-        staff.sendMessage(ChatColor.GREEN + "Rapor #" + report.getId() + " ve ilgili replay silindi.");
+        plugin.getMessageManager().sendMessage(staff, "reports.actions.deleted", "%id%", String.valueOf(report.getId()));
     }
 
     private void teleportToPlayer(Player staff, String targetName) {
         Player target = Bukkit.getPlayer(targetName);
         if (target != null && target.isOnline()) {
             staff.teleport(target);
-            staff.sendMessage(ChatColor.GREEN + targetName + " adlı oyuncuya ışınlandınız.");
+            plugin.getMessageManager().sendMessage(staff, "general.teleported", "%player%", targetName);
         } else {
-            staff.sendMessage(ChatColor.RED + targetName + " adlı oyuncu çevrimiçi değil.");
+            plugin.getMessageManager().sendMessage(staff, "general.player-offline", "%player%", targetName);
         }
     }
 
@@ -496,7 +506,7 @@ public class GUIListener implements Listener {
         Player target = Bukkit.getPlayer(targetName);
 
         if (target == null || !target.isOnline()) {
-            staff.sendMessage(ChatColor.RED + targetName + " çevrimiçi değil!");
+            plugin.getMessageManager().sendMessage(staff, "punishments.kick.offline", "%player%", targetName);
             return;
         }
 
@@ -505,20 +515,20 @@ public class GUIListener implements Listener {
         // Sebep girişi al
         String defaultReason = report.getReason();
         plugin.getChatInputManager().requestInput(staff,
-            ChatColor.GOLD + "Kick sebebini girin (varsayılan: " + defaultReason + ")",
+            plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("punishments.kick.enter-reason").replace("%default%", defaultReason)),
             reason -> {
                 String finalReason = (reason == null || reason.isEmpty()) ? defaultReason : reason;
 
                 // Kick mesajı
-                String kickMessage = ChatColor.RED + "" + ChatColor.BOLD + "SUNUCUDAN ATILDINIZ!\n\n" +
-                    ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + finalReason + "\n" +
-                    ChatColor.GRAY + "Yetkili: " + ChatColor.WHITE + staff.getName();
+                String kickMessage = plugin.getMessageManager().colorize(
+                        plugin.getMessageManager().getMessage("punishments.kick.player-message")
+                                .replace("%reason%", finalReason)
+                                .replace("%staff%", staff.getName()));
 
                 target.kickPlayer(kickMessage);
 
                 // Başarı mesajı
-                staff.sendMessage(ChatColor.GREEN + targetName + " sunucudan atıldı!");
-                staff.sendMessage(ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + finalReason);
+                plugin.getMessageManager().sendMessage(staff, "punishments.kick.success", "%player%", targetName);
 
                 // Raporu güncelle
                 report.setStatus(Report.Status.ACCEPTED);
@@ -531,6 +541,8 @@ public class GUIListener implements Listener {
                     if (plugin.getOverwatchManager() != null) {
                         plugin.getOverwatchManager().removeReportFromQueue(report.getId());
                     }
+                    // Raporcu'ya bildirim
+                    notifyReporterIfOnline(report);
                 } catch (SQLException e) {
                     plugin.getLogger().warning("Error updating report after kick: " + e.getMessage());
                 }
@@ -546,7 +558,7 @@ public class GUIListener implements Listener {
         Player target = Bukkit.getPlayer(targetName);
 
         if (target == null || !target.isOnline()) {
-            staff.sendMessage(ChatColor.RED + targetName + " çevrimiçi değil!");
+            plugin.getMessageManager().sendMessage(staff, "punishments.warn.offline", "%player%", targetName);
             return;
         }
 
@@ -555,26 +567,24 @@ public class GUIListener implements Listener {
         // Sebep girişi al
         String defaultReason = report.getReason();
         plugin.getChatInputManager().requestInput(staff,
-            ChatColor.GOLD + "Uyarı mesajını girin (varsayılan: " + defaultReason + ")",
+            plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("punishments.warn.enter-reason").replace("%default%", defaultReason)),
             reason -> {
                 String finalReason = (reason == null || reason.isEmpty()) ? defaultReason : reason;
 
                 // Uyarı mesajı gönder
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "⚠ UYARI ⚠");
-                target.sendMessage(ChatColor.YELLOW + "Yetkili tarafından uyarıldınız!");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + finalReason);
-                target.sendMessage(ChatColor.GRAY + "Yetkili: " + ChatColor.WHITE + staff.getName());
-                target.sendMessage(ChatColor.YELLOW + "Kuralları ihlal etmeye devam ederseniz ceza alabilirsiniz!");
-                target.sendMessage("");
+                String warnMsg = plugin.getMessageManager().getMessage("punishments.warn.player-message")
+                        .replace("%reason%", finalReason)
+                        .replace("%staff%", staff.getName())
+                        .replace("%count%", "");
+                for (String line : warnMsg.split("\n")) {
+                    target.sendMessage(plugin.getMessageManager().colorize(line));
+                }
 
                 // Ses efekti
                 target.playSound(target.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.5f);
 
                 // Başarı mesajı
-                staff.sendMessage(ChatColor.GREEN + targetName + " uyarıldı!");
-                staff.sendMessage(ChatColor.GRAY + "Mesaj: " + ChatColor.WHITE + finalReason);
+                plugin.getMessageManager().sendMessage(staff, "punishments.warn.success", "%player%", targetName);
 
                 // Raporu güncelle
                 report.setStatus(Report.Status.ACCEPTED);
@@ -587,6 +597,8 @@ public class GUIListener implements Listener {
                     if (plugin.getOverwatchManager() != null) {
                         plugin.getOverwatchManager().removeReportFromQueue(report.getId());
                     }
+                    // Raporcu'ya bildirim
+                    notifyReporterIfOnline(report);
                 } catch (SQLException e) {
                     plugin.getLogger().warning("Error updating report after warn: " + e.getMessage());
                 }
@@ -613,8 +625,8 @@ public class GUIListener implements Listener {
         boolean isMuted = plugin.getPunishmentManager().getProvider().isMuted(targetName);
 
         if (!isBanned && !isMuted) {
-            staff.sendMessage(ChatColor.RED + targetName + " için aktif bir ceza bulunamadı!");
-            staff.sendMessage(ChatColor.GRAY + "Ban veya mute cezası yok.");
+            plugin.getMessageManager().sendMessage(staff, "punishments.no-active-punishment", "%player%", targetName);
+            plugin.getMessageManager().sendMessage(staff, "punishments.no-active-detail");
             return;
         }
 
@@ -625,18 +637,18 @@ public class GUIListener implements Listener {
         if (isBanned) {
             unbanSuccess = plugin.getPunishmentManager().getProvider().unban(targetName);
             if (unbanSuccess) {
-                staff.sendMessage(ChatColor.GREEN + "✓ " + targetName + " banı kaldırıldı!");
+                plugin.getMessageManager().sendMessage(staff, "punishments.unban-success", "%player%", targetName);
             } else {
-                staff.sendMessage(ChatColor.RED + "✗ " + targetName + " banı kaldırılırken hata oluştu!");
+                plugin.getMessageManager().sendMessage(staff, "punishments.unban-failed", "%player%", targetName);
             }
         }
 
         if (isMuted) {
             unmuteSuccess = plugin.getPunishmentManager().getProvider().unmute(targetName);
             if (unmuteSuccess) {
-                staff.sendMessage(ChatColor.GREEN + "✓ " + targetName + " susturması kaldırıldı!");
+                plugin.getMessageManager().sendMessage(staff, "punishments.unmute-success", "%player%", targetName);
             } else {
-                staff.sendMessage(ChatColor.RED + "✗ " + targetName + " susturması kaldırılırken hata oluştu!");
+                plugin.getMessageManager().sendMessage(staff, "punishments.unmute-failed", "%player%", targetName);
             }
         }
 
@@ -644,7 +656,7 @@ public class GUIListener implements Listener {
         if (unbanSuccess || unmuteSuccess) {
             plugin.getLogger().info("[PunishmentRemoval] " + staff.getName() + " removed punishment(s) for " + targetName);
             staff.sendMessage("");
-            staff.sendMessage(ChatColor.GRAY + "İşlem tamamlandı!");
+            plugin.getMessageManager().sendMessage(staff, "punishments.operation-complete");
         }
     }
 
@@ -652,6 +664,35 @@ public class GUIListener implements Listener {
         // ReplayControlGUI handling - delegate to the GUI's own handler if needed
         // For now, just close or do nothing as replay controls are handled by hotbar items
         player.closeInventory();
+    }
+
+    /**
+     * Rapor kabul edildiğinde raporcu'ya bildirim gönderir (Hypixel tarzı)
+     * Raporcu online ise anında gönderir, offline ise giriş yaptığında gönderilir
+     */
+    private void notifyReporterIfOnline(Report report) {
+        // Trust level cache'ini invalidate et (raporlanan oyuncu için)
+        if (plugin.getTrustLevelManager() != null && report.getReportedPlayerName() != null) {
+            org.bukkit.OfflinePlayer target = Bukkit.getOfflinePlayer(report.getReportedPlayerName());
+            if (target.getUniqueId() != null) {
+                plugin.getTrustLevelManager().invalidateCache(target.getUniqueId());
+            }
+        }
+
+        if (!plugin.getConfig().getBoolean("reports.reporter-feedback.enabled", true)) return;
+
+        String reporterUuid = report.getReporterUuid();
+        if (reporterUuid == null || reporterUuid.isEmpty()) return;
+
+        try {
+            Player reporter = Bukkit.getPlayer(UUID.fromString(reporterUuid));
+            if (reporter != null && reporter.isOnline()) {
+                plugin.getMessageManager().sendReporterFeedback(reporter, report.getId(), report.getReportedPlayerName());
+                plugin.getReportService().markReporterNotified(report.getId());
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Reporter feedback gönderilemedi: " + e.getMessage());
+        }
     }
 
 }

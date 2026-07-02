@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.GameModeAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -35,7 +36,7 @@ public class GameModeListener implements Listener {
                 GameModeAction action = new GameModeAction(gameMode);
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] GameMode changed to: " + gameMode);
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] GameMode changed to: " + gameMode);
             }
         }
     }

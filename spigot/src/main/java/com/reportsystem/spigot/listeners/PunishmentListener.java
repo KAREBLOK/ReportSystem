@@ -43,8 +43,9 @@ public class PunishmentListener implements Listener {
                 if (warnings > 0) {
                     plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                         player.sendMessage("");
-                        player.sendMessage("§e⚠ §cDikkat! §f" + warnings + " §cadet uyarınız bulunmaktadır!");
-                        player.sendMessage("§7Kuralları ihlal etmeye devam ederseniz ceza alabilirsiniz.");
+                        plugin.getMessageManager().sendMessage(player, "punishments.warn.login-warning",
+                                "%count%", String.valueOf(warnings));
+                        plugin.getMessageManager().sendMessage(player, "punishments.warn.login-warning-detail");
                         player.sendMessage("");
                     }, 40L); // 2 saniye sonra göster
                 }

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.PortalAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -54,7 +55,7 @@ public class PortalListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Portal used: " + portalType.name() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Portal used: " + portalType.name() +
                         " from " + from.getWorld().getName() + " to " + to.getWorld().getName());
             }
         }

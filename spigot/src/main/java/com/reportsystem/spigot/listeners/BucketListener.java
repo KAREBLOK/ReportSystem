@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.BucketAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -42,7 +43,7 @@ public class BucketListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Bucket emptied: " + bucketType +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bucket emptied: " + bucketType +
                         " at " + event.getBlock().getLocation());
             }
         }
@@ -68,7 +69,7 @@ public class BucketListener implements Listener {
                 );
                 session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Bucket filled: " + bucketType +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bucket filled: " + bucketType +
                         " at " + event.getBlock().getLocation());
             }
         }

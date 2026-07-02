@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Falling block (kum, çakıl, anvil düşmesi)
  */
 public class FallingBlockAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String blockType;
     private final double x, y, z;

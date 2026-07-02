@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 public class VelocityAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final double velocityX;
     private final double velocityY;

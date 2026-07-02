@@ -6,18 +6,21 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RecordingSession {
     private final String recordedPlayerName;
-    private final List<ReplayAction> actions = Collections.synchronizedList(new ArrayList<>());
+    // PERFORMANS: 45 saniyelik kayıtta ~1000-1500 action oluşur
+    // Pre-allocate ile ArrayList resize overhead'ini önle
+    private final List<ReplayAction> actions = Collections.synchronizedList(new ArrayList<>(1500));
     private PacketListenerAbstract packetListener;
     private String worldName;
     private long startTime;
     private long endTime;
 
     // Spawned entity tracking için
-    private final Map<UUID, Entity> spawnedEntities = new HashMap<>();
-    private final Map<UUID, Location> lastEntityLocations = new HashMap<>();
+    private final Map<UUID, Entity> spawnedEntities = new ConcurrentHashMap<>();
+    private final Map<UUID, Location> lastEntityLocations = new ConcurrentHashMap<>();
 
     public RecordingSession(String recordedPlayerName) {
         this.recordedPlayerName = recordedPlayerName;

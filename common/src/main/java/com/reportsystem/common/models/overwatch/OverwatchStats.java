@@ -14,6 +14,7 @@ public class OverwatchStats {
     private long firstReviewAt;
     private long lastReviewAt;
     private int totalReviewTime; // seconds
+    private int correctVerdicts; // Doğru verdict sayısı (consensus ile eşleşen)
 
     public OverwatchStats(String reviewerUUID, String reviewerName, int totalReviews,
                          int guiltyVerdicts, int innocentVerdicts, int skippedVerdicts,
@@ -87,6 +88,53 @@ public class OverwatchStats {
         }
     }
 
+    /**
+     * Doğru verdict sayısını artır (consensus sonrası çağrılır)
+     */
+    public void addCorrectVerdict() {
+        this.correctVerdicts++;
+        recalculateAccuracy();
+    }
+
+    /**
+     * Accuracy'yi yeniden hesapla
+     * Skip oylar sayılmaz, sadece GUILTY/INNOCENT oylar değerlendirilir
+     */
+    public void recalculateAccuracy() {
+        int meaningfulVerdicts = totalReviews - skippedVerdicts;
+        if (meaningfulVerdicts > 0) {
+            this.accuracy = (correctVerdicts / (double) meaningfulVerdicts) * 100.0;
+        }
+    }
+
+    /**
+     * Reviewer'ın oy ağırlığını hesapla
+     * - Yeni reviewer (< 10 anlamlı oy): 1.0 (nötr)
+     * - Henüz consensus verisi yok (correctVerdicts=0): 1.0 (nötr, eski kullanıcılar için güvenli)
+     * - Accuracy >= 80%: 1.3 (güvenilir)
+     * - Accuracy >= 60%: 1.0 (normal)
+     * - Accuracy < 60%: 0.7 (düşük güvenilirlik)
+     */
+    public double getVoteWeight() {
+        int meaningfulVerdicts = totalReviews - skippedVerdicts;
+        if (meaningfulVerdicts < 10) {
+            return 1.0; // Yeni reviewer, nötr ağırlık
+        }
+        if (correctVerdicts == 0) {
+            return 1.0; // Henüz consensus verisi yok (mevcut/eski kullanıcılar)
+        }
+        if (accuracy >= 80.0) return 1.3;
+        if (accuracy >= 60.0) return 1.0;
+        return 0.7;
+    }
+
+    /**
+     * Accuracy gösterilebilir mi? (50+ verdict sonrası)
+     */
+    public boolean isAccuracyVisible() {
+        return (totalReviews - skippedVerdicts) >= 50;
+    }
+
     // Getters and Setters
     public String getReviewerUUID() { return reviewerUUID; }
     public String getReviewerName() { return reviewerName; }
@@ -103,4 +151,6 @@ public class OverwatchStats {
     public long getFirstReviewAt() { return firstReviewAt; }
     public long getLastReviewAt() { return lastReviewAt; }
     public int getTotalReviewTime() { return totalReviewTime; }
+    public int getCorrectVerdicts() { return correctVerdicts; }
+    public void setCorrectVerdicts(int correctVerdicts) { this.correctVerdicts = correctVerdicts; }
 }

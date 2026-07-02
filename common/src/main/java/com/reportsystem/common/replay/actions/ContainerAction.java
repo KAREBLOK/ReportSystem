@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Konteyner açma (ender chest, shulker box, barrel, hopper, chest)
  */
 public class ContainerAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum ContainerType {
         CHEST,

@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Utility block kullanımı (composter, grindstone, smithing, stonecutter, loom, cartography)
  */
 public class UtilityBlockAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum UtilityType {
         COMPOSTER,      // Kompost yapma

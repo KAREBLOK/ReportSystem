@@ -11,7 +11,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class ReportService {
 
@@ -180,21 +179,14 @@ public class ReportService {
      * Belirli bir sunucudaki raporları getirir
      */
     public List<Report> getReportsByServer(String serverName) throws SQLException {
-        // Bu metot için DAO'ya ekleme yapılması gerekebilir
-        List<Report> allReports = reportDAO.getAllReports();
-        return allReports.stream()
-                .filter(r -> serverName.equals(r.getServerName()))
-                .collect(Collectors.toList());
+        return reportDAO.getReportsByServer(serverName);
     }
 
     /**
      * Belirli bir duruma göre raporları getirir
      */
     public List<Report> getReportsByStatus(String status) throws SQLException {
-        List<Report> allReports = reportDAO.getAllReports();
-        return allReports.stream()
-                .filter(r -> r.getStatus().equals(status))
-                .collect(Collectors.toList());
+        return reportDAO.getReportsByStatus(status);
     }
 
     /**
@@ -208,13 +200,7 @@ public class ReportService {
      * Belirli bir tarih aralığındaki raporları getirir
      */
     public List<Report> getReportsByDateRange(Date startDate, Date endDate) throws SQLException {
-        List<Report> allReports = reportDAO.getAllReports();
-        long startTime = startDate.getTime();
-        long endTime = endDate.getTime();
-
-        return allReports.stream()
-                .filter(r -> r.getTimestamp() >= startTime && r.getTimestamp() <= endTime)
-                .collect(Collectors.toList());
+        return reportDAO.getReportsByDateRange(startDate.getTime(), endDate.getTime());
     }
 
     /**
@@ -222,10 +208,7 @@ public class ReportService {
      */
     public List<Report> getPendingReports() {
         try {
-            // Tüm raporları al ve PENDING olanları filtrele
-            return reportDAO.getAllReports().stream()
-                    .filter(report -> "PENDING".equals(report.getStatus()))
-                    .collect(Collectors.toList());
+            return reportDAO.getReportsByStatus("PENDING");
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Bekleyen raporlar getirilirken hata", e);
             return List.of();
@@ -243,7 +226,7 @@ public class ReportService {
      * Bekleyen rapor sayısını döndürür
      */
     public int getPendingReportsCount() throws SQLException {
-        return getPendingReports().size();
+        return reportDAO.getPendingCount();
     }
 
     /**
@@ -314,11 +297,7 @@ public class ReportService {
      */
     public List<Report> getRecentReports(int limit) {
         try {
-            List<Report> allReports = reportDAO.getAllReports();
-            if (allReports.size() <= limit) {
-                return allReports;
-            }
-            return allReports.subList(0, limit);
+            return reportDAO.getReports(1, limit);
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Son raporlar getirilirken hata", e);
             return List.of();
@@ -329,9 +308,33 @@ public class ReportService {
      * Raporu günceller
      */
     public void updateReport(Report report) throws SQLException {
-        // Bu metot için DAO'ya ekleme yapılması gerekiyor
-        // Şimdilik status güncelleme ile yetinelim
         reportDAO.updateReportStatus(report.getId(), report.getStatus());
+        if (report.isPunished()) {
+            reportDAO.updatePunishmentStatus(report.getId(), report.getPunishmentType());
+        }
+    }
+
+    /**
+     * Raporcu'nun henüz bildirim almadığı kabul edilmiş raporları getirir
+     */
+    public List<Report> getUnnotifiedReportsForReporter(String reporterUuid) {
+        try {
+            return reportDAO.getUnnotifiedReportsForReporter(reporterUuid);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Bildirilmemiş raporlar getirilirken hata", e);
+            return List.of();
+        }
+    }
+
+    /**
+     * Raporu "raporcu bildirildi" olarak işaretler
+     */
+    public void markReporterNotified(int reportId) {
+        try {
+            reportDAO.markReporterNotified(reportId);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Rapor bildirim durumu güncellenirken hata", e);
+        }
     }
 
 }

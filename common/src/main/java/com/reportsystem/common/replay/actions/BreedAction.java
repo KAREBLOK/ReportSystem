@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Entity breeding - baby entity spawn
  */
 public class BreedAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final String babyEntityType;
     private final double x, y, z;

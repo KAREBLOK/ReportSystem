@@ -5,7 +5,6 @@ import com.google.common.io.ByteStreams;
 import com.reportsystem.common.punishment.PunishmentProvider;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 
 import java.util.HashMap;
@@ -59,21 +58,15 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         // Warn local olarak tutulur
         Player player = Bukkit.getPlayer(playerName);
         if (player != null) {
-            player.sendMessage("");
-            player.sendMessage(ChatColor.DARK_RED + "════════════════════════════");
-            player.sendMessage(ChatColor.RED + "           ⚠ UYARI ⚠");
-            player.sendMessage(ChatColor.DARK_RED + "════════════════════════════");
-            player.sendMessage("");
-            player.sendMessage(ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason);
-            player.sendMessage(ChatColor.GRAY + "Uyarı veren: " + ChatColor.WHITE + punisher);
-            player.sendMessage("");
-            player.sendMessage(ChatColor.RED + "Kuralları ihlal etmeye devam ederseniz");
-            player.sendMessage(ChatColor.RED + "daha ağır cezalar alabilirsiniz!");
-            player.sendMessage(ChatColor.DARK_RED + "════════════════════════════");
-            player.sendMessage("");
-
-            // Uyarı sayısını artır
             int warnings = playerWarnings.getOrDefault(playerName, 0) + 1;
+            com.reportsystem.spigot.managers.MessageManager mm = plugin.getMessageManager();
+            String warnMsg = mm.colorize(mm.getMessage("punishments.warn.player-message")
+                    .replace("%reason%", reason)
+                    .replace("%staff%", punisher)
+                    .replace("%count%", String.valueOf(warnings)));
+            player.sendMessage(warnMsg);
+
+            // Uyarı sayısını kaydet
             playerWarnings.put(playerName, warnings);
 
             // 3 uyarı = otomatik ban
@@ -116,7 +109,7 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
 
         try {
-            return future.get(2, TimeUnit.SECONDS);
+            return future.get(500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             pendingRequests.remove(requestId);
             return false;
@@ -142,7 +135,7 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
 
         try {
-            return future.get(2, TimeUnit.SECONDS);
+            return future.get(500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             pendingRequests.remove(requestId);
             return false;
@@ -178,7 +171,7 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
 
         try {
-            boolean result = future.get(5, TimeUnit.SECONDS);
+            boolean result = future.get(2, TimeUnit.SECONDS);
             plugin.getLogger().info("[BUNGEECORD] Punishment request result: " + result);
             return result;
         } catch (TimeoutException e) {
@@ -212,7 +205,7 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
 
         try {
-            return future.get(5, TimeUnit.SECONDS);
+            return future.get(2, TimeUnit.SECONDS);
         } catch (Exception e) {
             pendingRequests.remove(requestId);
             return false;

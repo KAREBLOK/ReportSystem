@@ -1,9 +1,11 @@
 package com.reportsystem.spigot.replay;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.pose.EntityPose;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
 import com.github.retrooper.packetevents.protocol.player.Equipment;
 import com.github.retrooper.packetevents.protocol.player.EquipmentSlot;
 import com.github.retrooper.packetevents.util.Vector3d;
@@ -12,6 +14,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.*;
 
 import com.reportsystem.common.replay.actions.*;
 import com.reportsystem.spigot.utils.ItemSerializer;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -41,6 +44,12 @@ public class ReplayActionPlayer {
     // FishHook entity'lerini takip etmek için
     private final List<FishHook> activeFishHooks = new ArrayList<>();
 
+    // Packet tabanlı fishing bobber entity ID'si (replay olta ipi için)
+    private int fishingBobberEntityId = -1;
+
+    // Civar oyuncuların fishing bobber entity ID'leri (ownerUUID -> bobberEntityId)
+    private final Map<UUID, Integer> nearbyFishingBobbers = new HashMap<>();
+
     // Spawn edilen entity'leri takip etmek için (replay bitince silinecek)
     private final List<Entity> spawnedEntities = new ArrayList<>();
     // UUID -> Entity mapping (entity movement için)
@@ -52,12 +61,150 @@ public class ReplayActionPlayer {
     }
 
     /**
+     * Replay başlarken kayıt öncesinde zaten var olan blokları gösterir.
+     * Her pozisyondaki İLK BlockAction'a bakarak karar verir:
+     * - İlk action START_BREAKING ise → blok kayıt başlamadan önce vardı → göster
+     * - İlk action başka herhangi bir şey ise → kayıt sırasında oluştu/değişti → gösterme
+     * Bu şekilde su, lav, kapı, piston, blok koyma vs. ne olursa olsun doğru çalışır.
+     */
+    public void showInitialBlocks() {
+        // Her pozisyondaki ilk BlockAction'ı bul (kronolojik sırada)
+        Map<String, BlockAction> firstActionAtPosition = new LinkedHashMap<>();
+
+        for (ReplayAction action : replayPlayer.getActions()) {
+            if (!(action instanceof BlockAction)) continue;
+            BlockAction blockAction = (BlockAction) action;
+            String blockKey = blockAction.getX() + "," + blockAction.getY() + "," + blockAction.getZ();
+
+            // Sadece ilk action'ı kaydet - pozisyondaki ilk etkileşim ne olduğunu belirler
+            firstActionAtPosition.putIfAbsent(blockKey, blockAction);
+        }
+
+        // İlk action'ı START_BREAKING olan pozisyonları göster
+        int showedCount = 0;
+        for (Map.Entry<String, BlockAction> entry : firstActionAtPosition.entrySet()) {
+            BlockAction blockAction = entry.getValue();
+
+            // İlk action START_BREAKING değilse → kayıt sırasında oluştu/değişti → atla
+            if (blockAction.getActionType() != BlockAction.BlockActionType.START_BREAKING) continue;
+            if (blockAction.getBlockType() == null) continue;
+
+            Material blockMaterial = Material.getMaterial(blockAction.getBlockType());
+            if (blockMaterial == null || blockMaterial == Material.AIR) continue;
+
+            String blockKey = entry.getKey();
+            Location blockLoc = new Location(
+                    replayPlayer.getLastLocation().getWorld(),
+                    blockAction.getX(), blockAction.getY(), blockAction.getZ()
+            );
+
+            if (!originalBlocks.containsKey(blockKey)) {
+                originalBlocks.put(blockKey, blockLoc.getBlock().getType());
+            }
+
+            for (Player viewer : replayPlayer.getViewers()) {
+                viewer.sendBlockChange(blockLoc, blockMaterial.createBlockData());
+            }
+            showedCount++;
+        }
+
+        if (showedCount > 0) {
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Pre-showed " + showedCount + " pre-existing blocks");
+        }
+    }
+
+    /**
+     * Seek/rewind/forward sonrası hedef index'e kadar blok değişikliklerini uygular.
+     * Sesler ve efektler olmadan sadece görsel durumu günceller.
+     * Bu sayede seek sonrası blok durumu doğru görünür (kırılmış bloklar kırık, konmuş bloklar konmuş).
+     */
+    public void replayBlockStateUpTo(int targetIndex) {
+        List<ReplayAction> actions = replayPlayer.getActions();
+        if (actions.isEmpty()) return;
+
+        org.bukkit.World world = replayPlayer.getLastLocation() != null ? replayPlayer.getLastLocation().getWorld() : null;
+        if (world == null) return;
+
+        // Her pozisyondaki son blok durumunu takip et
+        Map<String, String> blockStateAtTarget = new LinkedHashMap<>();
+
+        for (int i = 0; i <= targetIndex && i < actions.size(); i++) {
+            ReplayAction action = actions.get(i);
+            if (!(action instanceof BlockAction)) continue;
+            BlockAction blockAction = (BlockAction) action;
+            String blockKey = blockAction.getX() + "," + blockAction.getY() + "," + blockAction.getZ();
+
+            switch (blockAction.getActionType()) {
+                case STOP_BREAKING:
+                    if (blockAction.getStage() == 10) {
+                        blockStateAtTarget.put(blockKey, null); // Kırıldı = AIR
+                    }
+                    break;
+                case PLACE_BLOCK:
+                    if (blockAction.getBlockType() != null) {
+                        blockStateAtTarget.put(blockKey, blockAction.getBlockType());
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Blok durumlarını uygula
+        int appliedCount = 0;
+        for (Map.Entry<String, String> entry : blockStateAtTarget.entrySet()) {
+            String[] coords = entry.getKey().split(",");
+            if (coords.length != 3) continue;
+
+            try {
+                int x = Integer.parseInt(coords[0]);
+                int y = Integer.parseInt(coords[1]);
+                int z = Integer.parseInt(coords[2]);
+                Location loc = new Location(world, x, y, z);
+
+                // originalBlocks'a kaydet (gelecekteki restore için)
+                if (!originalBlocks.containsKey(entry.getKey())) {
+                    originalBlocks.put(entry.getKey(), loc.getBlock().getType());
+                }
+
+                if (entry.getValue() == null) {
+                    // Blok kırılmış - AIR göster
+                    for (Player viewer : replayPlayer.getViewers()) {
+                        viewer.sendBlockChange(loc, Material.AIR.createBlockData());
+                    }
+                } else {
+                    // Blok konmuş - bloğu göster
+                    try {
+                        String[] parts = entry.getValue().split(":");
+                        Material material = Material.valueOf(parts[0]);
+                        if (material != Material.AIR) {
+                            org.bukkit.block.data.BlockData blockData = material.createBlockData();
+                            for (Player viewer : replayPlayer.getViewers()) {
+                                viewer.sendBlockChange(loc, blockData);
+                            }
+                        }
+                    } catch (IllegalArgumentException e) {
+                        // Bilinmeyen material - atla
+                    }
+                }
+                appliedCount++;
+            } catch (NumberFormatException e) {
+                // Geçersiz koordinat - atla
+            }
+        }
+
+        if (appliedCount > 0) {
+            ReportSystemSpigot.getInstance().debug("[REPLAY] Applied " + appliedCount + " block states up to index " + targetIndex);
+        }
+    }
+
+    /**
      * Bir action'ı oynatır
      */
     public void playAction(ReplayAction action) {
         // Debug log
         if (plugin.getConfig().getBoolean("debug", false)) {
-            plugin.getLogger().info("[REPLAY-DEBUG] Playing action: " + action.getClass().getSimpleName());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing action: " + action.getClass().getSimpleName());
         }
 
         // ÖNEMLİ: Eğer action bir nearby player'a aitse, onu ayrı handle et
@@ -176,10 +323,11 @@ public class ReplayActionPlayer {
     private void playLocation(LocationAction action) {
         // Nearby player'a mı ait?
         if (!action.isMainPlayer()) {
-            // CRITICAL DEBUG
-            plugin.getLogger().warning("[PLAYBACK-NEARBY] Detected nearby player LocationAction!" +
-                    " | Owner UUID: " + action.getOwnerUUID() +
-                    " | Location: " + String.format("%.1f, %.1f, %.1f", action.getX(), action.getY(), action.getZ()));
+            // Entity henüz spawn edilmediyse (PLAYER_APPEAR gelmeden LocationAction geldi) sessizce atla
+            Integer nearbyEntityId = replayPlayer.getNpcManager().getNearbyPlayerEntityId(action.getOwnerUUID());
+            if (nearbyEntityId == null) {
+                return; // Entity yok - PLAYER_APPEAR gelince spawn olacak
+            }
 
             // Nearby player hareketi - NearbyPlayerAction olarak işle
             NearbyPlayerAction nearbyMove = new NearbyPlayerAction(
@@ -207,12 +355,15 @@ public class ReplayActionPlayer {
                 action.getPitch()
         );
 
-        // DEBUG: LocationAction oynatılıyor
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing main player LocationAction: " +
-                String.format("%.1f, %.1f, %.1f", action.getX(), action.getY(), action.getZ()));
-
-        // NPC'yi hareket ettir
-        replayPlayer.getNpcManager().teleportNPC(newLocation, mountedEntities);
+        // Araçta ise araç teleportu kullan, değilse her zaman absolute teleport kullan
+        // Relative move (delta bazlı) client-side pozisyon kaymasına neden olabiliyor,
+        // özellikle seek/rewind/forward sonrası NPC'yi eski konumuna çekiyor.
+        // Absolute teleport her zaman doğru koordinatı gönderir - desync riski yok.
+        if (!mountedEntities.isEmpty()) {
+            replayPlayer.getNpcManager().teleportNPC(newLocation, mountedEntities);
+        } else {
+            replayPlayer.getNpcManager().absoluteTeleportNPC(newLocation);
+        }
         replayPlayer.setLastLocation(newLocation);
     }
 
@@ -242,7 +393,7 @@ public class ReplayActionPlayer {
      * Entity durumunu oynatır
      */
     private void playEntityState(EntityStateAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Entity state: " + action.getStateType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity state: " + action.getStateType() +
                 " = " + action.isEnabled() +
                 " | Nearby: " + action.isForNearbyPlayer());
 
@@ -323,7 +474,7 @@ public class ReplayActionPlayer {
         Integer nearbyEntityId = replayPlayer.getNpcManager().getNearbyPlayerEntityId(action.getEntityUUID());
 
         if (nearbyEntityId == null) {
-            plugin.getLogger().warning("[REPLAY-DEBUG] Nearby player entity ID not found for UUID: " + action.getEntityUUID());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player entity ID not found for UUID: " + action.getEntityUUID());
             return;
         }
 
@@ -360,7 +511,7 @@ public class ReplayActionPlayer {
         // Metadata paketi gönder
         replayPlayer.getNpcManager().updateNearbyPlayerEntityFlags(nearbyEntityId, entityFlags);
 
-        plugin.getLogger().info("[REPLAY-DEBUG] Nearby player state updated: EntityID=" + nearbyEntityId +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player state updated: EntityID=" + nearbyEntityId +
                 " | State=" + action.getStateType() + " | Enabled=" + action.isEnabled());
     }
 
@@ -368,7 +519,7 @@ public class ReplayActionPlayer {
      * Equipment action'ını oynatır
      */
     private void playEquipment(EquipmentAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing equipment: " + action.getSlot() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing equipment: " + action.getSlot() +
                 " - " + (action.getItemData() != null ? action.getItemData().getMaterial() : "EMPTY"));
 
         EquipmentSlot slot = null;
@@ -409,7 +560,7 @@ public class ReplayActionPlayer {
                     item.setDurability(action.getItemData().getDurability());
                 }
             } catch (Exception e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Failed to create item: " + e.getMessage());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to create item: " + e.getMessage());
             }
         }
 
@@ -418,47 +569,12 @@ public class ReplayActionPlayer {
             com.github.retrooper.packetevents.protocol.item.ItemStack packetItem = null;
 
             if (item != null && item.getType() != Material.AIR) {
-                // Özel/complex item'ları skip et veya stone ile değiştir
-                Material mat = item.getType();
-                if (mat == Material.SUSPICIOUS_SAND ||
-                    mat == Material.SUSPICIOUS_GRAVEL ||
-                    mat.name().contains("COMMAND") ||
-                    mat.name().contains("STRUCTURE") ||
-                    mat.name().contains("JIGSAW")) {
-                    plugin.getLogger().info("[REPLAY-DEBUG] Skipping complex equipment item: " + mat.name());
-                    // STONE ile değiştir
-                    item = new ItemStack(Material.STONE, item.getAmount());
-                }
-
                 try {
-                    String materialName = item.getType().name().toLowerCase();
-                    com.github.retrooper.packetevents.protocol.item.type.ItemType itemType = null;
+                    packetItem = SpigotConversionUtil.fromBukkitItemStack(item);
 
-                    // Önce direkt minecraft: prefix ile dene
-                    itemType = com.github.retrooper.packetevents.protocol.item.type.ItemTypes.getByName(
-                            "minecraft:" + materialName
-                    );
-
-                    // Bulunamazsa özel mapping kullan
-                    if (itemType == null) {
-                        itemType = getMappedItemType(item.getType());
-                    }
-
-                    // Hala bulunamazsa varsayılan kullan
-                    if (itemType == null) {
-                        plugin.getLogger().warning("[REPLAY-DEBUG] Unknown item type: " + item.getType().name() +
-                                ", using STONE as fallback");
-                        itemType = com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE;
-                    }
-
-                    if (itemType != null) {
-                        packetItem = com.github.retrooper.packetevents.protocol.item.ItemStack.builder()
-                                .type(itemType)
-                                .amount(item.getAmount())
-                                .build();
-
-                        plugin.getLogger().info("[REPLAY-DEBUG] Created packet item: " + itemType.getName().toString() +
-                                " x" + item.getAmount());
+                    if (plugin.getConfig().getBoolean("debug", false)) {
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Created packet item: " +
+                                item.getType().name() + " x" + item.getAmount());
                     }
                 } catch (Exception e) {
                     plugin.getLogger().severe("[REPLAY-DEBUG] Error creating packet item: " + e.getMessage());
@@ -473,227 +589,20 @@ public class ReplayActionPlayer {
     }
 
     /**
-     * Material'i PacketEvents ItemType'a çevirir
+     * Bukkit ItemStack'i PacketEvents ItemStack'e çevirir
      */
-    private com.github.retrooper.packetevents.protocol.item.type.ItemType getMappedItemType(Material material) {
-        // Önce direkt minecraft: prefix ile dene
-        String materialName = material.name().toLowerCase();
-        com.github.retrooper.packetevents.protocol.item.type.ItemType itemType =
-                com.github.retrooper.packetevents.protocol.item.type.ItemTypes.getByName("minecraft:" + materialName);
-
-        if (itemType != null) {
-            return itemType;
+    private com.github.retrooper.packetevents.protocol.item.ItemStack convertBukkitItem(ItemStack bukkitItem) {
+        if (bukkitItem == null || bukkitItem.getType() == Material.AIR) {
+            return null;
         }
-
-        // Manuel mapping
-        switch (material) {
-            // İksirler
-            case POTION:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.POTION;
-            case SPLASH_POTION:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.SPLASH_POTION;
-            case LINGERING_POTION:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.LINGERING_POTION;
-
-            // Olta
-            case FISHING_ROD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.FISHING_ROD;
-
-            // Makas
-            case SHEARS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.SHEARS;
-
-            // Tekneler
-            case OAK_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.OAK_BOAT;
-            case SPRUCE_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.SPRUCE_BOAT;
-            case BIRCH_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BIRCH_BOAT;
-            case JUNGLE_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.JUNGLE_BOAT;
-            case ACACIA_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.ACACIA_BOAT;
-            case DARK_OAK_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DARK_OAK_BOAT;
-            case CHERRY_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.CHERRY_BOAT;
-            case MANGROVE_BOAT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.MANGROVE_BOAT;
-            case BAMBOO_RAFT:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BAMBOO_RAFT;
-
-            // Diğer önemli itemler
-            case FLINT_AND_STEEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.FLINT_AND_STEEL;
-
-            // Aletler - Taş
-            case STONE_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE_PICKAXE;
-            case STONE_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE_AXE;
-            case STONE_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE_SHOVEL;
-            case STONE_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE_HOE;
-            case STONE_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE_SWORD;
-
-            // Aletler - Demir
-            case IRON_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_PICKAXE;
-            case IRON_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_AXE;
-            case IRON_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_SHOVEL;
-            case IRON_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_HOE;
-            case IRON_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_SWORD;
-
-            // Aletler - Elmas
-            case DIAMOND_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_PICKAXE;
-            case DIAMOND_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_AXE;
-            case DIAMOND_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_SHOVEL;
-            case DIAMOND_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_HOE;
-            case DIAMOND_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_SWORD;
-
-            // Aletler - Netherite
-            case NETHERITE_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_PICKAXE;
-            case NETHERITE_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_AXE;
-            case NETHERITE_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_SHOVEL;
-            case NETHERITE_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_HOE;
-            case NETHERITE_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_SWORD;
-
-            // Aletler - Altın
-            case GOLDEN_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_PICKAXE;
-            case GOLDEN_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_AXE;
-            case GOLDEN_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_SHOVEL;
-            case GOLDEN_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_HOE;
-            case GOLDEN_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_SWORD;
-
-            // Aletler - Tahta
-            case WOODEN_PICKAXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WOODEN_PICKAXE;
-            case WOODEN_AXE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WOODEN_AXE;
-            case WOODEN_SHOVEL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WOODEN_SHOVEL;
-            case WOODEN_HOE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WOODEN_HOE;
-            case WOODEN_SWORD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WOODEN_SWORD;
-
-            // Zırhlar - Demir
-            case IRON_HELMET:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_HELMET;
-            case IRON_CHESTPLATE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_CHESTPLATE;
-            case IRON_LEGGINGS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_LEGGINGS;
-            case IRON_BOOTS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.IRON_BOOTS;
-
-            // Zırhlar - Elmas
-            case DIAMOND_HELMET:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_HELMET;
-            case DIAMOND_CHESTPLATE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_CHESTPLATE;
-            case DIAMOND_LEGGINGS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_LEGGINGS;
-            case DIAMOND_BOOTS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.DIAMOND_BOOTS;
-
-            // Zırhlar - Netherite
-            case NETHERITE_HELMET:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_HELMET;
-            case NETHERITE_CHESTPLATE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_CHESTPLATE;
-            case NETHERITE_LEGGINGS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_LEGGINGS;
-            case NETHERITE_BOOTS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.NETHERITE_BOOTS;
-
-            // Zırhlar - Altın
-            case GOLDEN_HELMET:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_HELMET;
-            case GOLDEN_CHESTPLATE:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_CHESTPLATE;
-            case GOLDEN_LEGGINGS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_LEGGINGS;
-            case GOLDEN_BOOTS:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GOLDEN_BOOTS;
-
-            // Bow ve Crossbow
-            case BOW:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BOW;
-            case CROSSBOW:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.CROSSBOW;
-
-            // Shield
-            case SHIELD:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.SHIELD;
-
-            // Yün - Tüm renkler
-            case WHITE_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.WHITE_WOOL;
-            case ORANGE_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.ORANGE_WOOL;
-            case MAGENTA_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.MAGENTA_WOOL;
-            case LIGHT_BLUE_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.LIGHT_BLUE_WOOL;
-            case YELLOW_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.YELLOW_WOOL;
-            case LIME_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.LIME_WOOL;
-            case PINK_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.PINK_WOOL;
-            case GRAY_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GRAY_WOOL;
-            case LIGHT_GRAY_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.LIGHT_GRAY_WOOL;
-            case CYAN_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.CYAN_WOOL;
-            case PURPLE_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.PURPLE_WOOL;
-            case BLUE_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BLUE_WOOL;
-            case BROWN_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BROWN_WOOL;
-            case GREEN_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.GREEN_WOOL;
-            case RED_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.RED_WOOL;
-            case BLACK_WOOL:
-                return com.github.retrooper.packetevents.protocol.item.type.ItemTypes.BLACK_WOOL;
-
-            default:
-                plugin.getLogger().warning("[REPLAY-DEBUG] Unknown item type mapping for: " + material.name());
-                return null;
-        }
+        return SpigotConversionUtil.fromBukkitItemStack(bukkitItem);
     }
 
     /**
      * Blok aksiyonlarını oynatır
      */
     private void playBlockAction(BlockAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Block action: " + action.getActionType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Block action: " + action.getActionType() +
                 " at " + action.getX() + "," + action.getY() + "," + action.getZ());
 
         Location blockLoc = new Location(
@@ -703,15 +612,24 @@ public class ReplayActionPlayer {
 
         switch (action.getActionType()) {
             case START_BREAKING:
-                // Blok kırma animasyonu başlat
-                for (int stage = 0; stage <= 9; stage++) {
-                    final int currentStage = stage;
-                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                        replayPlayer.getNpcManager().sendBlockBreakAnimation(
-                                action.getX(), action.getY(), action.getZ(), currentStage
-                        );
-                    }, stage * 2L);
+                // Blok artık gerçek dünyada yok olabilir, kaydedilen blok tipini göster
+                if (action.getBlockType() != null) {
+                    Material blockMaterial = Material.getMaterial(action.getBlockType());
+                    if (blockMaterial != null && blockMaterial != Material.AIR) {
+                        String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
+                        if (!originalBlocks.containsKey(blockKey)) {
+                            originalBlocks.put(blockKey, blockLoc.getBlock().getType());
+                        }
+                        for (Player viewer : replayPlayer.getViewers()) {
+                            viewer.sendBlockChange(blockLoc, blockMaterial.createBlockData());
+                        }
+                    }
                 }
+                // Sadece başlangıç animasyonunu gönder (stage 0)
+                // Gerçek ilerleme BREAK_PROGRESS action'ları ile gelecek (doğru zamanlamalarla)
+                replayPlayer.getNpcManager().sendBlockBreakAnimation(
+                        action.getX(), action.getY(), action.getZ(), 0
+                );
                 break;
 
             case BREAK_PROGRESS:
@@ -721,12 +639,14 @@ public class ReplayActionPlayer {
                 break;
 
             case STOP_BREAKING:
+                // Animasyonu sıfırla
                 replayPlayer.getNpcManager().sendBlockBreakAnimation(
                         action.getX(), action.getY(), action.getZ(), -1
                 );
 
-                // Bloğu sadece izleyiciler için kır
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                // stage == 10: BlockBreakEvent'ten geliyor → blok gerçekten kırıldı
+                // stage == 0: CANCELLED_DIGGING veya FINISHED_DIGGING paketi → sadece animasyonu sıfırla
+                if (action.getStage() == 10) {
                     if (!replayPlayer.getViewers().isEmpty()) {
                         String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
                         if (!originalBlocks.containsKey(blockKey)) {
@@ -740,121 +660,121 @@ public class ReplayActionPlayer {
                         // Ses ve parçacık efektleri
                         playBlockBreakEffects(blockLoc);
                     }
-                });
+                }
                 break;
 
             case PLACE_BLOCK:
-                plugin.getLogger().info("[REPLAY-DEBUG] Block place at " +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Block place at " +
                         action.getX() + "," + action.getY() + "," + action.getZ() +
                         " type: " + action.getBlockType());
 
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    if (!replayPlayer.getViewers().isEmpty() && action.getBlockType() != null) {
-                        String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
-                        if (!originalBlocks.containsKey(blockKey)) {
-                            originalBlocks.put(blockKey, blockLoc.getBlock().getType());
-                        }
-
-                        try {
-                            // Parse block data (format: "MATERIAL" or "MATERIAL:property1:property2...")
-                            String[] parts = action.getBlockType().split(":");
-                            Material material = Material.valueOf(parts[0]);
-
-                            // Özel bloklar için sendBlockChange düzgün çalışmıyor - skip et
-                            if (material == Material.SUSPICIOUS_SAND ||
-                                material == Material.SUSPICIOUS_GRAVEL ||
-                                material.name().contains("COMMAND") || // Command blocks
-                                material.name().contains("STRUCTURE") || // Structure blocks
-                                material.name().contains("JIGSAW") || // Jigsaw blocks
-                                material.name().contains("SPAWNER")) { // Spawners
-                                plugin.getLogger().info("[REPLAY-DEBUG] Skipping complex block: " + material.name());
-                                return;
-                            }
-
-                            org.bukkit.block.data.BlockData blockData = material.createBlockData();
-
-                            // Özel blok tipleri için property'leri uygula
-                            if (parts.length > 1) {
-                                if (blockData instanceof org.bukkit.block.data.type.Bed && parts.length >= 3) {
-                                    // Format: "RED_BED:NORTH:HEAD"
-                                    org.bukkit.block.data.type.Bed bed = (org.bukkit.block.data.type.Bed) blockData;
-                                    org.bukkit.block.BlockFace facing = org.bukkit.block.BlockFace.valueOf(parts[1]);
-                                    org.bukkit.block.data.type.Bed.Part part = org.bukkit.block.data.type.Bed.Part.valueOf(parts[2]);
-
-                                    bed.setFacing(facing);
-                                    bed.setPart(part);
-
-                                    // Yatak 2 bloktan oluşur - diğer yarısını da yerleştir
-                                    org.bukkit.block.data.type.Bed.Part otherPart = part == org.bukkit.block.data.type.Bed.Part.HEAD ?
-                                            org.bukkit.block.data.type.Bed.Part.FOOT : org.bukkit.block.data.type.Bed.Part.HEAD;
-
-                                    // Diğer bloğun lokasyonunu hesapla
-                                    org.bukkit.block.Block otherBlock;
-                                    if (part == org.bukkit.block.data.type.Bed.Part.FOOT) {
-                                        // FOOT yerleştiriliyorsa, HEAD facing yönünde
-                                        otherBlock = blockLoc.getBlock().getRelative(facing);
-                                    } else {
-                                        // HEAD yerleştiriliyorsa, FOOT facing'in tersi yönünde
-                                        otherBlock = blockLoc.getBlock().getRelative(facing.getOppositeFace());
-                                    }
-
-                                    // Diğer yarıyı oluştur
-                                    org.bukkit.block.data.type.Bed otherHalf = (org.bukkit.block.data.type.Bed) material.createBlockData();
-                                    otherHalf.setFacing(facing);
-                                    otherHalf.setPart(otherPart);
-
-                                    // Her iki bloğu da viewer'lara gönder
-                                    for (Player viewer : replayPlayer.getViewers()) {
-                                        try {
-                                            viewer.sendBlockChange(blockLoc, bed);
-                                            viewer.sendBlockChange(otherBlock.getLocation(), otherHalf);
-                                        } catch (Exception e) {
-                                            plugin.getLogger().warning("[REPLAY-DEBUG] Failed to send bed block change to " + viewer.getName() + ": " + e.getMessage());
-                                        }
-                                    }
-
-                                    plugin.getLogger().info("[REPLAY-DEBUG] Bed placed: " + part + " at " + blockLoc +
-                                            ", other half: " + otherPart + " at " + otherBlock.getLocation());
-
-                                    return; // Skip normal block placement
-                                } else if (blockData instanceof org.bukkit.block.data.type.Door && parts.length >= 4) {
-                                    // Format: "OAK_DOOR:NORTH:BOTTOM:LEFT"
-                                    org.bukkit.block.data.type.Door door = (org.bukkit.block.data.type.Door) blockData;
-                                    door.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
-                                    door.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
-                                    door.setHinge(org.bukkit.block.data.type.Door.Hinge.valueOf(parts[3]));
-                                } else if (blockData instanceof org.bukkit.block.data.type.Stairs && parts.length >= 3) {
-                                    // Format: "OAK_STAIRS:NORTH:BOTTOM"
-                                    org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) blockData;
-                                    stairs.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
-                                    stairs.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
-                                } else if (blockData instanceof org.bukkit.block.data.Directional && parts.length >= 2) {
-                                    // Format: "FURNACE:NORTH"
-                                    org.bukkit.block.data.Directional directional = (org.bukkit.block.data.Directional) blockData;
-                                    directional.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
-                                }
-                            }
-
-                            for (Player viewer : replayPlayer.getViewers()) {
-                                try {
-                                    viewer.sendBlockChange(blockLoc, blockData);
-                                } catch (Exception e) {
-                                    plugin.getLogger().warning("[REPLAY-DEBUG] Failed to send block change to " + viewer.getName() + ": " + e.getMessage());
-                                }
-                            }
-
-                            // Ses efekti
-                            playBlockPlaceSound(blockLoc, material);
-                        } catch (Exception e) {
-                            plugin.getLogger().warning("[REPLAY-DEBUG] Invalid block type: " + action.getBlockType());
-                            e.printStackTrace();
-                        }
+                if (!replayPlayer.getViewers().isEmpty() && action.getBlockType() != null) {
+                    String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
+                    if (!originalBlocks.containsKey(blockKey)) {
+                        originalBlocks.put(blockKey, blockLoc.getBlock().getType());
                     }
-                });
+
+                    try {
+                        // Parse block data (format: "MATERIAL" or "MATERIAL:property1:property2...")
+                        String[] parts = action.getBlockType().split(":");
+                        Material material = Material.valueOf(parts[0]);
+
+                        // Özel bloklar için sendBlockChange düzgün çalışmıyor - skip et
+                        if (material == Material.SUSPICIOUS_SAND ||
+                            material == Material.SUSPICIOUS_GRAVEL ||
+                            material.name().contains("COMMAND") || // Command blocks
+                            material.name().contains("STRUCTURE") || // Structure blocks
+                            material.name().contains("JIGSAW") || // Jigsaw blocks
+                            material.name().contains("SPAWNER")) { // Spawners
+                            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Skipping complex block: " + material.name());
+                            break;
+                        }
+
+                        org.bukkit.block.data.BlockData blockData = material.createBlockData();
+
+                        // Özel blok tipleri için property'leri uygula
+                        if (parts.length > 1) {
+                            if (blockData instanceof org.bukkit.block.data.type.Bed && parts.length >= 3) {
+                                // Format: "RED_BED:NORTH:HEAD"
+                                org.bukkit.block.data.type.Bed bed = (org.bukkit.block.data.type.Bed) blockData;
+                                org.bukkit.block.BlockFace facing = org.bukkit.block.BlockFace.valueOf(parts[1]);
+                                org.bukkit.block.data.type.Bed.Part part = org.bukkit.block.data.type.Bed.Part.valueOf(parts[2]);
+
+                                bed.setFacing(facing);
+                                bed.setPart(part);
+
+                                // Yatak 2 bloktan oluşur - diğer yarısını da yerleştir
+                                org.bukkit.block.data.type.Bed.Part otherPart = part == org.bukkit.block.data.type.Bed.Part.HEAD ?
+                                        org.bukkit.block.data.type.Bed.Part.FOOT : org.bukkit.block.data.type.Bed.Part.HEAD;
+
+                                // Diğer bloğun lokasyonunu hesapla
+                                org.bukkit.block.Block otherBlock;
+                                if (part == org.bukkit.block.data.type.Bed.Part.FOOT) {
+                                    // FOOT yerleştiriliyorsa, HEAD facing yönünde
+                                    otherBlock = blockLoc.getBlock().getRelative(facing);
+                                } else {
+                                    // HEAD yerleştiriliyorsa, FOOT facing'in tersi yönünde
+                                    otherBlock = blockLoc.getBlock().getRelative(facing.getOppositeFace());
+                                }
+
+                                // Diğer yarıyı oluştur
+                                org.bukkit.block.data.type.Bed otherHalf = (org.bukkit.block.data.type.Bed) material.createBlockData();
+                                otherHalf.setFacing(facing);
+                                otherHalf.setPart(otherPart);
+
+                                // Her iki bloğu da viewer'lara gönder
+                                for (Player viewer : replayPlayer.getViewers()) {
+                                    try {
+                                        viewer.sendBlockChange(blockLoc, bed);
+                                        viewer.sendBlockChange(otherBlock.getLocation(), otherHalf);
+                                    } catch (Exception e) {
+                                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to send bed block change to " + viewer.getName() + ": " + e.getMessage());
+                                    }
+                                }
+
+                                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Bed placed: " + part + " at " + blockLoc +
+                                        ", other half: " + otherPart + " at " + otherBlock.getLocation());
+
+                                break; // Skip normal block placement
+                            } else if (blockData instanceof org.bukkit.block.data.type.Door && parts.length >= 4) {
+                                // Format: "OAK_DOOR:NORTH:BOTTOM:LEFT"
+                                org.bukkit.block.data.type.Door door = (org.bukkit.block.data.type.Door) blockData;
+                                door.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                                door.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
+                                door.setHinge(org.bukkit.block.data.type.Door.Hinge.valueOf(parts[3]));
+                            } else if (blockData instanceof org.bukkit.block.data.type.Stairs && parts.length >= 3) {
+                                // Format: "OAK_STAIRS:NORTH:BOTTOM"
+                                org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) blockData;
+                                stairs.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                                stairs.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
+                            } else if (blockData instanceof org.bukkit.block.data.Directional && parts.length >= 2) {
+                                // Format: "FURNACE:NORTH"
+                                org.bukkit.block.data.Directional directional = (org.bukkit.block.data.Directional) blockData;
+                                directional.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                            }
+                        }
+
+                        for (Player viewer : replayPlayer.getViewers()) {
+                            try {
+                                viewer.sendBlockChange(blockLoc, blockData);
+                            } catch (Exception e) {
+                                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to send block change to " + viewer.getName() + ": " + e.getMessage());
+                            }
+                        }
+
+                        // Fizik blokları (su, lav, hava) için ses çalma
+                        if (!isPhysicsBlock(material)) {
+                            playBlockPlaceSound(blockLoc, material);
+                        }
+                    } catch (Exception e) {
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Invalid block type: " + action.getBlockType());
+                        e.printStackTrace();
+                    }
+                }
                 break;
 
             case INTERACT_BLOCK:
-                plugin.getLogger().info("[REPLAY-DEBUG] Block interact: " + action.getBlockType() +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Block interact: " + action.getBlockType() +
                         " at " + action.getX() + "," + action.getY() + "," + action.getZ());
 
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -895,9 +815,9 @@ public class ReplayActionPlayer {
                                             Sound.BLOCK_IRON_DOOR_OPEN : Sound.BLOCK_IRON_DOOR_CLOSE;
                                     }
 
-                                    blockLoc.getWorld().playSound(blockLoc, doorSound, 1.0f, 1.0f);
+                                    playSoundToViewers(blockLoc, doorSound, 1.0f, 1.0f);
 
-                                    plugin.getLogger().info("[REPLAY-DEBUG] Door state changed: " +
+                                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Door state changed: " +
                                         (shouldBeOpen ? "OPEN" : "CLOSED"));
                                 }
                             } else if (interactionType.contains("TRAPDOOR")) {
@@ -921,7 +841,7 @@ public class ReplayActionPlayer {
                                             Sound.BLOCK_IRON_TRAPDOOR_OPEN : Sound.BLOCK_IRON_TRAPDOOR_CLOSE;
                                     }
 
-                                    blockLoc.getWorld().playSound(blockLoc, trapdoorSound, 1.0f, 1.0f);
+                                    playSoundToViewers(blockLoc, trapdoorSound, 1.0f, 1.0f);
                                 }
                             } else if (interactionType.contains("GATE")) {
                                 if (blockData instanceof org.bukkit.block.data.Openable) {
@@ -938,12 +858,12 @@ public class ReplayActionPlayer {
 
                                     Sound gateSound = shouldBeOpen ?
                                         Sound.BLOCK_FENCE_GATE_OPEN : Sound.BLOCK_FENCE_GATE_CLOSE;
-                                    blockLoc.getWorld().playSound(blockLoc, gateSound, 1.0f, 1.0f);
+                                    playSoundToViewers(blockLoc, gateSound, 1.0f, 1.0f);
                                 }
                             } else if (interactionType.contains("BUTTON")) {
-                                blockLoc.getWorld().playSound(blockLoc, Sound.BLOCK_STONE_BUTTON_CLICK_ON, 0.3f, 0.6f);
+                                playSoundToViewers(blockLoc, Sound.BLOCK_STONE_BUTTON_CLICK_ON, 0.3f, 0.6f);
                                 // Particle efekti
-                                blockLoc.getWorld().spawnParticle(Particle.CRIT,
+                                spawnParticleForViewers(Particle.CRIT,
                                     blockLoc.clone().add(0.5, 0.5, 0.5), 3, 0.1, 0.1, 0.1, 0);
                             } else if (interactionType.contains("LEVER")) {
                                 if (blockData instanceof org.bukkit.block.data.Powerable) {
@@ -957,7 +877,7 @@ public class ReplayActionPlayer {
                                         viewer.sendBlockChange(blockLoc, lever);
                                     }
 
-                                    blockLoc.getWorld().playSound(blockLoc, Sound.BLOCK_LEVER_CLICK, 0.3f, 0.6f);
+                                    playSoundToViewers(blockLoc, Sound.BLOCK_LEVER_CLICK, 0.3f, 0.6f);
                                 }
                             }
                         }
@@ -984,9 +904,9 @@ public class ReplayActionPlayer {
             breakSound = Sound.BLOCK_GLASS_BREAK;
         }
 
-        location.getWorld().playSound(location.add(0.5, 0.5, 0.5), breakSound, 1.0f, 1.0f);
+        playSoundToViewers(location.add(0.5, 0.5, 0.5), breakSound, 1.0f, 1.0f);
 
-        location.getWorld().spawnParticle(
+        spawnParticleForViewers(
                 Particle.BLOCK,
                 location,
                 20,
@@ -1012,14 +932,25 @@ public class ReplayActionPlayer {
             placeSound = Sound.BLOCK_SAND_PLACE;
         }
 
-        location.getWorld().playSound(location.add(0.5, 0.5, 0.5), placeSound, 1.0f, 1.0f);
+        playSoundToViewers(location.add(0.5, 0.5, 0.5), placeSound, 1.0f, 1.0f);
+    }
+
+    /**
+     * Fizik/akışkan blokları kontrol eder - bunlar için ses efekti çalınmaz
+     */
+    private boolean isPhysicsBlock(Material material) {
+        return material == Material.WATER
+                || material == Material.LAVA
+                || material == Material.AIR
+                || material == Material.CAVE_AIR
+                || material == Material.VOID_AIR;
     }
 
     /**
      * Hasar animasyonunu oynatır
      */
     private void playDamageAnimation(DamageAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Damage animation: " + action.getDamageType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Damage animation: " + action.getDamageType() +
                 " amount: " + action.getDamageAmount());
 
         replayPlayer.getNpcManager().sendAnimation(
@@ -1048,16 +979,7 @@ public class ReplayActionPlayer {
                             break;
                     }
 
-                    loc.getWorld().playSound(loc, damageSound, 1.0f, 1.0f);
-
-                    // Hasar parçacıkları
-                    loc.getWorld().spawnParticle(
-                            Particle.DAMAGE_INDICATOR,
-                            loc.clone().add(0, 1, 0),
-                            (int) Math.max(5, action.getDamageAmount()),
-                            0.2, 0.5, 0.2,
-                            0.1
-                    );
+                    playSoundToViewers(loc, damageSound, 1.0f, 1.0f);
                 }
             });
         }
@@ -1067,7 +989,7 @@ public class ReplayActionPlayer {
      * Velocity'yi oynatır
      */
     private void playVelocity(VelocityAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing velocity: " +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing velocity: " +
                 String.format("%.2f, %.2f, %.2f", action.getVelocityX(), action.getVelocityY(), action.getVelocityZ()));
 
         replayPlayer.getNpcManager().sendVelocity(
@@ -1079,7 +1001,7 @@ public class ReplayActionPlayer {
      * UseItem action'ını oynatır
      */
     private void playUseItem(UseItemAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing use item: " + action.getUseType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing use item: " + action.getUseType() +
                 " started=" + action.isStarted());
 
         List<EntityData<?>> metadata = new ArrayList<>();
@@ -1101,7 +1023,7 @@ public class ReplayActionPlayer {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Location loc = replayPlayer.getLastLocation();
                 if (!replayPlayer.getViewers().isEmpty() && loc != null) {
-                    loc.getWorld().playSound(loc, Sound.ENTITY_PLAYER_BURP, 0.5f, 1.0f);
+                    playSoundToViewers(loc, Sound.ENTITY_PLAYER_BURP, 0.5f, 1.0f);
                 }
             });
         }
@@ -1111,7 +1033,7 @@ public class ReplayActionPlayer {
      * Projectile action'ını oynatır
      */
     private void playProjectile(ProjectileAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing projectile: " + action.getType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing projectile: " + action.getType());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location loc = replayPlayer.getLastLocation();
@@ -1132,7 +1054,7 @@ public class ReplayActionPlayer {
                 spawnProjectile(world, spawnLoc, velocity, action.getType(), action.getPotionData());
 
                 // Atış sesi
-                world.playSound(spawnLoc, getSoundForProjectile(action.getType()), 1.0f, 1.0f);
+                playSoundToViewers(spawnLoc, getSoundForProjectile(action.getType()), 1.0f, 1.0f);
             }
         });
     }
@@ -1147,55 +1069,60 @@ public class ReplayActionPlayer {
         switch (type) {
             case ARROW:
                 Arrow arrow = world.spawnArrow(location, velocity, (float)velocity.length(), 0);
-                arrow.setDamage(0); // Hasar vermesin
-                arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED); // Alınamasın
+                arrow.setDamage(0);
+                arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
+                arrow.setSilent(true);
                 arrow.setMetadata(REPLAY_META, new org.bukkit.metadata.FixedMetadataValue(plugin, true));
-                scheduleRemove(arrow, 100L); // 5 saniye sonra kaldır
+                hideFromNonViewers(arrow);
+                scheduleRemove(arrow, 100L);
                 break;
             case SNOWBALL:
                 Snowball snowball = world.spawn(location, Snowball.class);
                 snowball.setVelocity(velocity);
+                snowball.setSilent(true);
                 snowball.setMetadata(REPLAY_META, new org.bukkit.metadata.FixedMetadataValue(plugin, true));
+                hideFromNonViewers(snowball);
                 scheduleRemove(snowball, 100L);
                 break;
             case ENDER_PEARL:
                 // Ender pearl teleport edebilir, sadece görsel efekt için ses çal
-                world.playSound(location, Sound.ENTITY_ENDER_PEARL_THROW, 1.0f, 1.0f);
+                playSoundToViewers(location, Sound.ENTITY_ENDER_PEARL_THROW, 1.0f, 1.0f);
                 // Gerçek pearl spawn etme - tehlikeli
                 break;
             case EGG:
                 Egg egg = world.spawn(location, Egg.class);
                 egg.setVelocity(velocity);
+                egg.setSilent(true);
                 egg.setMetadata(REPLAY_META, new org.bukkit.metadata.FixedMetadataValue(plugin, true));
+                hideFromNonViewers(egg);
                 scheduleRemove(egg, 100L);
                 break;
             case FISHING_HOOK:
-                world.playSound(location, Sound.ENTITY_FISHING_BOBBER_THROW, 1.0f, 1.0f);
-                FishHook fishHook = world.spawn(location, FishHook.class);
-                fishHook.setVelocity(velocity);
-                fishHook.setMetadata(REPLAY_META, new org.bukkit.metadata.FixedMetadataValue(plugin, true));
-                scheduleRemove(fishHook, 60L);
+                // FishHook Bukkit API ile spawn edilemez - sadece ses çal
+                playSoundToViewers(location, Sound.ENTITY_FISHING_BOBBER_THROW, 1.0f, 1.0f);
                 break;
             case EXPERIENCE_BOTTLE:
                 // XP bottle gerçek XP verebilir, sadece ses çal
-                world.playSound(location, Sound.ENTITY_EXPERIENCE_BOTTLE_THROW, 1.0f, 1.0f);
+                playSoundToViewers(location, Sound.ENTITY_EXPERIENCE_BOTTLE_THROW, 1.0f, 1.0f);
                 break;
             case SPLASH_POTION:
             case LINGERING_POTION:
                 // Potionlar efekt verebilir, sadece ses çal
-                world.playSound(location, Sound.ENTITY_SPLASH_POTION_THROW, 1.0f, 1.0f);
+                playSoundToViewers(location, Sound.ENTITY_SPLASH_POTION_THROW, 1.0f, 1.0f);
                 break;
             case TRIDENT:
                 Trident trident = world.spawn(location, Trident.class);
                 trident.setVelocity(velocity);
                 trident.setDamage(0);
                 trident.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
+                trident.setSilent(true);
                 trident.setMetadata(REPLAY_META, new org.bukkit.metadata.FixedMetadataValue(plugin, true));
+                hideFromNonViewers(trident);
                 scheduleRemove(trident, 100L);
                 break;
             case FIREWORK_ROCKET:
                 // Firework patlayabilir ve hasar verebilir, sadece ses çal
-                world.playSound(location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.0f, 1.0f);
+                playSoundToViewers(location, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.0f, 1.0f);
                 break;
         }
     }
@@ -1239,7 +1166,7 @@ public class ReplayActionPlayer {
      * Pose action'ını oynatır
      */
     private void playPose(PoseAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing pose: " + action.getPoseType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing pose: " + action.getPoseType());
 
         EntityPose pose = EntityPose.STANDING;
 
@@ -1277,20 +1204,15 @@ public class ReplayActionPlayer {
      * Death action'ını oynatır
      */
     private void playDeath(DeathAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing death: " + action.getDeathMessage());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing death: " + action.getDeathMessage());
 
-        // Ölüm animasyonu
+        // Önce canı 0 yap (client ölüm animasyonunu sadece can 0 iken oynatır)
+        List<EntityData<?>> healthMeta = new ArrayList<>();
+        healthMeta.add(new EntityData(9, EntityDataTypes.FLOAT, 0.0f));
+        replayPlayer.getNpcManager().sendMetadata(healthMeta);
+
+        // Ölüm animasyonu (entity status 3 = death)
         replayPlayer.getNpcManager().sendEntityStatus((byte) 3);
-
-        // Ölüm mesajı
-        if (action.getDeathMessage() != null && !action.getDeathMessage().isEmpty()) {
-            for (Player viewer : replayPlayer.getViewers()) {
-                viewer.sendMessage("§c" + action.getDeathMessage());
-            }
-        }
-
-        // Ölüm pozu
-        playPose(new PoseAction(PoseAction.PoseType.DYING));
 
         // Ölüm efektleri
         plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -1298,9 +1220,9 @@ public class ReplayActionPlayer {
                 Location deathLoc = new Location(replayPlayer.getLastLocation().getWorld(),
                         action.getDeathX(), action.getDeathY(), action.getDeathZ());
 
-                deathLoc.getWorld().playSound(deathLoc, Sound.ENTITY_PLAYER_DEATH, 1.0f, 1.0f);
+                playSoundToViewers(deathLoc, Sound.ENTITY_PLAYER_DEATH, 1.0f, 1.0f);
 
-                deathLoc.getWorld().spawnParticle(
+                spawnParticleForViewers(
                         Particle.CLOUD,
                         deathLoc.clone().add(0, 1, 0),
                         20, 0.3, 0.5, 0.3, 0.05
@@ -1313,7 +1235,7 @@ public class ReplayActionPlayer {
      * Fire action'ını oynatır
      */
     private void playFire(FireAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing fire: " + action.isOnFire() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing fire: " + action.isOnFire() +
                 " ticks: " + action.getFireTicks());
 
         List<EntityData<?>> metadata = new ArrayList<>();
@@ -1337,9 +1259,9 @@ public class ReplayActionPlayer {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Location loc = replayPlayer.getLastLocation();
                 if (!replayPlayer.getViewers().isEmpty() && loc != null) {
-                    loc.getWorld().playSound(loc, Sound.ENTITY_PLAYER_HURT_ON_FIRE, 0.7f, 1.0f);
+                    playSoundToViewers(loc, Sound.ENTITY_PLAYER_HURT_ON_FIRE, 0.7f, 1.0f);
 
-                    loc.getWorld().spawnParticle(
+                    spawnParticleForViewers(
                             Particle.FLAME,
                             loc.clone().add(0, 0.5, 0),
                             10, 0.2, 0.3, 0.2, 0.02
@@ -1353,12 +1275,14 @@ public class ReplayActionPlayer {
      * Vehicle action'ını oynatır
      */
     private void playVehicle(VehicleAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing vehicle: " + action.getActionType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing vehicle: " + action.getActionType() +
                 " type: " + action.getVehicleType());
 
         if (action.getActionType() == VehicleAction.ActionType.PLACE) {
             // Vehicle'ı sadece spawn et, mount etme
+            final int vehGen = replayPlayer.getActionHandler().getSeekGeneration();
             plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (vehGen != replayPlayer.getActionHandler().getSeekGeneration()) return;
                 Location loc = replayPlayer.getLastLocation();
                 if (loc != null) {
                     Location vehicleLoc = new Location(loc.getWorld(),
@@ -1395,10 +1319,11 @@ public class ReplayActionPlayer {
                         }
 
                         if (vehicle != null) {
-                            // Spawn edilen vehicle'ı track et (replay bitince silinecek)
+                            vehicle.setSilent(true);
                             spawnedEntities.add(vehicle);
+                            hideFromNonViewers(vehicle);
 
-                            plugin.getLogger().info("[REPLAY-DEBUG] Vehicle placed: " +
+                            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Vehicle placed: " +
                                     action.getVehicleType() + " at " + vehicleLoc);
                         }
                     } catch (Exception e) {
@@ -1473,7 +1398,7 @@ public class ReplayActionPlayer {
      * Bed action'ını oynatır
      */
     private void playBed(BedAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing bed: " + action.getActionType() +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing bed: " + action.getActionType() +
                 " at " + action.getBedX() + "," + action.getBedY() + "," + action.getBedZ());
 
         if (action.getActionType() == BedAction.ActionType.ENTER_BED) {
@@ -1482,7 +1407,7 @@ public class ReplayActionPlayer {
             Location bedLoc = new Location(replayPlayer.getLastLocation().getWorld(),
                     action.getBedX() + 0.5, action.getBedY() + 0.5625, action.getBedZ() + 0.5);
 
-            replayPlayer.getNpcManager().teleportNPC(bedLoc, mountedEntities);
+            replayPlayer.getNpcManager().absoluteTeleportNPC(bedLoc);
             replayPlayer.setLastLocation(bedLoc);
         } else {
             playPose(new PoseAction(PoseAction.PoseType.STANDING));
@@ -1493,7 +1418,7 @@ public class ReplayActionPlayer {
      * Chat action'ını oynatır
      */
     private void playChat(ChatAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing chat: " + action.getMessage());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing chat: " + action.getMessage());
 
         String prefix = "§7[§6Replay§7] §e" + replayPlayer.getReplay().getRecordedPlayer() + "§7: ";
         String message = action.isCommand() ? "§8" + action.getMessage() : "§f" + action.getMessage();
@@ -1508,11 +1433,9 @@ public class ReplayActionPlayer {
     }
 
     /**
-     * Fishing action'ını oynatır - 1.21.4 için güncellenmiş
+     * Fishing action'ını oynatır - Packet tabanlı FishHook ile gerçek olta ipi
      */
     private void playFishing(FishingAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing fishing: " + action.getState());
-
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location playerLoc = replayPlayer.getLastLocation();
             if (playerLoc == null) return;
@@ -1526,79 +1449,120 @@ public class ReplayActionPlayer {
 
             switch (action.getState()) {
                 case CAST:
+                    // Önceki bobber varsa kaldır
+                    despawnFishingBobber();
+
                     // Olta atma sesi
-                    world.playSound(playerLoc, Sound.ENTITY_FISHING_BOBBER_THROW, 1.0f, 1.0f);
+                    playSoundToViewers(playerLoc, Sound.ENTITY_FISHING_BOBBER_THROW, 1.0f, 1.0f);
 
-                    plugin.getLogger().info("[REPLAY-DEBUG] FishHook casting - using particle animation");
+                    int npcEntityId = replayPlayer.getNpcManager().getEntityId();
+                    fishingBobberEntityId = ReplayNPCManager.generateEntityId();
 
-                    // FishHook spawn edilemiyor, particle ile simüle et
-                    Location spawnLoc = playerLoc.clone().add(0, 1.5, 0);
+                    // NPC'nin göz seviyesinde, baktığı yönde hafif önde spawn et
+                    double yawRad = Math.toRadians(playerLoc.getYaw());
 
-                    // Olta ipinin uçuş animasyonu - particle trail
-                    new org.bukkit.scheduler.BukkitRunnable() {
-                        double progress = 0.0;
+                    double spawnX = playerLoc.getX() - Math.sin(yawRad) * 0.3;
+                    double spawnY = playerLoc.getY() + 1.62; // Göz seviyesi
+                    double spawnZ = playerLoc.getZ() + Math.cos(yawRad) * 0.3;
 
-                        @Override
-                        public void run() {
-                            if (progress >= 1.0) {
-                                // Animasyon bitti - hook konumunda splash efekti
-                                world.playSound(hookLoc, Sound.ENTITY_FISHING_BOBBER_SPLASH, 0.8f, 1.0f);
-                                world.spawnParticle(Particle.SPLASH, hookLoc, 10, 0.3, 0.1, 0.3, 0.1);
-                                world.spawnParticle(Particle.BUBBLE_POP, hookLoc, 5, 0.2, 0.1, 0.2, 0.05);
-                                this.cancel();
-                                return;
-                            }
+                    // Velocity belirle: yeni kayıtlarda hookX/Y/Z gerçek velocity,
+                    // eski kayıtlarda hookX/Y/Z konum (büyük değerler) → fallback
+                    double velX, velY, velZ;
+                    boolean isVelocityData = Math.abs(action.getHookX()) < 5 &&
+                                             Math.abs(action.getHookY()) < 5 &&
+                                             Math.abs(action.getHookZ()) < 5;
 
-                            // Olta ipinin o anki konumu (lerp)
-                            double x = spawnLoc.getX() + (hookLoc.getX() - spawnLoc.getX()) * progress;
-                            double y = spawnLoc.getY() + (hookLoc.getY() - spawnLoc.getY()) * progress;
-                            double z = spawnLoc.getZ() + (hookLoc.getZ() - spawnLoc.getZ()) * progress;
+                    if (isVelocityData) {
+                        // Yeni kayıt: gerçek hook velocity
+                        velX = action.getHookX();
+                        velY = action.getHookY();
+                        velZ = action.getHookZ();
+                    } else {
+                        // Eski kayıt: NPC'nin baktığı yöne göre hesapla
+                        double pitchRad = Math.toRadians(playerLoc.getPitch());
+                        double throwPower = 1.5;
+                        velX = -Math.sin(yawRad) * Math.cos(pitchRad) * throwPower;
+                        velY = -Math.sin(pitchRad) * throwPower + 0.2;
+                        velZ = Math.cos(yawRad) * Math.cos(pitchRad) * throwPower;
+                    }
 
-                            // Parabolik yay efekti (olta havada yay çizer)
-                            double arc = Math.sin(progress * Math.PI) * 2.0;
-                            y += arc;
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-FISHING] Bobber spawn | velocity=" +
+                            String.format("%.3f, %.3f, %.3f", velX, velY, velZ) +
+                            " | real=" + isVelocityData +
+                            " | entityId=" + fishingBobberEntityId +
+                            " | owner=" + npcEntityId);
 
-                            Location currentLoc = new Location(world, x, y, z);
+                    WrapperPlayServerSpawnEntity spawnBobber = new WrapperPlayServerSpawnEntity(
+                            fishingBobberEntityId,
+                            Optional.of(UUID.randomUUID()),
+                            EntityTypes.FISHING_BOBBER,
+                            new Vector3d(spawnX, spawnY, spawnZ),
+                            (float) playerLoc.getPitch(),
+                            (float) playerLoc.getYaw(),
+                            0f,
+                            npcEntityId, // data = owner entity ID
+                            Optional.of(new Vector3d(velX, velY, velZ))
+                    );
 
-                            // Particle trail
-                            world.spawnParticle(Particle.DRIPPING_WATER, currentLoc, 2, 0.05, 0.05, 0.05, 0);
-                            world.spawnParticle(Particle.BUBBLE_POP, currentLoc, 1, 0, 0, 0, 0);
-
-                            progress += 0.05; // Her tick %5 ilerle
-                        }
-                    }.runTaskTimer(plugin, 0L, 1L);
-                    break;
-
-                case CAUGHT:
-                    world.playSound(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1.0f, 1.0f);
-                    // SPLASH particle
-                    world.spawnParticle(Particle.SPLASH, hookLoc, 20, 0.3, 0.3, 0.3, 0.1);
-
-                    // Viewer'lara title göster
                     for (Player viewer : replayPlayer.getViewers()) {
-                        viewer.sendTitle("", "§a✓ Balık yakalandı!", 10, 20, 10);
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawnBobber);
+                    }
+
+                    // Velocity paketini de gönder — client kesinlikle uygulasın
+                    WrapperPlayServerEntityVelocity velPacket = new WrapperPlayServerEntityVelocity(
+                            fishingBobberEntityId,
+                            new Vector3d(velX, velY, velZ)
+                    );
+                    for (Player viewer : replayPlayer.getViewers()) {
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, velPacket);
                     }
                     break;
 
+                case CAUGHT:
+                    // Bobber'ı kaldır
+                    despawnFishingBobber();
+
+                    playSoundToViewers(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1.0f, 1.0f);
+                    spawnParticleForViewers(Particle.SPLASH, hookLoc, 20, 0.3, 0.3, 0.3, 0.1);
+                    break;
+
                 case REEL_IN:
-                    world.playSound(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.5f, 1.5f);
-                    // Çekme efekti
-                    world.spawnParticle(Particle.BUBBLE_POP,
-                            hookLoc, 10, 0.2, 0.2, 0.2, 0.05);
+                    // Bobber'ı kaldır
+                    despawnFishingBobber();
+
+                    playSoundToViewers(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.5f, 1.5f);
+                    spawnParticleForViewers(Particle.BUBBLE_POP, hookLoc, 10, 0.2, 0.2, 0.2, 0.05);
                     break;
 
                 case FAILED:
-                    world.playSound(hookLoc, Sound.ENTITY_FISHING_BOBBER_SPLASH, 1.0f, 1.0f);
+                    // Bobber'ı kaldır
+                    despawnFishingBobber();
+
+                    playSoundToViewers(hookLoc, Sound.ENTITY_FISHING_BOBBER_SPLASH, 1.0f, 1.0f);
                     break;
             }
         });
     }
 
     /**
+     * Packet tabanlı fishing bobber entity'sini kaldırır
+     */
+    private void despawnFishingBobber() {
+        if (fishingBobberEntityId != -1) {
+            WrapperPlayServerDestroyEntities destroy =
+                    new WrapperPlayServerDestroyEntities(fishingBobberEntityId);
+            for (Player viewer : replayPlayer.getViewers()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroy);
+            }
+            fishingBobberEntityId = -1;
+        }
+    }
+
+    /**
      * InteractEntity action'ını oynatır
      */
     private void playInteractEntity(InteractEntityAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing entity interaction: " + action.getType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing entity interaction: " + action.getType());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location loc = new Location(
@@ -1627,7 +1591,7 @@ public class ReplayActionPlayer {
                         nearbyEntity.setVelocity(pullVector);
 
                         // Efektler - 1.21.4 için güncellenmiş
-                        loc.getWorld().spawnParticle(Particle.DRIPPING_WATER, nearbyEntity.getLocation(), 10, 0.3, 0.3, 0.3, 0.1);
+                        spawnParticleForViewers(Particle.DRIPPING_WATER, nearbyEntity.getLocation(), 10, 0.3, 0.3, 0.3, 0.1);
 
                         for (Player viewer : replayPlayer.getViewers()) {
                             viewer.playSound(loc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1.0f, 1.0f);
@@ -1653,7 +1617,7 @@ public class ReplayActionPlayer {
 
                     if (nearbyEntity.getType().name().equals(entityTypeName) && nearbyEntity instanceof LivingEntity) {
                         // Leash efekti
-                        loc.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, nearbyEntity.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
+                        spawnParticleForViewers(Particle.HAPPY_VILLAGER, nearbyEntity.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
 
                         for (Player viewer : replayPlayer.getViewers()) {
                             viewer.playSound(loc, Sound.ENTITY_LEASH_KNOT_PLACE, 1.0f, 1.0f);
@@ -1702,7 +1666,7 @@ public class ReplayActionPlayer {
 
                         // Doğru renk yün parçacıkları
                         Material woolMaterial = Material.valueOf(woolColor.name() + "_WOOL");
-                        loc.getWorld().spawnParticle(Particle.ITEM,
+                        spawnParticleForViewers(Particle.ITEM,
                                 loc.clone().add(0, 0.5, 0),
                                 20,
                                 0.3, 0.3, 0.3,
@@ -1710,7 +1674,7 @@ public class ReplayActionPlayer {
                                 new ItemStack(woolMaterial)
                         );
 
-                        plugin.getLogger().info("[REPLAY-DEBUG] Shearing effect with wool color: " + woolColor.name());
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Shearing effect with wool color: " + woolColor.name());
 
                         // Replay sırasında spawn edilen koyunu kırpılmış olarak göster
                         // Gerçek dünya entity'lerini değil, sadece spawnedEntities listesindeki entity'leri etkile
@@ -1721,7 +1685,7 @@ public class ReplayActionPlayer {
                                     org.bukkit.entity.Sheep sheep = (org.bukkit.entity.Sheep) entity;
                                     if (!sheep.isSheared()) {
                                         sheep.setSheared(true);
-                                        plugin.getLogger().info("[REPLAY-DEBUG] Spawned sheep sheared at " +
+                                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Spawned sheep sheared at " +
                                             sheep.getLocation() + ", color: " + sheep.getColor().name());
                                         break; // Sadece en yakın koyunu kırp
                                     }
@@ -1731,17 +1695,17 @@ public class ReplayActionPlayer {
                         break;
 
                     case FEED:
-                        loc.getWorld().spawnParticle(Particle.HEART, loc.clone().add(0, 1, 0), 5, 0.3, 0.3, 0.3, 0);
+                        spawnParticleForViewers(Particle.HEART, loc.clone().add(0, 1, 0), 5, 0.3, 0.3, 0.3, 0);
                         viewer.playSound(loc, Sound.ENTITY_GENERIC_EAT, 1.0f, 1.0f);
                         break;
 
                     case TAME:
-                        loc.getWorld().spawnParticle(Particle.HEART, loc.clone().add(0, 1, 0), 10, 0.5, 0.5, 0.5, 0);
+                        spawnParticleForViewers(Particle.HEART, loc.clone().add(0, 1, 0), 10, 0.5, 0.5, 0.5, 0);
                         viewer.playSound(loc, Sound.ENTITY_WOLF_WHINE, 1.0f, 1.0f);
                         break;
 
                     case BREED:
-                        loc.getWorld().spawnParticle(Particle.HEART, loc.clone().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0);
+                        spawnParticleForViewers(Particle.HEART, loc.clone().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0);
                         viewer.playSound(loc, Sound.ENTITY_DONKEY_ANGRY, 1.0f, 1.0f);
                         break;
 
@@ -1754,7 +1718,7 @@ public class ReplayActionPlayer {
                         break;
 
                     case LEFT_CLICK:
-                        loc.getWorld().spawnParticle(Particle.DAMAGE_INDICATOR, loc.clone().add(0, 1, 0), 3, 0.2, 0.2, 0.2, 0);
+                        spawnParticleForViewers(Particle.DAMAGE_INDICATOR, loc.clone().add(0, 1, 0), 3, 0.2, 0.2, 0.2, 0);
                         break;
                 }
             }
@@ -1765,9 +1729,13 @@ public class ReplayActionPlayer {
      * Teleport action'ını oynatır
      */
     private void playTeleport(TeleportAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing teleport: " + action.getCause());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing teleport: " + action.getCause());
 
+        // Seek generation'ı kaydet - eski deferred teleport'lar seek sonrası çalışmasın
+        final int currentGen = replayPlayer.getActionHandler().getSeekGeneration();
         plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Seek yapıldıysa bu eski teleport'u iptal et
+            if (currentGen != replayPlayer.getActionHandler().getSeekGeneration()) return;
             // From world - backward compatibility için null kontrolü
             org.bukkit.World fromWorld;
             if (action.getFromWorld() != null) {
@@ -1807,23 +1775,45 @@ public class ReplayActionPlayer {
             // Teleport efektleri
             for (Player viewer : replayPlayer.getViewers()) {
                 // Başlangıç noktası efektleri
-                fromLoc.getWorld().spawnParticle(Particle.PORTAL, fromLoc.clone().add(0, 1, 0), 50, 0.5, 1, 0.5, 0.1);
+                viewer.spawnParticle(Particle.PORTAL, fromLoc.clone().add(0, 1, 0), 50, 0.5, 1, 0.5, 0.1);
                 viewer.playSound(fromLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
 
                 // Bitiş noktası efektleri
-                toLoc.getWorld().spawnParticle(Particle.PORTAL, toLoc.clone().add(0, 1, 0), 30, 0.3, 0.5, 0.3, 0.05);
-
-                // NPC'yi teleport et
-                replayPlayer.getNpcManager().teleportNPC(toLoc, replayPlayer.getActionPlayer().getMountedEntities());
-                replayPlayer.setLastLocation(toLoc);
+                viewer.spawnParticle(Particle.PORTAL, toLoc.clone().add(0, 1, 0), 30, 0.3, 0.5, 0.3, 0.05);
 
                 // Eğer farklı bir dünyaya TP yapılıyorsa izleyiciyi de TP ettir
-                if (!viewer.getWorld().equals(toWorld)) {
-                    viewer.teleport(toLoc);
-                    viewer.sendMessage("§e✦ Replay: " + toWorld.getName() + " dünyasına geçiliyor...");
-                    plugin.getLogger().info("[REPLAY] Teleporting viewer " + viewer.getName() +
+                boolean crossWorldTeleport = !viewer.getWorld().equals(toWorld);
+
+                if (crossWorldTeleport) {
+                    // Dünya değişince client tüm entity'leri siler
+                    // teleportAsync chunk yükleme ve göndermeyi düzgün yönetir
+                    viewer.teleportAsync(toLoc);
+
+                    // NPC respawn + flight/gamemode restore (5 tick sonra dünya değişimi kesinlikle tamamlanmış olur)
+                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                        if (currentGen != replayPlayer.getActionHandler().getSeekGeneration()) return;
+                        if (!viewer.isOnline()) return;
+
+                        // Dünya değişiminde Paper gamemode/flight sıfırlayabilir, zorla geri koy
+                        viewer.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                        viewer.setAllowFlight(true);
+                        viewer.setFlying(true);
+                        viewer.setFallDistance(0f);
+
+                        replayPlayer.getNpcManager().respawnForViewer(viewer, toLoc);
+                        ReportSystemSpigot.getInstance().debug("[REPLAY] NPC respawned + flight restored in new world for " + viewer.getName());
+                    }, 5L);
+
+                    com.reportsystem.spigot.ReportSystemSpigot spigotPlugin = (com.reportsystem.spigot.ReportSystemSpigot) plugin;
+                    viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.world-change").replace("%world%", toWorld.getName())));
+                    ReportSystemSpigot.getInstance().debug("[REPLAY] Teleporting viewer " + viewer.getName() +
                             " to world: " + toWorld.getName());
+                } else {
+                    // Aynı dünya - sadece NPC'yi teleport et
+                    replayPlayer.getNpcManager().absoluteTeleportNPC(toLoc);
                 }
+
+                replayPlayer.setLastLocation(toLoc);
 
                 // Bilgi göster
                 switch (action.getCause()) {
@@ -1847,15 +1837,15 @@ public class ReplayActionPlayer {
      * Health action'ını oynatır
      */
     private void playHealth(HealthAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing health: " + action.getHealth() + "/" + action.getMaxHealth());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing health: " + action.getHealth() + "/" + action.getMaxHealth() +
+                " absorption: " + action.getAbsorption());
 
-        // Can durumunu action bar'da göster
-        String healthBar = createHealthBar(action.getHealth(), action.getMaxHealth());
-        String foodBar = createFoodBar(action.getFoodLevel());
+        // 1. NPC entity metadata güncelle (index 9 = health) - hasar kırmızı flash animasyonu için
+        // + scoreboard below-name güncelle
+        replayPlayer.getNpcManager().updateMainNPCHealth(
+                action.getHealth(), action.getMaxHealth(), action.getAbsorption());
 
         for (Player viewer : replayPlayer.getViewers()) {
-            viewer.sendActionBar(healthBar + " §7| " + foodBar);
-
             // Düşük can uyarısı
             if (action.getHealth() <= 6) {
                 viewer.playSound(viewer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 0.5f);
@@ -1867,7 +1857,7 @@ public class ReplayActionPlayer {
      * Potion effect action'ını oynatır
      */
     private void playPotionEffect(PotionEffectAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing potion effect: " + action.getActionType() + " - " + action.getEffectType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing potion effect: " + action.getActionType() + " - " + action.getEffectType());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location loc = replayPlayer.getLastLocation();
@@ -1876,7 +1866,7 @@ public class ReplayActionPlayer {
                 switch (action.getActionType()) {
                     case ADD:
                         // ENTITY_EFFECT particle'ı Color parametresi gerektiriyor
-                        loc.getWorld().spawnParticle(Particle.ENTITY_EFFECT,
+                        spawnParticleForViewers(Particle.ENTITY_EFFECT,
                                 loc.clone().add(0, 1, 0),
                                 20,
                                 0.5, 0.5, 0.5,
@@ -1891,7 +1881,7 @@ public class ReplayActionPlayer {
                         break;
 
                     case CLEAR_ALL:
-                        loc.getWorld().spawnParticle(Particle.CLOUD, loc.clone().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.1);
+                        spawnParticleForViewers(Particle.CLOUD, loc.clone().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.1);
                         viewer.playSound(loc, Sound.ENTITY_GENERIC_SPLASH, 1.0f, 1.0f);
                         viewer.sendActionBar("§c✖ Tüm efektler temizlendi");
                         break;
@@ -1904,7 +1894,7 @@ public class ReplayActionPlayer {
      * GameMode action'ını oynatır
      */
     private void playGameMode(GameModeAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing gamemode: " + action.getGameMode());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing gamemode: " + action.getGameMode());
 
         String modeName = "";
         switch (action.getGameMode()) {
@@ -1923,7 +1913,6 @@ public class ReplayActionPlayer {
         }
 
         for (Player viewer : replayPlayer.getViewers()) {
-            viewer.sendTitle("", modeName + " §7modu", 10, 30, 10);
             viewer.playSound(viewer.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.0f);
         }
     }
@@ -1932,7 +1921,7 @@ public class ReplayActionPlayer {
      * Weather action'ını oynatır
      */
     private void playWeather(WeatherAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing weather: " + action.getWeatherType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing weather: " + action.getWeatherType());
 
         for (Player viewer : replayPlayer.getViewers()) {
             switch (action.getWeatherType()) {
@@ -1959,7 +1948,7 @@ public class ReplayActionPlayer {
      * Sound action'ını oynatır
      */
     private void playSound(SoundAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing sound: " + action.getSoundName());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing sound: " + action.getSoundName());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location soundLoc = new Location(
@@ -1974,7 +1963,7 @@ public class ReplayActionPlayer {
                     viewer.playSound(soundLoc, sound, action.getVolume(), action.getPitch());
                 }
             } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Unknown sound: " + action.getSoundName());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Unknown sound: " + action.getSoundName());
             }
         });
     }
@@ -2013,35 +2002,42 @@ public class ReplayActionPlayer {
 
     /**
      * Değiştirilen blokları eski haline getirir
+     * @param viewers blokları restore edilecek oyuncu listesi
      */
-    public void restoreBlocks() {
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (!originalBlocks.isEmpty()) {
-                for (Player viewer : replayPlayer.getViewers()) {
-                    for (Map.Entry<String, Material> entry : originalBlocks.entrySet()) {
-                        String[] coords = entry.getKey().split(",");
-                        Location loc = new Location(viewer.getWorld(),
-                                Integer.parseInt(coords[0]),
-                                Integer.parseInt(coords[1]),
-                                Integer.parseInt(coords[2])
-                        );
+    public void restoreBlocks(Set<Player> viewers) {
+        if (originalBlocks.isEmpty() || viewers.isEmpty()) return;
 
-                        org.bukkit.block.Block realBlock = loc.getBlock();
-                        viewer.sendBlockChange(loc, realBlock.getBlockData());
+        try {
+            for (Map.Entry<String, Material> entry : originalBlocks.entrySet()) {
+                try {
+                    String[] coords = entry.getKey().split(",");
+                    if (coords.length == 3) {
+                        int x = Integer.parseInt(coords[0]);
+                        int y = Integer.parseInt(coords[1]);
+                        int z = Integer.parseInt(coords[2]);
+
+                        for (Player viewer : viewers) {
+                            if (viewer != null && viewer.isOnline()) {
+                                Location loc = new Location(viewer.getWorld(), x, y, z);
+                                viewer.sendBlockChange(loc, loc.getBlock().getBlockData());
+                            }
+                        }
                     }
+                } catch (NumberFormatException e) {
+                    // skip invalid
                 }
-
-                plugin.getLogger().info("[REPLAY-DEBUG] " + originalBlocks.size() + " blok restore edildi.");
-                originalBlocks.clear();
             }
-        });
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] " + originalBlocks.size() + " blok restore edildi.");
+        } finally {
+            originalBlocks.clear();
+        }
     }
 
     /**
      * Explosion action'ını oynatır
      */
     private void playExplosion(ExplosionAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing explosion: " + action.getExplosionType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing explosion: " + action.getExplosionType());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location explosionLoc = new Location(
@@ -2055,45 +2051,45 @@ public class ReplayActionPlayer {
 
             // Explosion efekti - SADECE GÖRSELhiçbir entity'ye hasar verme!
             // createExplosion yerine particle ve ses kullanıyoruz
-            world.spawnParticle(Particle.EXPLOSION_EMITTER, explosionLoc, 1);
-            world.spawnParticle(Particle.EXPLOSION, explosionLoc, 10,
+            spawnParticleForViewers(Particle.EXPLOSION_EMITTER, explosionLoc, 1);
+            spawnParticleForViewers(Particle.EXPLOSION, explosionLoc, 10,
                     action.getPower() / 2.0, action.getPower() / 2.0, action.getPower() / 2.0, 0.1);
 
             // Explosion tipi için özel ses ve particle efektleri
             switch (action.getExplosionType()) {
                 case CREEPER:
-                    world.playSound(explosionLoc, Sound.ENTITY_CREEPER_PRIMED, 1.0f, 1.0f);
-                    world.spawnParticle(Particle.EXPLOSION, explosionLoc, 5, 1, 1, 1, 0.1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_CREEPER_PRIMED, 1.0f, 1.0f);
+                    spawnParticleForViewers(Particle.EXPLOSION, explosionLoc, 5, 1, 1, 1, 0.1);
                     break;
 
                 case TNT:
-                    world.playSound(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.0f);
-                    world.spawnParticle(Particle.EXPLOSION_EMITTER, explosionLoc, 1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.0f);
+                    spawnParticleForViewers(Particle.EXPLOSION_EMITTER, explosionLoc, 1);
                     break;
 
                 case BED:
-                    world.playSound(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 0.9f);
-                    world.spawnParticle(Particle.LAVA, explosionLoc, 20, 2, 2, 2, 0.1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 0.9f);
+                    spawnParticleForViewers(Particle.LAVA, explosionLoc, 20, 2, 2, 2, 0.1);
                     break;
 
                 case END_CRYSTAL:
-                    world.playSound(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.2f);
-                    world.spawnParticle(Particle.DRAGON_BREATH, explosionLoc, 50, 2, 2, 2, 0.1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.2f);
+                    spawnParticleForViewers(Particle.DRAGON_BREATH, explosionLoc, 50, 2, 2, 2, 0.1);
                     break;
 
                 case FIREBALL:
-                    world.playSound(explosionLoc, Sound.ENTITY_BLAZE_SHOOT, 1.5f, 0.8f);
-                    world.spawnParticle(Particle.FLAME, explosionLoc, 30, 1.5, 1.5, 1.5, 0.1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_BLAZE_SHOOT, 1.5f, 0.8f);
+                    spawnParticleForViewers(Particle.FLAME, explosionLoc, 30, 1.5, 1.5, 1.5, 0.1);
                     break;
 
                 case WITHER:
-                    world.playSound(explosionLoc, Sound.ENTITY_WITHER_SHOOT, 1.5f, 1.0f);
-                    world.spawnParticle(Particle.SMOKE, explosionLoc, 40, 2, 2, 2, 0.1);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_WITHER_SHOOT, 1.5f, 1.0f);
+                    spawnParticleForViewers(Particle.SMOKE, explosionLoc, 40, 2, 2, 2, 0.1);
                     break;
 
                 default:
-                    world.playSound(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 1.0f);
-                    world.spawnParticle(Particle.EXPLOSION, explosionLoc, 3, 1, 1, 1, 0.05);
+                    playSoundToViewers(explosionLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 1.0f);
+                    spawnParticleForViewers(Particle.EXPLOSION, explosionLoc, 3, 1, 1, 1, 0.05);
                     break;
             }
 
@@ -2128,10 +2124,10 @@ public class ReplayActionPlayer {
                 // Entity'yi yeni pozisyona teleport et
                 entity.teleport(newLoc);
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Entity updated: " + action.getEntityType() +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity updated: " + action.getEntityType() +
                         " to " + newLoc.toVector());
             } else {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Entity not found for update: UUID " +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity not found for update: UUID " +
                         action.getEntityUuid());
             }
         });
@@ -2159,21 +2155,23 @@ public class ReplayActionPlayer {
                 applyEntityProperties(spawnedEntity, action.getProperties());
 
                 // Entity'yi track et - replay bitince silinecek
+                spawnedEntity.setSilent(true);
                 spawnedEntities.add(spawnedEntity);
+                hideFromNonViewers(spawnedEntity);
                 spawnedEntitiesMap.put(action.getEntityUuid(), spawnedEntity);
 
                 // Spawn efektleri
-                loc.getWorld().spawnParticle(Particle.CLOUD, loc, 10, 0.3, 0.3, 0.3, 0.05);
+                spawnParticleForViewers(Particle.CLOUD, loc, 10, 0.3, 0.3, 0.3, 0.05);
 
                 for (Player viewer : replayPlayer.getViewers()) {
                     viewer.playSound(loc, Sound.ENTITY_CHICKEN_EGG, 1.0f, 1.0f);
                 }
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Spawned entity with properties: " +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Spawned entity with properties: " +
                         action.getEntityType() + " - " + action.getProperties());
 
             } catch (Exception e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Failed to spawn entity: " +
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to spawn entity: " +
                         action.getEntityType() + " - " + e.getMessage());
             }
         });
@@ -2430,10 +2428,10 @@ public class ReplayActionPlayer {
                     sheep.setColor(newColor);
 
                     // Particle efekti
-                    entity.getWorld().spawnParticle(Particle.ENTITY_EFFECT,
+                    spawnParticleForViewers(Particle.ENTITY_EFFECT,
                             entity.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
 
-                    plugin.getLogger().info("[REPLAY-DEBUG] Sheep dyed to: " + newColor.name());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Sheep dyed to: " + newColor.name());
                 }
             } else {
                 // Entity bulunamadıysa, yakınlardaki gerçek entity'yi bul (fallback)
@@ -2450,7 +2448,7 @@ public class ReplayActionPlayer {
                         org.bukkit.DyeColor newColor = org.bukkit.DyeColor.valueOf(action.getDyeColor());
                         sheep.setColor(newColor);
 
-                        plugin.getLogger().info("[REPLAY-DEBUG] Sheep dyed (fallback): " + newColor.name());
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Sheep dyed (fallback): " + newColor.name());
                         break;
                     }
                 }
@@ -2462,7 +2460,7 @@ public class ReplayActionPlayer {
      * Item action'ını oynatır (drop/pickup)
      */
     private void playItem(ItemAction action) {
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing item action: " + action.getActionType());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing item action: " + action.getActionType());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location playerLoc = replayPlayer.getLastLocation();
@@ -2485,13 +2483,35 @@ public class ReplayActionPlayer {
 
                 switch (action.getActionType()) {
                     case DROP:
-                        // Item drop efekti
-                        world.playSound(itemLoc, Sound.ENTITY_ITEM_PICKUP, 0.5f, 0.8f);
+                        // NPC'nin göz seviyesinde, baktığı yönde hafif önde spawn et
+                        double yawRad = Math.toRadians(playerLoc.getYaw());
+                        Location dropSpawn = playerLoc.clone().add(
+                                -Math.sin(yawRad) * 0.3,
+                                1.3,
+                                Math.cos(yawRad) * 0.3
+                        );
 
-                        // Item entity spawn et
-                        org.bukkit.entity.Item droppedItem = world.dropItem(playerLoc.clone().add(0, 1.2, 0), item);
-                        droppedItem.setVelocity(playerLoc.getDirection().multiply(0.3));
-                        droppedItem.setPickupDelay(20); // 1 saniye pickup delay
+                        playSoundToViewers(dropSpawn, Sound.ENTITY_ITEM_PICKUP, 0.5f, 0.8f);
+
+                        org.bukkit.entity.Item droppedItem = world.dropItem(dropSpawn, item);
+
+                        // Velocity: yeni kayıtlarda gerçek velocity, eski kayıtlarda fallback
+                        boolean isVelData = Math.abs(action.getX()) < 5 &&
+                                            Math.abs(action.getY()) < 5 &&
+                                            Math.abs(action.getZ()) < 5;
+
+                        if (isVelData) {
+                            // Yeni kayıt: gerçek drop velocity
+                            droppedItem.setVelocity(new Vector(action.getX(), action.getY(), action.getZ()));
+                        } else {
+                            // Eski kayıt: NPC'nin baktığı yöne doğru at
+                            droppedItem.setVelocity(playerLoc.getDirection().multiply(0.3));
+                        }
+
+                        droppedItem.setPickupDelay(Integer.MAX_VALUE);
+                        droppedItem.setSilent(true);
+                        spawnedEntities.add(droppedItem);
+                        hideFromNonViewers(droppedItem);
 
                         // 5 saniye sonra kaldır
                         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
@@ -2503,10 +2523,10 @@ public class ReplayActionPlayer {
 
                     case PICKUP:
                         // Item pickup efekti
-                        world.playSound(itemLoc, Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
+                        playSoundToViewers(itemLoc, Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
 
                         // Particle efekti
-                        world.spawnParticle(Particle.ITEM,
+                        spawnParticleForViewers(Particle.ITEM,
                                 itemLoc,
                                 10,
                                 0.2, 0.2, 0.2,
@@ -2542,60 +2562,47 @@ public class ReplayActionPlayer {
      * Replay bittiğinde tüm entity'leri ve blokları temizle
      */
     public void cleanup() {
-        plugin.getLogger().info("[REPLAY-DEBUG] Cleaning up ReplayActionPlayer resources");
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Cleaning up ReplayActionPlayer resources");
 
-        // FishHook'ları temizle
-        cleanupFishHooks();
+        try {
+            // Packet tabanlı fishing bobber'ı temizle (ana NPC)
+            despawnFishingBobber();
 
-        // Mount edilmiş entity'leri temizle
-        for (Entity entity : mountedEntities.values()) {
-            if (entity != null && entity.isValid()) {
-                entity.remove();
+            // Civar oyuncuların fishing bobber'larını temizle
+            for (UUID uuid : new HashSet<>(nearbyFishingBobbers.keySet())) {
+                despawnNearbyFishingBobber(uuid);
             }
-        }
-        mountedEntities.clear();
 
-        // Spawn edilen entity'leri temizle
-        int entityCount = spawnedEntities.size();
-        plugin.getLogger().info("[REPLAY-DEBUG] Attempting to clean up " + entityCount + " spawned entities");
+            // FishHook'ları temizle
+            cleanupFishHooks();
 
-        for (Entity entity : spawnedEntities) {
-            if (entity != null && entity.isValid()) {
-                entity.remove();
-                plugin.getLogger().info("[REPLAY-DEBUG] Removed spawned entity: " + entity.getType().name() + " at " + entity.getLocation());
-            } else {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Entity already invalid or null");
-            }
-        }
-        spawnedEntities.clear();
-        plugin.getLogger().info("[REPLAY-DEBUG] Cleaned up " + entityCount + " spawned entities");
-
-        // Blokları restore et
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (!originalBlocks.isEmpty() && !replayPlayer.getViewers().isEmpty()) {
-                // İlk viewer'ı al (world bilgisi için)
-                Player firstViewer = replayPlayer.getViewers().iterator().next();
-
-                for (Map.Entry<String, Material> entry : originalBlocks.entrySet()) {
-                    String[] coords = entry.getKey().split(",");
-                    if (coords.length == 3) {
-                        Location loc = new Location(firstViewer.getWorld(),
-                                Integer.parseInt(coords[0]),
-                                Integer.parseInt(coords[1]),
-                                Integer.parseInt(coords[2])
-                        );
-
-                        org.bukkit.block.Block realBlock = loc.getBlock();
-                        for (Player viewer : replayPlayer.getViewers()) {
-                            viewer.sendBlockChange(loc, realBlock.getBlockData());
-                        }
-                    }
+            // Mount edilmiş entity'leri temizle
+            for (Entity entity : mountedEntities.values()) {
+                if (entity != null && entity.isValid()) {
+                    entity.remove();
                 }
-
-                plugin.getLogger().info("[REPLAY-DEBUG] " + originalBlocks.size() + " blok restore edildi.");
-                originalBlocks.clear();
             }
-        });
+
+            // Spawn edilen entity'leri temizle
+            int entityCount = spawnedEntities.size();
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Attempting to clean up " + entityCount + " spawned entities");
+
+            for (Entity entity : spawnedEntities) {
+                if (entity != null && entity.isValid()) {
+                    entity.remove();
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Removed spawned entity: " + entity.getType().name() + " at " + entity.getLocation());
+                } else {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity already invalid or null");
+                }
+            }
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Cleaned up " + entityCount + " spawned entities");
+        } finally {
+            mountedEntities.clear();
+            spawnedEntities.clear();
+        }
+
+        // NOT: Blok restore işlemi artık restoreBlocks(viewers) metodu ile yapılıyor.
+        // stop() ve finish() bu metodu çağırıyor.
     }
 
     /**
@@ -2625,7 +2632,7 @@ public class ReplayActionPlayer {
                                         org.bukkit.Art art = org.bukkit.Art.valueOf(action.getPaintingArt());
                                         painting.setArt(art);
                                     } catch (Exception e) {
-                                        plugin.getLogger().warning("[REPLAY-DEBUG] Failed to set painting art: " + action.getPaintingArt() + " - " + e.getMessage());
+                                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to set painting art: " + action.getPaintingArt() + " - " + e.getMessage());
                                     }
                                 }
                             });
@@ -2640,7 +2647,7 @@ public class ReplayActionPlayer {
                                         ItemStack item = ItemSerializer.deserializeItemStack(action.getItemData());
                                         frame.setItem(item);
                                     } catch (Exception e) {
-                                        plugin.getLogger().warning("[REPLAY-DEBUG] Failed to set item frame item: " + e.getMessage());
+                                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to set item frame item: " + e.getMessage());
                                     }
                                 }
                             });
@@ -2654,7 +2661,7 @@ public class ReplayActionPlayer {
                                         ItemStack item = ItemSerializer.deserializeItemStack(action.getItemData());
                                         frame.setItem(item);
                                     } catch (Exception e) {
-                                        plugin.getLogger().warning("[REPLAY-DEBUG] Failed to set glow item frame item: " + e.getMessage());
+                                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to set glow item frame item: " + e.getMessage());
                                     }
                                 }
                             });
@@ -2663,17 +2670,18 @@ public class ReplayActionPlayer {
 
                     if (hanging != null) {
                         spawnedEntities.add(hanging);
-                        plugin.getLogger().info("[REPLAY-DEBUG] Hanging placed: " + action.getHangingType());
+                        hideFromNonViewers(hanging);
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Hanging placed: " + action.getHangingType());
                     }
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[REPLAY-DEBUG] Failed to place hanging: " + e.getMessage());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to place hanging: " + e.getMessage());
                 }
             } else {
                 // BREAK - Yakındaki hanging'i bul ve kaldır
                 for (Entity entity : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
                     if (entity instanceof Hanging) {
                         entity.remove();
-                        plugin.getLogger().info("[REPLAY-DEBUG] Hanging removed");
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Hanging removed");
                         break;
                     }
                 }
@@ -2696,12 +2704,14 @@ public class ReplayActionPlayer {
             try {
                 Material material = Material.valueOf(action.getBlockType());
                 FallingBlock fallingBlock = loc.getWorld().spawnFallingBlock(loc, material.createBlockData());
+                fallingBlock.setSilent(true);
 
                 spawnedEntities.add(fallingBlock);
+                hideFromNonViewers(fallingBlock);
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Falling block spawned: " + material);
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Falling block spawned: " + material);
             } catch (Exception e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Failed to spawn falling block: " + e.getMessage());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to spawn falling block: " + e.getMessage());
             }
         });
     }
@@ -2721,6 +2731,7 @@ public class ReplayActionPlayer {
             try {
                 EntityType entityType = EntityType.valueOf(action.getBabyEntityType());
                 Entity baby = loc.getWorld().spawnEntity(loc, entityType);
+                baby.setSilent(true);
 
                 // Baby olarak ayarla
                 if (baby instanceof Ageable) {
@@ -2728,13 +2739,14 @@ public class ReplayActionPlayer {
                 }
 
                 spawnedEntities.add(baby);
+                hideFromNonViewers(baby);
 
                 // Kalp parçacıkları
-                loc.getWorld().spawnParticle(Particle.HEART, loc.clone().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0);
+                spawnParticleForViewers(Particle.HEART, loc.clone().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0);
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Baby entity spawned: " + entityType);
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Baby entity spawned: " + entityType);
             } catch (Exception e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Failed to spawn baby entity: " + e.getMessage());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to spawn baby entity: " + e.getMessage());
             }
         });
     }
@@ -2784,7 +2796,7 @@ public class ReplayActionPlayer {
                         originalBlocks.put(blockKey, block.getType());
                     }
 
-                    plugin.getLogger().info("[REPLAY-DEBUG] Bucket emptied: " + action.getBucketType());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Bucket emptied: " + action.getBucketType());
                 }
             } else {
                 // FILL - Bloğu kaldır
@@ -2792,7 +2804,7 @@ public class ReplayActionPlayer {
                     viewer.sendBlockChange(blockLoc, Material.AIR.createBlockData());
                 }
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Bucket filled: " + action.getBucketType());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Bucket filled: " + action.getBucketType());
             }
         });
     }
@@ -2818,9 +2830,9 @@ public class ReplayActionPlayer {
                     viewer.playNote(blockLoc, instrument, note);
                 }
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Note played: " + instrument + " note " + action.getNote());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Note played: " + instrument + " note " + action.getNote());
             } catch (Exception e) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Failed to play note: " + e.getMessage());
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to play note: " + e.getMessage());
             }
         });
     }
@@ -2849,7 +2861,7 @@ public class ReplayActionPlayer {
                     viewer.sendMessage("§7[Sign] " + String.join(" | ", action.getLines()));
                 }
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Sign placed: " + String.join(" | ", action.getLines()));
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Sign placed: " + String.join(" | ", action.getLines()));
             }
         });
     }
@@ -2862,7 +2874,7 @@ public class ReplayActionPlayer {
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Anvil] " + action.getActionType().name() + " (cost: " + action.getExpCost() + ")");
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Anvil action: " + action.getActionType());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Anvil action: " + action.getActionType());
         });
     }
 
@@ -2874,7 +2886,7 @@ public class ReplayActionPlayer {
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Brewing] Brewed potion with " + action.getIngredient());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Brewing: " + action.getIngredient());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Brewing: " + action.getIngredient());
         });
     }
 
@@ -2889,9 +2901,9 @@ public class ReplayActionPlayer {
                     for (Player viewer : replayPlayer.getViewers()) {
                         viewer.sendMessage("§7[Crafting] Crafted " + item.getType().name() + " x" + action.getAmount());
                     }
-                    plugin.getLogger().info("[REPLAY-DEBUG] Crafted: " + item.getType().name() + " x" + action.getAmount());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Crafted: " + item.getType().name() + " x" + action.getAmount());
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[REPLAY-DEBUG] Failed to deserialize crafted item: " + e.getMessage());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to deserialize crafted item: " + e.getMessage());
                 }
             }
         });
@@ -2908,9 +2920,9 @@ public class ReplayActionPlayer {
                     for (Player viewer : replayPlayer.getViewers()) {
                         viewer.sendMessage("§7[Enchanting] Enchanted " + item.getType().name() + " (cost: " + action.getExpLevelCost() + " levels)");
                     }
-                    plugin.getLogger().info("[REPLAY-DEBUG] Enchanted: " + item.getType().name());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Enchanted: " + item.getType().name());
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[REPLAY-DEBUG] Failed to deserialize enchanted item: " + e.getMessage());
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to deserialize enchanted item: " + e.getMessage());
                 }
             }
         });
@@ -2924,7 +2936,7 @@ public class ReplayActionPlayer {
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[" + action.getUtilityType().name() + "] Block used");
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Utility block: " + action.getUtilityType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Utility block: " + action.getUtilityType().name());
         });
     }
 
@@ -2937,7 +2949,7 @@ public class ReplayActionPlayer {
                 viewer.sendMessage("§7[Book] " + (action.isSigned() ? "Signed: " + action.getTitle() : "Edited") +
                         " (" + action.getPages().size() + " pages)");
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Book edited: " + action.getTitle());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Book edited: " + action.getTitle());
         });
     }
 
@@ -2950,7 +2962,7 @@ public class ReplayActionPlayer {
                 viewer.sendMessage("§7[Portal] " + action.getPortalType().name() +
                         " from " + action.getFromWorld() + " to " + action.getToWorld());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Portal: " + action.getPortalType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Portal: " + action.getPortalType().name());
         });
     }
 
@@ -2969,19 +2981,17 @@ public class ReplayActionPlayer {
             // Particle efektleri
             switch (action.getFarmingType()) {
                 case BONE_MEAL:
-                    replayPlayer.getLastLocation().getWorld().spawnParticle(
-                            org.bukkit.Particle.HAPPY_VILLAGER, farmLoc, 10);
+                    spawnParticleForViewers(org.bukkit.Particle.HAPPY_VILLAGER, farmLoc, 10);
                     break;
                 case FARMLAND_TRAMPLE:
-                    replayPlayer.getLastLocation().getWorld().playSound(
-                            farmLoc, org.bukkit.Sound.BLOCK_GRASS_BREAK, 1.0f, 1.0f);
+                    playSoundToViewers(farmLoc, org.bukkit.Sound.BLOCK_GRASS_BREAK, 1.0f, 1.0f);
                     break;
             }
 
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Farming] " + action.getFarmingType().name());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Farming: " + action.getFarmingType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Farming: " + action.getFarmingType().name());
         });
     }
 
@@ -2992,10 +3002,7 @@ public class ReplayActionPlayer {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             // Pose değişikliklerini PacketEvents ile gönder
             String stateMsg = action.getStateType().name() + ": " + (action.isEnabled() ? "ON" : "OFF");
-            for (Player viewer : replayPlayer.getViewers()) {
-                viewer.sendMessage("§7[State] " + stateMsg);
-            }
-            plugin.getLogger().info("[REPLAY-DEBUG] Player state: " + stateMsg);
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Player state: " + stateMsg);
         });
     }
 
@@ -3015,15 +3022,14 @@ public class ReplayActionPlayer {
             switch (action.getDecorationType()) {
                 case JUKEBOX_INSERT:
                 case JUKEBOX_EJECT:
-                    replayPlayer.getLastLocation().getWorld().playSound(
-                            decorLoc, org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
+                    playSoundToViewers(decorLoc, org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
                     break;
             }
 
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Decoration] " + action.getDecorationType().name());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Decoration: " + action.getDecorationType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Decoration: " + action.getDecorationType().name());
         });
     }
 
@@ -3037,7 +3043,7 @@ public class ReplayActionPlayer {
                         (action.getDelay() > 0 ? " delay=" + action.getDelay() : "") +
                         (action.getMode() != null ? " mode=" + action.getMode() : ""));
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Redstone: " + action.getRedstoneType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Redstone: " + action.getRedstoneType().name());
         });
     }
 
@@ -3050,7 +3056,7 @@ public class ReplayActionPlayer {
                 viewer.sendMessage("§7[Entity Cmd] " + action.getCommandType().name() +
                         " on " + action.getEntityType());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Entity command: " + action.getCommandType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity command: " + action.getCommandType().name());
         });
     }
 
@@ -3075,13 +3081,13 @@ public class ReplayActionPlayer {
                         org.bukkit.Sound.BLOCK_ENDER_CHEST_OPEN : org.bukkit.Sound.BLOCK_ENDER_CHEST_CLOSE;
             }
 
-            replayPlayer.getLastLocation().getWorld().playSound(containerLoc, sound, 1.0f, 1.0f);
+            playSoundToViewers(containerLoc, sound, 1.0f, 1.0f);
 
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Container] " + action.getContainerType().name() +
                         " " + (action.isOpened() ? "opened" : "closed"));
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Container: " + action.getContainerType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Container: " + action.getContainerType().name());
         });
     }
 
@@ -3098,15 +3104,13 @@ public class ReplayActionPlayer {
             );
 
             // Ateş efektleri
-            replayPlayer.getLastLocation().getWorld().spawnParticle(
-                    org.bukkit.Particle.FLAME, igniteLoc, 20, 0.5, 0.5, 0.5, 0.02);
-            replayPlayer.getLastLocation().getWorld().playSound(
-                    igniteLoc, org.bukkit.Sound.ITEM_FLINTANDSTEEL_USE, 1.0f, 1.0f);
+            spawnParticleForViewers(org.bukkit.Particle.FLAME, igniteLoc, 20, 0.5, 0.5, 0.5, 0.02);
+            playSoundToViewers(igniteLoc, org.bukkit.Sound.ITEM_FLINTANDSTEEL_USE, 1.0f, 1.0f);
 
             for (Player viewer : replayPlayer.getViewers()) {
                 viewer.sendMessage("§7[Fire] Ignited with " + action.getIgniteType().name());
             }
-            plugin.getLogger().info("[REPLAY-DEBUG] Block ignite: " + action.getIgniteType().name());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Block ignite: " + action.getIgniteType().name());
         });
     }
 
@@ -3129,11 +3133,13 @@ public class ReplayActionPlayer {
             return;
         }
 
-        plugin.getLogger().info("[REPLAY-DEBUG] Playing nearby player action: " +
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing nearby player action: " +
                 action.getClass().getSimpleName() + " for entity " + nearbyEntityId);
 
         // Action tipine göre handle et
-        if (action instanceof HealthAction) {
+        if (action instanceof LocationAction) {
+            playNearbyLocation((LocationAction) action, nearbyEntityId, ownerUUID);
+        } else if (action instanceof HealthAction) {
             playNearbyHealth((HealthAction) action, nearbyEntityId);
         } else if (action instanceof AnimationAction) {
             playNearbyAnimation((AnimationAction) action, nearbyEntityId);
@@ -3146,19 +3152,97 @@ public class ReplayActionPlayer {
         } else if (action instanceof EquipmentAction) {
             playNearbyEquipment((EquipmentAction) action, nearbyEntityId);
         } else if (action instanceof BlockAction) {
-            playNearbyBlock((BlockAction) action);
+            playNearbyBlock((BlockAction) action, ownerUUID);
         } else if (action instanceof ItemAction) {
-            playNearbyItem((ItemAction) action);
+            playNearbyItem((ItemAction) action, ownerUUID);
         } else if (action instanceof PotionEffectAction) {
-            playNearbyPotionEffect((PotionEffectAction) action, nearbyEntityId);
+            playNearbyPotionEffect((PotionEffectAction) action, nearbyEntityId, ownerUUID);
         } else if (action instanceof ChatAction) {
             playNearbyChat((ChatAction) action);
         } else if (action instanceof UseItemAction) {
-            playNearbyUseItem((UseItemAction) action, nearbyEntityId);
+            playNearbyUseItem((UseItemAction) action, nearbyEntityId, ownerUUID);
+        } else if (action instanceof EntityStateAction) {
+            playNearbyEntityState((EntityStateAction) action);
+        } else if (action instanceof ProjectileAction) {
+            playNearbyProjectile((ProjectileAction) action, ownerUUID);
+        } else if (action instanceof FishingAction) {
+            playNearbyFishing((FishingAction) action, ownerUUID);
+        } else if (action instanceof FireAction) {
+            playNearbyFire((FireAction) action, nearbyEntityId);
+        } else if (action instanceof TeleportAction) {
+            playNearbyTeleport((TeleportAction) action, nearbyEntityId, ownerUUID);
+        } else if (action instanceof BucketAction) {
+            playNearbyBucket((BucketAction) action, ownerUUID);
+        } else if (action instanceof ContainerAction) {
+            playNearbyContainer((ContainerAction) action, ownerUUID);
+        } else if (action instanceof DamageAction) {
+            playNearbyDamage((DamageAction) action, nearbyEntityId, ownerUUID);
+        } else if (action instanceof InteractEntityAction) {
+            playNearbyInteractEntity((InteractEntityAction) action, nearbyEntityId);
+        } else if (action instanceof BreedAction) {
+            playNearbyBreed((BreedAction) action, ownerUUID);
+        } else if (action instanceof BlockIgniteAction) {
+            playNearbyBlockIgnite((BlockIgniteAction) action, ownerUUID);
+        } else if (action instanceof HangingAction) {
+            playNearbyHanging((HangingAction) action, ownerUUID);
+        } else if (action instanceof SignAction) {
+            playNearbySign((SignAction) action, ownerUUID);
+        } else if (action instanceof BedAction) {
+            playNearbyBed((BedAction) action, nearbyEntityId);
+        } else if (action instanceof CraftAction) {
+            playNearbyCraft((CraftAction) action);
+        } else if (action instanceof GameModeAction) {
+            playNearbyGameMode((GameModeAction) action);
+        } else if (action instanceof BookEditAction) {
+            playNearbyBookEdit((BookEditAction) action);
+        } else if (action instanceof EnchantAction) {
+            playNearbyEnchant((EnchantAction) action, ownerUUID);
+        } else if (action instanceof EntityDyeAction) {
+            playNearbyEntityDye((EntityDyeAction) action, ownerUUID);
+        } else if (action instanceof PortalAction) {
+            playNearbyPortal((PortalAction) action, nearbyEntityId, ownerUUID);
+        } else if (action instanceof FarmingAction) {
+            playNearbyFarming((FarmingAction) action, ownerUUID);
+        } else if (action instanceof ExplosionAction) {
+            playExplosion((ExplosionAction) action); // Ana oyuncuyla aynı handler
+        } else if (action instanceof FallingBlockAction) {
+            playFallingBlock((FallingBlockAction) action); // Ana oyuncuyla aynı handler
+        } else if (action instanceof NoteBlockAction) {
+            playNoteBlock((NoteBlockAction) action); // Ana oyuncuyla aynı handler
         } else {
-            // Diğer action type'ları için henüz destek yok
             plugin.getLogger().fine("[REPLAY-DEBUG] Unsupported nearby player action: " +
                     action.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Nearby player için location action oynatır
+     * LocationAction ile gelen nearby player hareketlerini NPC'ye aktarır
+     */
+    private void playNearbyLocation(LocationAction action, int entityId, UUID ownerUUID) {
+        Location newLoc = new Location(
+                replayPlayer.getLastLocation() != null ? replayPlayer.getLastLocation().getWorld() : null,
+                action.getX(), action.getY(), action.getZ(),
+                action.getYaw(), action.getPitch()
+        );
+
+        // Konum takibini güncelle
+        replayPlayer.getNpcManager().updateNearbyPlayerLocation(ownerUUID, newLoc);
+
+        // NPC'yi teleport et
+        WrapperPlayServerEntityTeleport teleportPacket = new WrapperPlayServerEntityTeleport(
+                entityId,
+                new Vector3d(action.getX(), action.getY(), action.getZ()),
+                action.getYaw(), action.getPitch(), action.isOnGround()
+        );
+
+        WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
+                entityId, action.getYaw()
+        );
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, teleportPacket);
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, headLookPacket);
         }
     }
 
@@ -3166,7 +3250,8 @@ public class ReplayActionPlayer {
      * Nearby player için health action oynatır
      */
     private void playNearbyHealth(HealthAction action, int entityId) {
-        replayPlayer.getNpcManager().sendNearbyPlayerHealth(entityId, action.getHealth(), action.getMaxHealth());
+        replayPlayer.getNpcManager().sendNearbyPlayerHealth(
+                entityId, action.getHealth(), action.getMaxHealth(), action.getAbsorption());
     }
 
     /**
@@ -3215,10 +3300,6 @@ public class ReplayActionPlayer {
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, statusPacket);
             PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
 
-            // Death message
-            if (action.getDeathMessage() != null && !action.getDeathMessage().isEmpty()) {
-                viewer.sendMessage("§c" + action.getDeathMessage());
-            }
         }
     }
 
@@ -3262,13 +3343,101 @@ public class ReplayActionPlayer {
 
     /**
      * Nearby player için vehicle action oynatır
+     * Vehicle spawn eder ve nearby player NPC'sini mount/dismount eder
      */
     private void playNearbyVehicle(VehicleAction action, int entityId, UUID ownerUUID) {
-        // Vehicle mount/dismount - bu daha kompleks, şimdilik basit implement
-        plugin.getLogger().info("[REPLAY-DEBUG] Nearby player vehicle action: " +
-                action.getActionType() + " - " + action.getVehicleType());
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
 
-        // TODO: Implement vehicle mounting for nearby players
+            Location vehicleLoc = new Location(loc.getWorld(),
+                    action.getVehicleX(), action.getVehicleY(), action.getVehicleZ());
+
+            if (action.getActionType() == VehicleAction.ActionType.MOUNT) {
+                Entity vehicle = null;
+                try {
+                    switch (action.getVehicleType()) {
+                        case MINECART:
+                            vehicle = vehicleLoc.getWorld().spawn(vehicleLoc, Minecart.class);
+                            break;
+                        case BOAT:
+                            Boat boat = vehicleLoc.getWorld().spawn(vehicleLoc, Boat.class);
+                            boat.setBoatType(Boat.Type.OAK);
+                            vehicle = boat;
+                            break;
+                        case HORSE:
+                            vehicle = vehicleLoc.getWorld().spawn(vehicleLoc, Horse.class);
+                            break;
+                        case PIG:
+                            Pig pig = vehicleLoc.getWorld().spawn(vehicleLoc, Pig.class);
+                            pig.setSaddle(true);
+                            vehicle = pig;
+                            break;
+                        case STRIDER:
+                            vehicle = vehicleLoc.getWorld().spawn(vehicleLoc, Strider.class);
+                            break;
+                        case LLAMA:
+                            vehicle = vehicleLoc.getWorld().spawn(vehicleLoc, Llama.class);
+                            break;
+                        case CAMEL:
+                            vehicle = vehicleLoc.getWorld().spawn(vehicleLoc, Camel.class);
+                            break;
+                    }
+
+                    if (vehicle != null) {
+                        vehicle.setSilent(true);
+                        spawnedEntities.add(vehicle);
+                        hideFromNonViewers(vehicle);
+                        int vehicleEntityId = vehicle.getEntityId();
+                        mountedEntities.put(vehicleEntityId, vehicle);
+
+                        // Nearby player NPC'sini vehicle'a mount et
+                        WrapperPlayServerSetPassengers mountPacket = new WrapperPlayServerSetPassengers(
+                                vehicleEntityId,
+                                new int[]{entityId}
+                        );
+                        for (Player viewer : replayPlayer.getViewers()) {
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, mountPacket);
+                        }
+
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player mounted vehicle: " +
+                                action.getVehicleType());
+                    }
+                } catch (Exception e) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Error mounting nearby player vehicle: " + e.getMessage());
+                }
+            } else if (action.getActionType() == VehicleAction.ActionType.DISMOUNT) {
+                // Mount edilmiş vehicle'ı bul ve dismount et
+                Iterator<Map.Entry<Integer, Entity>> it = mountedEntities.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<Integer, Entity> entry = it.next();
+                    Entity vehicle = entry.getValue();
+                    if (vehicle != null && vehicle.isValid()) {
+                        // Boş passengers ile dismount
+                        WrapperPlayServerSetPassengers dismountPacket = new WrapperPlayServerSetPassengers(
+                                entry.getKey(),
+                                new int[]{}
+                        );
+                        for (Player viewer : replayPlayer.getViewers()) {
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, dismountPacket);
+                        }
+
+                        // Vehicle'ı 3 saniye sonra kaldır
+                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                            if (vehicle.isValid()) {
+                                vehicle.remove();
+                            }
+                        }, 60L);
+
+                        it.remove();
+                        break;
+                    }
+                }
+
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player dismounted vehicle: " +
+                        action.getVehicleType());
+            }
+        });
     }
 
     /**
@@ -3286,30 +3455,159 @@ public class ReplayActionPlayer {
     }
 
     /**
-     * Nearby player için block action oynatır
+     * Nearby player için block action oynatır.
+     * Ana oyuncu gibi sadece client-side (sendBlockChange) kullanır - gerçek dünyayı DEĞİŞTİRMEZ.
      */
-    private void playNearbyBlock(BlockAction action) {
-        // Block action'ı world'de oynat (viewer'lar zaten görüyor)
+    private void playNearbyBlock(BlockAction action, UUID ownerUUID) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (replayPlayer.getLastLocation() != null && replayPlayer.getLastLocation().getWorld() != null) {
-                org.bukkit.Location blockLoc = new org.bukkit.Location(
-                        replayPlayer.getLastLocation().getWorld(),
-                        action.getX(),
-                        action.getY(),
-                        action.getZ()
-                );
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+            if (replayPlayer.getViewers().isEmpty()) return;
 
-                if (action.getActionType() == BlockAction.BlockActionType.PLACE_BLOCK) {
-                    Material blockMaterial = Material.getMaterial(action.getBlockType());
-                    if (blockMaterial != null) {
-                        blockLoc.getBlock().setType(blockMaterial);
+            Location blockLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
+
+            switch (action.getActionType()) {
+                case PLACE_BLOCK:
+                    if (action.getBlockType() != null) {
+                        if (!originalBlocks.containsKey(blockKey)) {
+                            originalBlocks.put(blockKey, blockLoc.getBlock().getType());
+                        }
+
+                        try {
+                            String[] parts = action.getBlockType().split(":");
+                            Material material = Material.valueOf(parts[0]);
+                            org.bukkit.block.data.BlockData blockData = material.createBlockData();
+
+                            // Özel blok tipleri için property'leri uygula
+                            if (parts.length > 1) {
+                                if (blockData instanceof org.bukkit.block.data.type.Door && parts.length >= 4) {
+                                    org.bukkit.block.data.type.Door door = (org.bukkit.block.data.type.Door) blockData;
+                                    door.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                                    door.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
+                                    door.setHinge(org.bukkit.block.data.type.Door.Hinge.valueOf(parts[3]));
+                                } else if (blockData instanceof org.bukkit.block.data.type.Stairs && parts.length >= 3) {
+                                    org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) blockData;
+                                    stairs.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                                    stairs.setHalf(org.bukkit.block.data.Bisected.Half.valueOf(parts[2]));
+                                } else if (blockData instanceof org.bukkit.block.data.Directional && parts.length >= 2) {
+                                    org.bukkit.block.data.Directional directional = (org.bukkit.block.data.Directional) blockData;
+                                    directional.setFacing(org.bukkit.block.BlockFace.valueOf(parts[1]));
+                                }
+                            }
+
+                            for (Player viewer : replayPlayer.getViewers()) {
+                                viewer.sendBlockChange(blockLoc, blockData);
+                            }
+
+                            if (!isPhysicsBlock(material)) {
+                                playBlockPlaceSound(blockLoc, material);
+                            }
+                        } catch (Exception e) {
+                            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby block place error: " + e.getMessage());
+                        }
                     }
-                } else if (action.getActionType() == BlockAction.BlockActionType.STOP_BREAKING) {
-                    blockLoc.getBlock().setType(Material.AIR);
-                }
+                    break;
 
-                plugin.getLogger().info("[REPLAY-DEBUG] Nearby player block action: " +
-                        action.getActionType() + " at " + blockLoc);
+                case STOP_BREAKING:
+                    if (action.getStage() == 10) {
+                        if (!originalBlocks.containsKey(blockKey)) {
+                            originalBlocks.put(blockKey, blockLoc.getBlock().getType());
+                        }
+
+                        for (Player viewer : replayPlayer.getViewers()) {
+                            viewer.sendBlockChange(blockLoc, Material.AIR.createBlockData());
+                        }
+                        playBlockBreakEffects(blockLoc);
+                    }
+                    break;
+
+                case INTERACT_BLOCK:
+                    if (action.getBlockType() != null) {
+                        String interactionType = action.getBlockType();
+                        org.bukkit.block.Block block = blockLoc.getBlock();
+                        org.bukkit.block.data.BlockData blockData = block.getBlockData();
+
+                        if (interactionType.contains("DOOR")) {
+                            if (blockData instanceof org.bukkit.block.data.Openable) {
+                                org.bukkit.block.data.Openable openable =
+                                    (org.bukkit.block.data.Openable) blockData.clone();
+                                boolean shouldBeOpen = interactionType.equals("DOOR_OPEN");
+                                openable.setOpen(shouldBeOpen);
+
+                                for (Player viewer : replayPlayer.getViewers()) {
+                                    viewer.sendBlockChange(blockLoc, openable);
+                                }
+
+                                Sound doorSound = shouldBeOpen ?
+                                    Sound.BLOCK_WOODEN_DOOR_OPEN : Sound.BLOCK_WOODEN_DOOR_CLOSE;
+                                if (block.getType().name().contains("IRON")) {
+                                    doorSound = shouldBeOpen ?
+                                        Sound.BLOCK_IRON_DOOR_OPEN : Sound.BLOCK_IRON_DOOR_CLOSE;
+                                }
+                                playSoundToViewers(blockLoc, doorSound, 1.0f, 1.0f);
+                            }
+                        } else if (interactionType.contains("TRAPDOOR")) {
+                            if (blockData instanceof org.bukkit.block.data.Openable) {
+                                org.bukkit.block.data.Openable openable =
+                                    (org.bukkit.block.data.Openable) blockData.clone();
+                                boolean shouldBeOpen = interactionType.equals("TRAPDOOR_OPEN");
+                                openable.setOpen(shouldBeOpen);
+
+                                for (Player viewer : replayPlayer.getViewers()) {
+                                    viewer.sendBlockChange(blockLoc, openable);
+                                }
+
+                                Sound trapdoorSound = shouldBeOpen ?
+                                    Sound.BLOCK_WOODEN_TRAPDOOR_OPEN : Sound.BLOCK_WOODEN_TRAPDOOR_CLOSE;
+                                if (block.getType().name().contains("IRON")) {
+                                    trapdoorSound = shouldBeOpen ?
+                                        Sound.BLOCK_IRON_TRAPDOOR_OPEN : Sound.BLOCK_IRON_TRAPDOOR_CLOSE;
+                                }
+                                playSoundToViewers(blockLoc, trapdoorSound, 1.0f, 1.0f);
+                            }
+                        } else if (interactionType.contains("GATE")) {
+                            if (blockData instanceof org.bukkit.block.data.Openable) {
+                                org.bukkit.block.data.Openable openable =
+                                    (org.bukkit.block.data.Openable) blockData.clone();
+                                boolean shouldBeOpen = interactionType.equals("GATE_OPEN");
+                                openable.setOpen(shouldBeOpen);
+
+                                for (Player viewer : replayPlayer.getViewers()) {
+                                    viewer.sendBlockChange(blockLoc, openable);
+                                }
+
+                                Sound gateSound = shouldBeOpen ?
+                                    Sound.BLOCK_FENCE_GATE_OPEN : Sound.BLOCK_FENCE_GATE_CLOSE;
+                                playSoundToViewers(blockLoc, gateSound, 1.0f, 1.0f);
+                            }
+                        } else if (interactionType.contains("BUTTON")) {
+                            playSoundToViewers(blockLoc, Sound.BLOCK_STONE_BUTTON_CLICK_ON, 0.3f, 0.6f);
+                            spawnParticleForViewers(Particle.CRIT,
+                                blockLoc.clone().add(0.5, 0.5, 0.5), 3, 0.1, 0.1, 0.1, 0);
+                        } else if (interactionType.contains("LEVER")) {
+                            if (blockData instanceof org.bukkit.block.data.Powerable) {
+                                org.bukkit.block.data.Powerable lever =
+                                    (org.bukkit.block.data.Powerable) blockData.clone();
+                                lever.setPowered(!lever.isPowered());
+
+                                for (Player viewer : replayPlayer.getViewers()) {
+                                    viewer.sendBlockChange(blockLoc, lever);
+                                }
+
+                                playSoundToViewers(blockLoc, Sound.BLOCK_LEVER_CLICK, 0.3f, 0.6f);
+                            }
+                        }
+                    }
+                    break;
+
+                default:
+                    break;
             }
         });
     }
@@ -3317,43 +3615,111 @@ public class ReplayActionPlayer {
     /**
      * Nearby player için item action oynatır
      */
-    private void playNearbyItem(ItemAction action) {
-        // Item drop/pickup - world'de item entity spawn et
+    private void playNearbyItem(ItemAction action, UUID ownerUUID) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (replayPlayer.getLastLocation() != null && replayPlayer.getLastLocation().getWorld() != null) {
-                org.bukkit.Location itemLoc = new org.bukkit.Location(
-                        replayPlayer.getLastLocation().getWorld(),
-                        action.getX(),
-                        action.getY(),
-                        action.getZ()
-                );
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
 
-                if (action.getActionType() == ItemAction.ItemActionType.DROP) {
-                    try {
-                        byte[] itemBytes = java.util.Base64.getDecoder().decode(action.getItemData());
-                        org.bukkit.inventory.ItemStack itemStack =
-                                com.reportsystem.spigot.utils.ItemSerializer.itemStackFromBytes(itemBytes);
+            Location itemLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(),
+                    action.getY(),
+                    action.getZ()
+            );
 
-                        if (itemStack != null) {
-                            itemLoc.getWorld().dropItem(itemLoc, itemStack);
-                            plugin.getLogger().info("[REPLAY-DEBUG] Nearby player item drop: " +
-                                    itemStack.getType());
+            try {
+                ItemStack itemStack = ItemSerializer.deserializeItemStack(action.getItemData());
+                if (itemStack == null || itemStack.getType() == Material.AIR) return;
+                itemStack.setAmount(action.getAmount());
+
+                switch (action.getActionType()) {
+                    case DROP:
+                        // Civar NPC'nin göz seviyesinde, baktığı yönde hafif önde spawn et
+                        double nYawRad = Math.toRadians(loc.getYaw());
+                        Location nearbyDropSpawn = loc.clone().add(
+                                -Math.sin(nYawRad) * 0.3,
+                                1.3,
+                                Math.cos(nYawRad) * 0.3
+                        );
+
+                        playSoundToViewers(nearbyDropSpawn, Sound.ENTITY_ITEM_PICKUP, 0.5f, 0.8f);
+
+                        Item droppedItem = nearbyDropSpawn.getWorld().dropItem(nearbyDropSpawn, itemStack);
+
+                        // Velocity: yeni kayıtlarda gerçek velocity, eski kayıtlarda fallback
+                        boolean isNearbyVelData = Math.abs(action.getX()) < 5 &&
+                                                  Math.abs(action.getY()) < 5 &&
+                                                  Math.abs(action.getZ()) < 5;
+
+                        if (isNearbyVelData) {
+                            droppedItem.setVelocity(new Vector(action.getX(), action.getY(), action.getZ()));
+                        } else {
+                            droppedItem.setVelocity(loc.getDirection().multiply(0.3));
                         }
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("[REPLAY-DEBUG] Failed to deserialize item: " + e.getMessage());
-                    }
+
+                        droppedItem.setPickupDelay(Integer.MAX_VALUE);
+                        droppedItem.setSilent(true);
+                        spawnedEntities.add(droppedItem);
+                        hideFromNonViewers(droppedItem);
+
+                        // 5 saniye sonra kaldır
+                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                            if (droppedItem.isValid()) {
+                                droppedItem.remove();
+                            }
+                        }, 100L);
+
+                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby item drop: " +
+                                itemStack.getType() + " | realVel=" + isNearbyVelData);
+                        break;
+
+                    case PICKUP:
+                        playSoundToViewers(itemLoc, Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
+                        spawnParticleForViewers(Particle.ITEM,
+                                itemLoc, 10, 0.2, 0.2, 0.2, 0.05, itemStack);
+                        break;
                 }
+            } catch (Exception e) {
+                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to play nearby item: " + e.getMessage());
             }
         });
     }
 
     /**
      * Nearby player için potion effect oynatır
+     * Particle efekti ve ses ile gösterir
      */
-    private void playNearbyPotionEffect(PotionEffectAction action, int entityId) {
-        // Potion effect metadata gönder
-        // TODO: PacketEvents ile potion effect metadata implement et
-        plugin.getLogger().info("[REPLAY-DEBUG] Nearby player potion effect: " +
+    private void playNearbyPotionEffect(PotionEffectAction action, int entityId, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Nearby NPC'nin konumunu kullan, ana NPC'nin değil
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            for (Player viewer : replayPlayer.getViewers()) {
+                switch (action.getActionType()) {
+                    case ADD:
+                        spawnParticleForViewers(Particle.ENTITY_EFFECT,
+                                loc.clone().add(0, 1, 0),
+                                20, 0.5, 0.5, 0.5, 0,
+                                org.bukkit.Color.fromRGB(255, 0, 255));
+                        viewer.playSound(loc, Sound.ENTITY_GENERIC_DRINK, 1.0f, 1.0f);
+                        break;
+
+                    case REMOVE:
+                        break;
+
+                    case CLEAR_ALL:
+                        spawnParticleForViewers(Particle.CLOUD,
+                                loc.clone().add(0, 1, 0), 30, 0.5, 0.5, 0.5, 0.1);
+                        viewer.playSound(loc, Sound.ENTITY_GENERIC_SPLASH, 1.0f, 1.0f);
+                        break;
+                }
+            }
+        });
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player potion effect: " +
                 action.getEffectType() + " (Level " + action.getAmplifier() + ")");
     }
 
@@ -3368,17 +3734,685 @@ public class ReplayActionPlayer {
             viewer.sendMessage(chatMessage);
         }
 
-        plugin.getLogger().info("[REPLAY-DEBUG] Nearby player chat: " + action.getMessage());
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player chat: " + action.getMessage());
     }
 
     /**
      * Nearby player için use item action oynatır
+     * Eating/drinking animasyonunu entity metadata ile gönderir
      */
-    private void playNearbyUseItem(UseItemAction action, int entityId) {
-        // Item kullanma animasyonu/efekti
-        // TODO: Eat/drink animation için entity metadata gönder
-        plugin.getLogger().info("[REPLAY-DEBUG] Nearby player use item: " +
-                action.getUseType() + " - Duration: " + action.getDuration());
+    private void playNearbyUseItem(UseItemAction action, int entityId, UUID ownerUUID) {
+        List<EntityData<?>> metadata = new ArrayList<>();
+
+        if (action.isStarted()) {
+            // Using item flag (0x10) + hand active flag
+            byte entityFlags = 0x10; // Hand active
+            metadata.add(new EntityData(0, EntityDataTypes.BYTE, entityFlags));
+            metadata.add(new EntityData(8, EntityDataTypes.BYTE,
+                    (byte)(action.isMainHand() ? 0x01 : 0x02)));
+        } else {
+            // Kullanım bitti
+            metadata.add(new EntityData(0, EntityDataTypes.BYTE, (byte) 0));
+
+            // Yeme tamamlandıysa ses efekti — nearby NPC'nin konumunda çal
+            if (action.getUseType() == UseItemAction.UseType.FOOD_EAT) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+                    if (loc == null) loc = replayPlayer.getLastLocation();
+                    if (loc != null && loc.getWorld() != null) {
+                        playSoundToViewers(loc, Sound.ENTITY_PLAYER_BURP, 0.5f, 1.0f);
+                    }
+                });
+            }
+        }
+
+        WrapperPlayServerEntityMetadata metadataPacket = new WrapperPlayServerEntityMetadata(
+                entityId, metadata);
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+        }
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player use item: " +
+                action.getUseType() + " started=" + action.isStarted());
+    }
+
+    /**
+     * Nearby player için projectile action oynatır
+     */
+    private void playNearbyProjectile(ProjectileAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Nearby player NPC'sinin son konumunu bul
+            Location npcLoc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (npcLoc == null) {
+                npcLoc = replayPlayer.getLastLocation();
+            }
+            if (npcLoc == null || npcLoc.getWorld() == null) return;
+
+            Location spawnLoc = npcLoc.clone().add(0, 1.5, 0);
+            spawnLoc.setYaw(action.getYaw());
+            spawnLoc.setPitch(action.getPitch());
+
+            Vector velocity = new Vector(
+                    action.getVelocityX(),
+                    action.getVelocityY(),
+                    action.getVelocityZ()
+            );
+
+            spawnProjectile(npcLoc.getWorld(), spawnLoc, velocity, action.getType(), action.getPotionData());
+            playSoundToViewers(spawnLoc, getSoundForProjectile(action.getType()), 1.0f, 1.0f);
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player projectile: " + action.getType());
+        });
+    }
+
+    /**
+     * Nearby player için fishing action oynatır
+     */
+    private void playNearbyFishing(FishingAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location hookLoc = new Location(loc.getWorld(),
+                    action.getHookX(), action.getHookY(), action.getHookZ());
+
+            Integer nearbyEntityId = replayPlayer.getNpcManager().getNearbyPlayerEntityId(ownerUUID);
+
+            switch (action.getState()) {
+                case CAST:
+                    // Önceki bobber varsa kaldır
+                    despawnNearbyFishingBobber(ownerUUID);
+
+                    playSoundToViewers(loc, Sound.ENTITY_FISHING_BOBBER_THROW, 1.0f, 1.0f);
+
+                    if (nearbyEntityId == null) break;
+
+                    int bobberId = ReplayNPCManager.generateEntityId();
+                    nearbyFishingBobbers.put(ownerUUID, bobberId);
+
+                    // Civar NPC'nin göz seviyesinde, baktığı yönde hafif önde spawn et
+                    double yawRad = Math.toRadians(loc.getYaw());
+
+                    double spawnX = loc.getX() - Math.sin(yawRad) * 0.3;
+                    double spawnY = loc.getY() + 1.62;
+                    double spawnZ = loc.getZ() + Math.cos(yawRad) * 0.3;
+
+                    // Velocity: yeni kayıtlarda gerçek velocity, eski kayıtlarda fallback
+                    double velX, velY, velZ;
+                    boolean isVelData = Math.abs(action.getHookX()) < 5 &&
+                                        Math.abs(action.getHookY()) < 5 &&
+                                        Math.abs(action.getHookZ()) < 5;
+
+                    if (isVelData) {
+                        velX = action.getHookX();
+                        velY = action.getHookY();
+                        velZ = action.getHookZ();
+                    } else {
+                        double pitchRad = Math.toRadians(loc.getPitch());
+                        double throwPower = 1.5;
+                        velX = -Math.sin(yawRad) * Math.cos(pitchRad) * throwPower;
+                        velY = -Math.sin(pitchRad) * throwPower + 0.2;
+                        velZ = Math.cos(yawRad) * Math.cos(pitchRad) * throwPower;
+                    }
+
+                    WrapperPlayServerSpawnEntity spawnBobber = new WrapperPlayServerSpawnEntity(
+                            bobberId,
+                            Optional.of(UUID.randomUUID()),
+                            EntityTypes.FISHING_BOBBER,
+                            new Vector3d(spawnX, spawnY, spawnZ),
+                            (float) loc.getPitch(),
+                            (float) loc.getYaw(),
+                            0f,
+                            nearbyEntityId, // data = civar NPC entity ID
+                            Optional.of(new Vector3d(velX, velY, velZ))
+                    );
+
+                    for (Player viewer : replayPlayer.getViewers()) {
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawnBobber);
+                    }
+
+                    // Velocity paketi
+                    WrapperPlayServerEntityVelocity velPacket = new WrapperPlayServerEntityVelocity(
+                            bobberId, new Vector3d(velX, velY, velZ));
+                    for (Player viewer : replayPlayer.getViewers()) {
+                        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, velPacket);
+                    }
+
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-FISHING] Nearby bobber | real=" + isVelData +
+                            " | vel=" + String.format("%.3f, %.3f, %.3f", velX, velY, velZ) +
+                            " | bobberId=" + bobberId + " | owner=" + nearbyEntityId);
+                    break;
+
+                case CAUGHT:
+                    despawnNearbyFishingBobber(ownerUUID);
+                    playSoundToViewers(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1.0f, 1.0f);
+                    spawnParticleForViewers(Particle.SPLASH, hookLoc, 20, 0.3, 0.1, 0.3, 0.05);
+                    break;
+
+                case REEL_IN:
+                    despawnNearbyFishingBobber(ownerUUID);
+                    playSoundToViewers(hookLoc, Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1.0f, 1.0f);
+                    break;
+
+                case FAILED:
+                    despawnNearbyFishingBobber(ownerUUID);
+                    break;
+            }
+        });
+    }
+
+    /**
+     * Civar oyuncunun fishing bobber'ını kaldırır
+     */
+    private void despawnNearbyFishingBobber(UUID ownerUUID) {
+        Integer bobberId = nearbyFishingBobbers.remove(ownerUUID);
+        if (bobberId != null) {
+            WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(bobberId);
+            for (Player viewer : replayPlayer.getViewers()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroy);
+            }
+        }
+    }
+
+    /**
+     * Nearby player için fire action oynatır
+     */
+    private void playNearbyFire(FireAction action, int entityId) {
+        byte entityFlags = 0;
+        if (action.isOnFire()) {
+            entityFlags |= 0x01; // On fire flag
+        }
+
+        List<EntityData<?>> metadata = new ArrayList<>();
+        metadata.add(new EntityData(0, EntityDataTypes.BYTE, entityFlags));
+
+        WrapperPlayServerEntityMetadata metadataPacket = new WrapperPlayServerEntityMetadata(
+                entityId, metadata);
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+        }
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player fire: " + action.isOnFire());
+    }
+
+    /**
+     * Nearby player için teleport action oynatır
+     */
+    private void playNearbyTeleport(TeleportAction action, int nearbyEntityId, UUID ownerUUID) {
+        Location newLoc = new Location(
+                replayPlayer.getLastLocation().getWorld(),
+                action.getToX(), action.getToY(), action.getToZ()
+        );
+
+        // NPC'yi yeni konuma teleport et
+        WrapperPlayServerEntityTeleport teleportPacket = new WrapperPlayServerEntityTeleport(
+                nearbyEntityId,
+                new Vector3d(newLoc.getX(), newLoc.getY(), newLoc.getZ()),
+                0, 0, false
+        );
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, teleportPacket);
+        }
+
+        // Particle efekti
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (newLoc.getWorld() != null) {
+                spawnParticleForViewers(Particle.PORTAL, newLoc.clone().add(0, 1, 0),
+                        30, 0.3, 0.5, 0.3, 0.1);
+                playSoundToViewers(newLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+            }
+        });
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player teleport to: " +
+                action.getToX() + "," + action.getToY() + "," + action.getToZ());
+    }
+
+    /**
+     * Nearby player için bucket action oynatır
+     */
+    private void playNearbyBucket(BucketAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+            if (replayPlayer.getViewers().isEmpty()) return;
+
+            Location blockLoc = new Location(
+                    loc.getWorld(),
+                    action.getBlockX(), action.getBlockY(), action.getBlockZ()
+            );
+
+            String blockKey = action.getBlockX() + "," + action.getBlockY() + "," + action.getBlockZ();
+
+            if (!originalBlocks.containsKey(blockKey)) {
+                originalBlocks.put(blockKey, blockLoc.getBlock().getType());
+            }
+
+            if (action.getActionType() == BucketAction.ActionType.EMPTY) {
+                // Kova boşaltma - su/lav bloğu koy
+                Material fluidMaterial;
+                Sound bucketSound;
+                switch (action.getBucketType()) {
+                    case LAVA:
+                        fluidMaterial = Material.LAVA;
+                        bucketSound = Sound.ITEM_BUCKET_EMPTY_LAVA;
+                        break;
+                    case POWDER_SNOW:
+                        fluidMaterial = Material.POWDER_SNOW;
+                        bucketSound = Sound.ITEM_BUCKET_EMPTY_POWDER_SNOW;
+                        break;
+                    default:
+                        fluidMaterial = Material.WATER;
+                        bucketSound = Sound.ITEM_BUCKET_EMPTY;
+                        break;
+                }
+
+                for (Player viewer : replayPlayer.getViewers()) {
+                    viewer.sendBlockChange(blockLoc, fluidMaterial.createBlockData());
+                }
+                playSoundToViewers(blockLoc, bucketSound, 1.0f, 1.0f);
+            } else {
+                // Kova doldurma - bloğu kaldır
+                for (Player viewer : replayPlayer.getViewers()) {
+                    viewer.sendBlockChange(blockLoc, Material.AIR.createBlockData());
+                }
+
+                Sound fillSound = action.getBucketType() == BucketAction.BucketType.LAVA ?
+                        Sound.ITEM_BUCKET_FILL_LAVA : Sound.ITEM_BUCKET_FILL;
+                playSoundToViewers(blockLoc, fillSound, 1.0f, 1.0f);
+            }
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player bucket: " +
+                    action.getActionType() + " " + action.getBucketType());
+        });
+    }
+
+    /**
+     * Nearby player için container action oynatır
+     */
+    private void playNearbyContainer(ContainerAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location containerLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            Sound sound = action.isOpened() ?
+                    Sound.BLOCK_CHEST_OPEN : Sound.BLOCK_CHEST_CLOSE;
+
+            if (action.getContainerType() == ContainerAction.ContainerType.ENDER_CHEST) {
+                sound = action.isOpened() ?
+                        Sound.BLOCK_ENDER_CHEST_OPEN : Sound.BLOCK_ENDER_CHEST_CLOSE;
+            } else if (action.getContainerType() == ContainerAction.ContainerType.BARREL) {
+                sound = action.isOpened() ?
+                        Sound.BLOCK_BARREL_OPEN : Sound.BLOCK_BARREL_CLOSE;
+            } else if (action.getContainerType() == ContainerAction.ContainerType.SHULKER_BOX) {
+                sound = action.isOpened() ?
+                        Sound.BLOCK_SHULKER_BOX_OPEN : Sound.BLOCK_SHULKER_BOX_CLOSE;
+            }
+
+            playSoundToViewers(containerLoc, sound, 1.0f, 1.0f);
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player container: " +
+                    action.getContainerType() + " " + (action.isOpened() ? "OPEN" : "CLOSE"));
+        });
+    }
+
+    /**
+     * Nearby player için damage action oynatır (hasar animasyonu)
+     */
+    private void playNearbyDamage(DamageAction action, int entityId, UUID ownerUUID) {
+        // Hurt animasyonu gönder
+        WrapperPlayServerEntityAnimation animPacket = new WrapperPlayServerEntityAnimation(
+                entityId, WrapperPlayServerEntityAnimation.EntityAnimationType.HURT);
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, animPacket);
+        }
+
+        // Hasar sesi
+        if (action.shouldPlaySound()) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+                if (loc == null) loc = replayPlayer.getLastLocation();
+                if (loc != null && loc.getWorld() != null) {
+                    Sound damageSound;
+                    switch (action.getDamageType()) {
+                        case FALL: damageSound = Sound.ENTITY_PLAYER_HURT; break;
+                        case FIRE: damageSound = Sound.ENTITY_PLAYER_HURT_ON_FIRE; break;
+                        case DROWNING: damageSound = Sound.ENTITY_PLAYER_HURT_DROWN; break;
+                        default: damageSound = Sound.ENTITY_PLAYER_HURT; break;
+                    }
+                    playSoundToViewers(loc, damageSound, 1.0f, 1.0f);
+                }
+            });
+        }
+    }
+
+    /**
+     * Nearby player için entity interaction oynatır
+     */
+    private void playNearbyInteractEntity(InteractEntityAction action, int entityId) {
+        // Swing animasyonu
+        WrapperPlayServerEntityAnimation animPacket = new WrapperPlayServerEntityAnimation(
+                entityId, WrapperPlayServerEntityAnimation.EntityAnimationType.SWING_MAIN_ARM);
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, animPacket);
+        }
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player interact entity: " +
+                action.getType() + " -> " + action.getTargetEntityType());
+    }
+
+    /**
+     * Nearby player için breed action oynatır
+     */
+    private void playNearbyBreed(BreedAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location breedLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            spawnParticleForViewers(Particle.HEART, breedLoc.clone().add(0, 1, 0),
+                    10, 0.5, 0.3, 0.5, 0);
+            playSoundToViewers(breedLoc, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player breed: " + action.getBabyEntityType());
+        });
+    }
+
+    /**
+     * Nearby player için block ignite action oynatır
+     */
+    private void playNearbyBlockIgnite(BlockIgniteAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location igniteLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            spawnParticleForViewers(Particle.FLAME, igniteLoc, 20, 0.5, 0.5, 0.5, 0.02);
+            playSoundToViewers(igniteLoc, Sound.ITEM_FLINTANDSTEEL_USE, 1.0f, 1.0f);
+
+            // Ateş bloğunu göster
+            String blockKey = action.getX() + "," + action.getY() + "," + action.getZ();
+            if (!originalBlocks.containsKey(blockKey)) {
+                originalBlocks.put(blockKey, igniteLoc.getBlock().getType());
+            }
+            for (Player viewer : replayPlayer.getViewers()) {
+                viewer.sendBlockChange(igniteLoc, Material.FIRE.createBlockData());
+            }
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player block ignite: " + action.getIgniteType());
+        });
+    }
+
+    /**
+     * Nearby player için hanging action oynatır (resim, item frame)
+     */
+    private void playNearbyHanging(HangingAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location npcLoc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (npcLoc == null) npcLoc = replayPlayer.getLastLocation();
+            if (npcLoc == null || npcLoc.getWorld() == null) return;
+
+            Location loc = new Location(
+                    npcLoc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            if (action.getActionType() == HangingAction.ActionType.PLACE) {
+                try {
+                    org.bukkit.block.BlockFace facing = org.bukkit.block.BlockFace.valueOf(action.getFacing());
+
+                    Hanging hanging = null;
+                    switch (action.getHangingType()) {
+                        case PAINTING:
+                            hanging = loc.getWorld().spawn(loc, Painting.class, painting -> {
+                                painting.setFacingDirection(facing);
+                                if (action.getPaintingArt() != null) {
+                                    try {
+                                        org.bukkit.Art art = org.bukkit.Art.valueOf(action.getPaintingArt());
+                                        painting.setArt(art);
+                                    } catch (Exception e) {
+                                        // Ignore
+                                    }
+                                }
+                            });
+                            break;
+                        case ITEM_FRAME:
+                            hanging = loc.getWorld().spawn(loc, ItemFrame.class, frame -> {
+                                frame.setFacingDirection(facing);
+                            });
+                            break;
+                        case GLOW_ITEM_FRAME:
+                            hanging = loc.getWorld().spawn(loc, GlowItemFrame.class, frame -> {
+                                frame.setFacingDirection(facing);
+                            });
+                            break;
+                    }
+
+                    if (hanging != null) {
+                        spawnedEntities.add(hanging);
+                        hideFromNonViewers(hanging);
+                    }
+                } catch (Exception e) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby hanging place error: " + e.getMessage());
+                }
+            } else {
+                // BREAK - yakındaki hanging'i bul ve kaldır
+                for (Entity entity : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
+                    if (entity instanceof Hanging) {
+                        entity.remove();
+                        break;
+                    }
+                }
+            }
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player hanging: " +
+                    action.getActionType() + " " + action.getHangingType());
+        });
+    }
+
+    /**
+     * Nearby player için bed action oynatır
+     */
+    private void playNearbyBed(BedAction action, int entityId) {
+        if (action.getActionType() == BedAction.ActionType.ENTER_BED) {
+            // Uyuma pozu
+            List<EntityData<?>> metadata = new ArrayList<>();
+            metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.SLEEPING));
+
+            WrapperPlayServerEntityMetadata metadataPacket = new WrapperPlayServerEntityMetadata(
+                    entityId, metadata);
+
+            for (Player viewer : replayPlayer.getViewers()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+            }
+        } else {
+            // Kalktı - normal poza dön
+            List<EntityData<?>> metadata = new ArrayList<>();
+            metadata.add(new EntityData(6, EntityDataTypes.ENTITY_POSE, EntityPose.STANDING));
+
+            WrapperPlayServerEntityMetadata metadataPacket = new WrapperPlayServerEntityMetadata(
+                    entityId, metadata);
+
+            for (Player viewer : replayPlayer.getViewers()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+            }
+        }
+
+        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player bed: " + action.getActionType());
+    }
+
+    /**
+     * Nearby player için craft action oynatır
+     */
+    private void playNearbyCraft(CraftAction action) {
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.sendMessage("§7[Craft] §f" + action.getCraftedItem() + " x" + action.getAmount());
+        }
+    }
+
+    /**
+     * Nearby player için game mode action oynatır
+     */
+    private void playNearbyGameMode(GameModeAction action) {
+        String modeName;
+        switch (action.getGameMode()) {
+            case CREATIVE: modeName = "§dCreative"; break;
+            case ADVENTURE: modeName = "§eAdventure"; break;
+            case SPECTATOR: modeName = "§7Spectator"; break;
+            default: modeName = "§aSurvival"; break;
+        }
+
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.sendMessage("§7[GameMode] §f" + modeName);
+        }
+    }
+
+    /**
+     * Nearby player için book edit action oynatır
+     */
+    private void playNearbyBookEdit(BookEditAction action) {
+        if (action.isSigned()) {
+            for (Player viewer : replayPlayer.getViewers()) {
+                viewer.sendMessage("§7[Book] §f" + action.getAuthor() + " signed: " + action.getTitle());
+            }
+        }
+    }
+
+    /**
+     * Nearby player için enchant action oynatır
+     */
+    private void playNearbyEnchant(EnchantAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc != null && loc.getWorld() != null) {
+                spawnParticleForViewers(Particle.ENCHANT,
+                        loc.clone().add(0, 1.5, 0), 30, 0.5, 0.5, 0.5, 1.0);
+                playSoundToViewers(loc, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1.0f, 1.0f);
+            }
+        });
+    }
+
+    /**
+     * Nearby player için entity dye action oynatır
+     */
+    private void playNearbyEntityDye(EntityDyeAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location dyeLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            spawnParticleForViewers(Particle.ITEM,
+                    dyeLoc.clone().add(0, 1, 0), 15, 0.3, 0.3, 0.3, 0.05);
+            playSoundToViewers(dyeLoc, Sound.ITEM_DYE_USE, 1.0f, 1.0f);
+        });
+    }
+
+    /**
+     * Nearby player için portal action oynatır
+     */
+    private void playNearbyPortal(PortalAction action, int entityId, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            spawnParticleForViewers(Particle.PORTAL, loc.clone().add(0, 1, 0),
+                    50, 0.5, 1.0, 0.5, 0.5);
+            playSoundToViewers(loc, Sound.BLOCK_PORTAL_TRAVEL, 0.5f, 1.0f);
+        });
+    }
+
+    /**
+     * Nearby player için farming action oynatır
+     */
+    private void playNearbyFarming(FarmingAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location farmLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            switch (action.getFarmingType()) {
+                case BONE_MEAL:
+                    spawnParticleForViewers(Particle.HAPPY_VILLAGER,
+                            farmLoc.clone().add(0.5, 0.5, 0.5), 15, 0.3, 0.3, 0.3, 0);
+                    playSoundToViewers(farmLoc, Sound.ITEM_BONE_MEAL_USE, 1.0f, 1.0f);
+                    break;
+                case CROP_HARVEST:
+                    playSoundToViewers(farmLoc, Sound.BLOCK_CROP_BREAK, 1.0f, 1.0f);
+                    break;
+                case HOE_TILL:
+                    playSoundToViewers(farmLoc, Sound.ITEM_HOE_TILL, 1.0f, 1.0f);
+                    break;
+                case FARMLAND_TRAMPLE:
+                    playSoundToViewers(farmLoc, Sound.BLOCK_GRASS_BREAK, 1.0f, 0.8f);
+                    break;
+            }
+        });
+    }
+
+    /**
+     * Nearby player için sign action oynatır
+     */
+    private void playNearbySign(SignAction action, UUID ownerUUID) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location loc = replayPlayer.getNpcManager().getNearbyPlayerLocation(ownerUUID);
+            if (loc == null) loc = replayPlayer.getLastLocation();
+            if (loc == null || loc.getWorld() == null) return;
+
+            Location signLoc = new Location(
+                    loc.getWorld(),
+                    action.getX(), action.getY(), action.getZ()
+            );
+
+            // Sign text'ini viewer'lara göster
+            for (Player viewer : replayPlayer.getViewers()) {
+                String[] lines = action.getLines();
+                if (lines != null && lines.length > 0) {
+                    StringBuilder signText = new StringBuilder("§7[Sign] ");
+                    for (String line : lines) {
+                        if (line != null && !line.isEmpty()) {
+                            signText.append(line).append(" | ");
+                        }
+                    }
+                    viewer.sendMessage(signText.toString());
+                }
+            }
+
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby player sign change");
+        });
     }
 
     /**
@@ -3391,7 +4425,6 @@ public class ReplayActionPlayer {
         }
 
         try {
-            // ItemData'dan Bukkit ItemStack'i deserialize et
             org.bukkit.inventory.ItemStack bukkitItem =
                     com.reportsystem.spigot.utils.ItemSerializer.itemStackFromBytes(itemData.getItemStackData());
 
@@ -3399,32 +4432,61 @@ public class ReplayActionPlayer {
                 return null;
             }
 
-            // Bukkit ItemStack'i PacketEvents ItemStack'e çevir
-            String materialName = bukkitItem.getType().name().toLowerCase();
-            com.github.retrooper.packetevents.protocol.item.type.ItemType itemType =
-                    com.github.retrooper.packetevents.protocol.item.type.ItemTypes.getByName(
-                            "minecraft:" + materialName
-                    );
-
-            // Bulunamazsa özel mapping kullan
-            if (itemType == null) {
-                itemType = getMappedItemType(bukkitItem.getType());
-            }
-
-            // Hala bulunamazsa varsayılan kullan
-            if (itemType == null) {
-                plugin.getLogger().warning("[REPLAY-DEBUG] Unknown item type for nearby player: " +
-                        bukkitItem.getType().name() + ", using STONE as fallback");
-                itemType = com.github.retrooper.packetevents.protocol.item.type.ItemTypes.STONE;
-            }
-
-            return com.github.retrooper.packetevents.protocol.item.ItemStack.builder()
-                    .type(itemType)
-                    .amount(bukkitItem.getAmount())
-                    .build();
+            return SpigotConversionUtil.fromBukkitItemStack(bukkitItem);
         } catch (Exception e) {
-            plugin.getLogger().warning("[REPLAY-DEBUG] Failed to convert ItemData: " + e.getMessage());
+            ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to convert ItemData: " + e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Entity flags'i sıfırlar (seek/rewind sonrası ateş, sneaking vb. kaldırılır)
+     */
+    public void resetEntityFlags() {
+        currentEntityFlags = 0;
+    }
+
+    /**
+     * Sadece replay viewer'lara ses caldirir (yakin da ki diger oyuncular duymaz)
+     */
+    private void playSoundToViewers(Location location, Sound sound, float volume, float pitch) {
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.playSound(location, sound, volume, pitch);
+        }
+    }
+
+    /**
+     * Sadece replay viewer'lara partikul gosterir
+     */
+    private void spawnParticleForViewers(Particle particle, Location location, int count) {
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.spawnParticle(particle, location, count);
+        }
+    }
+
+    private void spawnParticleForViewers(Particle particle, Location location, int count,
+                                         double offsetX, double offsetY, double offsetZ, double extra) {
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.spawnParticle(particle, location, count, offsetX, offsetY, offsetZ, extra);
+        }
+    }
+
+    private <T> void spawnParticleForViewers(Particle particle, Location location, int count,
+                                              double offsetX, double offsetY, double offsetZ, double extra, T data) {
+        for (Player viewer : replayPlayer.getViewers()) {
+            viewer.spawnParticle(particle, location, count, offsetX, offsetY, offsetZ, extra, data);
+        }
+    }
+
+    /**
+     * Spawn edilen entity'yi sadece replay viewer'lara gosterir, diger oyunculardan gizler
+     */
+    private void hideFromNonViewers(Entity entity) {
+        Set<Player> viewers = new HashSet<>(replayPlayer.getViewers());
+        for (Player online : plugin.getServer().getOnlinePlayers()) {
+            if (!viewers.contains(online)) {
+                online.hideEntity(plugin, entity);
+            }
         }
     }
 

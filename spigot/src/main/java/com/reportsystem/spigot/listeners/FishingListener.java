@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.FishingAction;
 import com.reportsystem.common.replay.actions.InteractEntityAction;
 import com.reportsystem.common.replay.actions.UseItemAction;
@@ -31,108 +32,116 @@ public class FishingListener implements Listener {
         Player player = event.getPlayer();
         RecordingSession session = recordingManager.getSession(player.getUniqueId());
 
-        plugin.getLogger().info("[RECORDING-DEBUG] PlayerFishEvent detected: " + event.getState().name() + " for player: " + player.getName());
+        // Kayıt yoksa hiçbir şey yapma
+        if (session == null) return;
 
-        if (session != null) {
-            plugin.getLogger().info("[RECORDING-DEBUG] Recording session found for " + player.getName());
-            FishHook hook = event.getHook();
-            FishingAction.FishingState state = null;
+        FishHook hook = event.getHook();
+        FishingAction.FishingState state = null;
 
-            switch (event.getState()) {
-                case FISHING:
-                    state = FishingAction.FishingState.CAST;
+        switch (event.getState()) {
+            case FISHING:
+                // Olta kullanma animasyonu ekle
+                session.addAction(new UseItemAction(
+                        UseItemAction.UseType.FISHING_ROD,
+                        0,
+                        true, // main hand
+                        true  // started
+                ));
 
-                    // Olta kullanma animasyonu ekle
-                    session.addAction(new UseItemAction(
-                            UseItemAction.UseType.FISHING_ROD,
-                            0,
-                            true, // main hand
-                            true  // started
-                    ));
-                    break;
+                // CAST için hook'un VELOCITY'sini kaydet (konum değil!)
+                // hookX/Y/Z alanlarına velocity yazılır, replay'de gerçek fırlatma yönü kullanılır
+                org.bukkit.util.Vector vel = hook.getVelocity();
+                session.addAction(new FishingAction(
+                        FishingAction.FishingState.CAST,
+                        vel.getX(), vel.getY(), vel.getZ()
+                ));
 
-                case CAUGHT_FISH:
-                    state = FishingAction.FishingState.CAUGHT;
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Fishing CAST with velocity: " +
+                        String.format("%.3f, %.3f, %.3f", vel.getX(), vel.getY(), vel.getZ()));
+                // state null bırak — alttaki default kayıt çalışmasın
+                break;
 
-                    // Yakalanan item'ı serialize et
+            case CAUGHT_FISH:
+                state = FishingAction.FishingState.CAUGHT;
+
+                // Yakalanan item'ı serialize et
+                if (event.getCaught() instanceof Item) {
+                    Item caughtItem = (Item) event.getCaught();
+                    org.bukkit.inventory.ItemStack itemStack = caughtItem.getItemStack();
+                    String caughtItemData = com.reportsystem.spigot.utils.ItemSerializer.serializeItemStack(itemStack);
+
+                    // FishingAction'ı caught item ile kaydet
+                    FishingAction action = new FishingAction(
+                            state,
+                            hook.getLocation().getX(),
+                            hook.getLocation().getY(),
+                            hook.getLocation().getZ(),
+                            caughtItemData
+                    );
+                    session.addAction(action);
+
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Fishing caught: " + itemStack.getType().name() +
+                            " (amount: " + itemStack.getAmount() + ")");
+                    return; // Early return to avoid duplicate action
+                }
+                break;
+
+            case CAUGHT_ENTITY:
+                // Entity yakalandıysa
+                if (event.getCaught() != null) {
                     if (event.getCaught() instanceof Item) {
-                        Item caughtItem = (Item) event.getCaught();
-                        org.bukkit.inventory.ItemStack itemStack = caughtItem.getItemStack();
-                        String caughtItemData = com.reportsystem.spigot.utils.ItemSerializer.serializeItemStack(itemStack);
-
-                        // FishingAction'ı caught item ile kaydet
-                        FishingAction action = new FishingAction(
-                                state,
-                                hook.getLocation().getX(),
-                                hook.getLocation().getY(),
-                                hook.getLocation().getZ(),
-                                caughtItemData
-                        );
-                        session.addAction(action);
-
-                        plugin.getLogger().info("[RECORDING-DEBUG] Fishing caught: " + itemStack.getType().name() +
-                                " (amount: " + itemStack.getAmount() + ")");
-                        return; // Early return to avoid duplicate action
-                    }
-                    break;
-
-                case CAUGHT_ENTITY:
-                    // Entity yakalandıysa
-                    if (event.getCaught() != null) {
-                        if (event.getCaught() instanceof Item) {
-                            state = FishingAction.FishingState.CAUGHT;
-                        } else {
-                            // Entity çekme (koyun vb.)
-                            state = FishingAction.FishingState.REEL_IN;
-
-                            // Entity'yi kaydet
-                            InteractEntityAction entityAction = new InteractEntityAction(
-                                    InteractEntityAction.InteractionType.RIGHT_CLICK,
-                                    event.getCaught().getUniqueId(),
-                                    event.getCaught().getType().name() + "_FISHING_CAUGHT",
-                                    event.getCaught().getLocation().getX(),
-                                    event.getCaught().getLocation().getY(),
-                                    event.getCaught().getLocation().getZ()
-                            );
-                            session.addAction(entityAction);
-
-                            plugin.getLogger().info("[RECORDING-DEBUG] Entity caught with fishing rod: " + event.getCaught().getType());
-                        }
-                    } else {
                         state = FishingAction.FishingState.CAUGHT;
+                    } else {
+                        // Entity çekme (koyun vb.)
+                        state = FishingAction.FishingState.REEL_IN;
+
+                        // Entity'yi kaydet
+                        InteractEntityAction entityAction = new InteractEntityAction(
+                                InteractEntityAction.InteractionType.RIGHT_CLICK,
+                                event.getCaught().getUniqueId(),
+                                event.getCaught().getType().name() + "_FISHING_CAUGHT",
+                                event.getCaught().getLocation().getX(),
+                                event.getCaught().getLocation().getY(),
+                                event.getCaught().getLocation().getZ()
+                        );
+                        session.addAction(entityAction);
+
+                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Entity caught with fishing rod: " + event.getCaught().getType());
                     }
-                    break;
+                } else {
+                    state = FishingAction.FishingState.CAUGHT;
+                }
+                break;
 
-                case REEL_IN:
-                case IN_GROUND:
-                    state = FishingAction.FishingState.REEL_IN;
+            case REEL_IN:
+            case IN_GROUND:
+                state = FishingAction.FishingState.REEL_IN;
 
-                    // Olta kullanma bitişi
-                    session.addAction(new UseItemAction(
-                            UseItemAction.UseType.FISHING_ROD,
-                            0,
-                            true, // main hand
-                            false // ended
-                    ));
-                    break;
+                // Olta kullanma bitişi
+                session.addAction(new UseItemAction(
+                        UseItemAction.UseType.FISHING_ROD,
+                        0,
+                        true, // main hand
+                        false // ended
+                ));
+                break;
 
-                case FAILED_ATTEMPT:
-                case BITE:
-                    state = FishingAction.FishingState.FAILED;
-                    break;
-            }
+            case FAILED_ATTEMPT:
+            case BITE:
+                state = FishingAction.FishingState.FAILED;
+                break;
+        }
 
-            if (state != null) {
-                FishingAction action = new FishingAction(
-                        state,
-                        hook.getLocation().getX(),
-                        hook.getLocation().getY(),
-                        hook.getLocation().getZ()
-                );
-                session.addAction(action);
+        if (state != null) {
+            FishingAction action = new FishingAction(
+                    state,
+                    hook.getLocation().getX(),
+                    hook.getLocation().getY(),
+                    hook.getLocation().getZ()
+            );
+            session.addAction(action);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Fishing action: " + state);
-            }
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Fishing action: " + state);
         }
     }
 }

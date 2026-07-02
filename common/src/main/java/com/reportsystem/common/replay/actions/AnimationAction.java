@@ -1,6 +1,8 @@
 package com.reportsystem.common.replay.actions;
 
 public class AnimationAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
+
     public enum AnimationType {
         SWING_MAIN_HAND,
         SWING_OFF_HAND,

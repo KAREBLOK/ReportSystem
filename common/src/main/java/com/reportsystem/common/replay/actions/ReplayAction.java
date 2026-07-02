@@ -1,5 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.UUID;
 
@@ -8,7 +10,9 @@ import java.util.UUID;
  * Serializable arayüzü, bu nesnelerin kolayca saklanabilir hale gelmesini sağlar.
  */
 public abstract class ReplayAction implements Serializable {
-    private static final long serialVersionUID = 2L; // Değişti - yeni field eklendi
+    // serialVersionUID = 1L olarak kalmalı! Eski replay verilerini kırmamak için asla değiştirme.
+    // ownerUUID field'ı sonradan eklendi, eski verilerde yoktur - readObject() ile handle ediliyor.
+    private static final long serialVersionUID = 1L;
 
     // Her aksiyonun ne zaman gerçekleştiğini bilmek için zaman damgası
     private final long timestamp;
@@ -19,6 +23,16 @@ public abstract class ReplayAction implements Serializable {
     public ReplayAction() {
         this.timestamp = System.currentTimeMillis();
         this.ownerUUID = null; // Varsayılan: ana oyuncu
+    }
+
+    /**
+     * Eski replay verileri ownerUUID field'ı olmadan serialize edilmiş olabilir.
+     * Bu durumda ownerUUID null olarak kalır (ana oyuncu varsayılır).
+     */
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        // Eski verilerde ownerUUID field'ı yoksa, defaultReadObject() null bırakır - sorun yok.
+        // Bu zaten istediğimiz davranış: ownerUUID == null -> ana oyuncu
     }
 
     public long getTimestamp() {

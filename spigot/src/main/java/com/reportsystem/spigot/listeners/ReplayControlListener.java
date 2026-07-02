@@ -12,9 +12,11 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 
@@ -41,6 +43,11 @@ public class ReplayControlListener implements Listener {
 
         if (!isLeftClick && !isRightClick) return;
 
+        // 1. sahis modunda tiklama devre disi - cikis sadece Q (drop) ile
+        if (replayPlayer.getNpcManager().isFirstPersonEnabled()) {
+            return;
+        }
+
         int slot = player.getInventory().getHeldItemSlot();
         ItemStack item = player.getInventory().getItem(slot);
 
@@ -59,9 +66,8 @@ public class ReplayControlListener implements Listener {
                 }
                 break;
 
-            case 1: // Replay Bilgileri GUI
-                if (item.getType() == Material.BOOK) {
-                    // DÜZELTİLDİ: Constructor
+            case 1: // Replay Ayarları GUI
+                if (item.getType() == Material.COMPARATOR) {
                     new ReplayInfoGUI(plugin, player, replayPlayer).open();
                     player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.0f);
                 }
@@ -77,7 +83,6 @@ public class ReplayControlListener implements Listener {
 
             case 4: // Işınlanma GUI
                 if (item.getType() == Material.ENDER_PEARL) {
-                    // DÜZELTİLDİ: Constructor
                     new ReplayTeleportGUI(plugin, player, replayPlayer).open();
                     player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.0f);
                 }
@@ -115,21 +120,36 @@ public class ReplayControlListener implements Listener {
                 break;
 
             case 8: // Durdur
-                plugin.getLogger().info("[REPLAY-CONTROL] Stop button clicked by " + player.getName());
+                plugin.debug("[REPLAY-CONTROL] Stop button clicked by " + player.getName());
                 player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 0.5f);
                 showTitle(player, ChatColor.RED + "■", "Durduruluyor...");
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     try {
-                        plugin.getReplayManager().stopReplay(player);
+                        // Overwatch review'daysa finish() cagir (post-replay itemleri gosterir)
+                        if (plugin.getOverwatchReplayListener() != null
+                                && plugin.getOverwatchReplayListener().isReviewing(player.getUniqueId())) {
+                            replayPlayer.finish();
+                        } else {
+                            plugin.getReplayManager().stopReplay(player);
+                        }
                     } catch (Exception e) {
                         plugin.getLogger().severe("[REPLAY-CONTROL] Error stopping replay for " + player.getName() + ": " + e.getMessage());
                         e.printStackTrace();
                         plugin.getReplayManager().removeActiveReplay(player.getUniqueId());
                         plugin.getReplayManager().getControlManager().removeControlItems(player);
-                        player.sendMessage(ChatColor.RED + "Replay durduruldu (hata ile)!");
+                        player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("replay.stopped-error")));
                     }
                 });
                 break;
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerAnimation(PlayerAnimationEvent event) {
+        Player player = event.getPlayer();
+        ReplayPlayer replayPlayer = plugin.getReplayManager().getViewerReplay(player);
+        if (replayPlayer != null && replayPlayer.getNpcManager().isFirstPersonEnabled()) {
+            event.setCancelled(true);
         }
     }
 
@@ -141,9 +161,20 @@ public class ReplayControlListener implements Listener {
     }
 
     @EventHandler
+    public void onSneak(PlayerToggleSneakEvent event) {
+        if (!event.isSneaking()) return;
+        Player player = event.getPlayer();
+        ReplayPlayer replayPlayer = plugin.getReplayManager().getViewerReplay(player);
+        if (replayPlayer != null && replayPlayer.getNpcManager().isFirstPersonEnabled()) {
+            replayPlayer.getNpcManager().setFirstPerson(false);
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.5f, 0.5f);
+            plugin.getReplayManager().getControlManager().exitFirstPersonMode(player, replayPlayer);
+        }
+    }
+
+    @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof Player && plugin.getReplayManager().isWatchingReplay((Player) event.getWhoClicked())) {
-            // Sadece oyuncunun kendi envanterine tıklanmasını engelle, GUI'lere izin ver
             if (event.getClickedInventory() != null && event.getClickedInventory() == event.getWhoClicked().getInventory()) {
                 event.setCancelled(true);
             }
@@ -153,7 +184,7 @@ public class ReplayControlListener implements Listener {
     @EventHandler
     public void onItemHeld(PlayerItemHeldEvent event) {
         if (plugin.getReplayManager().isWatchingReplay(event.getPlayer())) {
-            // bilgi gösterme kaldırıldı
+            // bilgi gosterme kaldirildi
         }
     }
 

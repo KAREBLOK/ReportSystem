@@ -52,15 +52,15 @@ public class NearbyPlayerTracker {
 
         // Config'den ayarları yükle
         this.enabled = plugin.getConfig().getBoolean("replay.nearby-player-tracking.enabled", true);
-        this.intervalTicks = plugin.getConfig().getInt("replay.nearby-player-tracking.interval-ticks", 5);
-        this.trackingDistance = plugin.getConfig().getDouble("replay.nearby-player-tracking.distance", 48.0);
+        this.intervalTicks = plugin.getConfig().getInt("replay.nearby-player-tracking.interval-ticks", 3);
+        this.trackingDistance = plugin.getConfig().getDouble("replay.nearby-player-tracking.distance", 32.0);
         this.movementThreshold = plugin.getConfig().getDouble("replay.nearby-player-tracking.movement-threshold", 0.05);
         this.trackEquipment = plugin.getConfig().getBoolean("replay.nearby-player-tracking.track.equipment", true);
         this.trackAnimations = plugin.getConfig().getBoolean("replay.nearby-player-tracking.track.animations", true);
         this.trackSneaking = plugin.getConfig().getBoolean("replay.nearby-player-tracking.track.sneaking", true);
         this.trackSprinting = plugin.getConfig().getBoolean("replay.nearby-player-tracking.track.sprinting", true);
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Initialized for " + recordedPlayer.getName() +
+        plugin.debug("[NEARBY-TRACKER] Initialized for " + recordedPlayer.getName() +
                 " | Interval: " + intervalTicks + " ticks" +
                 " | Distance: " + trackingDistance + " blocks" +
                 " | Threshold: " + movementThreshold);
@@ -71,7 +71,7 @@ public class NearbyPlayerTracker {
      */
     public void start() {
         if (!enabled) {
-            plugin.getLogger().info("[NEARBY-TRACKER] Disabled in config, not starting");
+            plugin.debug("[NEARBY-TRACKER] Disabled in config, not starting");
             return;
         }
 
@@ -82,7 +82,7 @@ public class NearbyPlayerTracker {
                 intervalTicks // Her X tick'te bir
         );
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Started for " + recordedPlayer.getName());
+        plugin.debug("[NEARBY-TRACKER] Started for " + recordedPlayer.getName());
     }
 
     /**
@@ -94,13 +94,8 @@ public class NearbyPlayerTracker {
             trackingTask = null;
         }
 
-        // Tüm tracked player'ları DISAPPEAR yap
-        for (UUID uuid : trackedPlayers) {
-            Player player = plugin.getServer().getPlayer(uuid);
-            if (player != null) {
-                recordPlayerDisappear(player);
-            }
-        }
+        // NOT: DISAPPEAR kaydetmiyoruz - tracker durduğunda nearby oyuncular
+        // replay'de aniden kaybolmamalı. Son konumlarında kalmaya devam ederler.
 
         // Temizlik
         lastLocations.clear();
@@ -109,7 +104,7 @@ public class NearbyPlayerTracker {
         lastSprintingState.clear();
         trackedPlayers.clear();
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Stopped for " + recordedPlayer.getName());
+        plugin.debug("[NEARBY-TRACKER] Stopped for " + recordedPlayer.getName());
     }
 
     /**
@@ -224,7 +219,7 @@ public class NearbyPlayerTracker {
 
         session.addAction(appearAction);
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Player appeared: " + player.getName() +
+        plugin.debug("[NEARBY-TRACKER] Player appeared: " + player.getName() +
                 " at " + String.format("%.1f, %.1f, %.1f", player.getLocation().getX(),
                 player.getLocation().getY(), player.getLocation().getZ()));
     }
@@ -240,7 +235,7 @@ public class NearbyPlayerTracker {
         Location lastLoc = lastLocations.get(uuid);
         Location currentLoc = player.getLocation();
 
-        if (lastLoc == null || lastLoc.distanceSquared(currentLoc) > (movementThreshold * movementThreshold)) {
+        if (lastLoc == null || !lastLoc.getWorld().equals(currentLoc.getWorld()) || lastLoc.distanceSquared(currentLoc) > (movementThreshold * movementThreshold)) {
             recordPlayerMove(player);
             lastLocations.put(uuid, currentLoc.clone());
             hasChanges = true;
@@ -315,7 +310,7 @@ public class NearbyPlayerTracker {
         lastSneakingState.remove(player.getUniqueId());
         lastSprintingState.remove(player.getUniqueId());
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Player disappeared: " + player.getName());
+        plugin.debug("[NEARBY-TRACKER] Player disappeared: " + player.getName());
     }
 
     /**
@@ -365,10 +360,11 @@ public class NearbyPlayerTracker {
     private void recordEquipmentChange(Player player, EquipmentAction.EquipmentSlot slot, ItemStack item) {
         EquipmentAction.ItemData itemData = convertToItemData(item);
         EquipmentAction equipAction = new EquipmentAction(slot, itemData);
+        equipAction.setOwnerUUID(player.getUniqueId());
 
         session.addAction(equipAction);
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Equipment changed for " + player.getName() +
+        plugin.debug("[NEARBY-TRACKER] Equipment changed for " + player.getName() +
                 " | Slot: " + slot + " | Item: " + (item != null ? item.getType() : "AIR"));
     }
 
@@ -383,7 +379,7 @@ public class NearbyPlayerTracker {
         );
         session.addAction(stateAction);
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Sneaking state for " + player.getName() + ": " + sneaking);
+        plugin.debug("[NEARBY-TRACKER] Sneaking state for " + player.getName() + ": " + sneaking);
     }
 
     /**
@@ -397,7 +393,7 @@ public class NearbyPlayerTracker {
         );
         session.addAction(stateAction);
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Sprinting state for " + player.getName() + ": " + sprinting);
+        plugin.debug("[NEARBY-TRACKER] Sprinting state for " + player.getName() + ": " + sprinting);
     }
 
     /**
@@ -521,7 +517,7 @@ public class NearbyPlayerTracker {
             inventoryMap.put(40, convertItemToData(offhand));
         }
 
-        plugin.getLogger().info("[NEARBY-TRACKER] Full inventory recorded for " + player.getName() +
+        plugin.debug("[NEARBY-TRACKER] Full inventory recorded for " + player.getName() +
                 ": " + inventoryMap.size() + " items");
 
         return inventoryMap;

@@ -1,77 +1,90 @@
-# Report Detail GUI Configuration
-# Used when viewing report details
-#
-# NOTE: All button texts (names and lores) are now defined in messages_*.yml files
-# under "gui.report-detail.buttons.*" to support multi-language.
-# This config file only contains:
-#   - GUI size and layout (slots)
-#   - Material types for each button
-#   - Background settings
-#
-# To change button text, edit messages_tr.yml or messages_en.yml
+# Rapor Detay GUI
+title: "&8&nRapor #%id%"
+size: 27
 
-size: 54
+# Arka plan
+background:
+  enabled: false
 
-# Player head (report info)
-# Text is defined in messages_*.yml under "gui.report-detail.player-head-name" and "gui.report-detail.labels.*"
+# Oyuncu başlığı
 player-head:
   slot: 4
+  name: "&c⚡ %reported%"
+  labels:
+    report-id: "Rapor ID:"
+    reporter: "Raporlayan:"
+    reason: "Sebep:"
+    date: "Tarih:"
+    server: "Sunucu:"
+    total-reports: "Toplam Rapor:"
+    status: "Durum:"
+    times: "kez"
+    unknown: "Bilinmiyor"
+    trust-level: "Hesap Durumu:"
 
-# Replay button
-# Text is defined in messages_*.yml under "gui.report-detail.buttons.replay-available" and "replay-unavailable"
-replay:
-  slot: 22
-
-  # When replay is available
-  available:
-    material: ENDER_EYE
-
-  # When replay is not available
-  unavailable:
-    material: ENDER_PEARL
-
-# Action buttons (when pending)
-# Text is defined in messages_*.yml under "gui.report-detail.buttons.accept" and "reject"
+# İşlem butonları
 actions:
   accept:
-    slot: 29
+    slot: 10
     material: LIME_DYE
+    name: "&a&l✓ Onayla"
+    lore:
+      - ''
+      - '&7Raporu haklı bul ve onayla.'
+      - ''
+      - '&e► Onaylamak için tıkla'
 
   reject:
-    slot: 30
+    slot: 12
     material: RED_DYE
+    name: "&c&l✗ Reddet"
+    lore:
+      - ''
+      - '&7Raporu haksız bul ve reddet.'
+      - ''
+      - '&e► Reddetmek için tıkla'
 
-# Punishment buttons
-# Text is defined in messages_*.yml under "gui.report-detail.buttons.ban", "mute", "kick", "warn", "teleport"
+# Replay butonu
+replay:
+  slot: 14
+
+  available:
+    material: SUNFLOWER
+    name: "&d&l▶ Replay İzle"
+    lore:
+      - ''
+      - '&7Olayın kaydını izle.'
+      - ''
+      - ' &8▪ &a✓ Replay mevcut'
+      - ''
+      - '&e► İzlemek için tıkla'
+
+  unavailable:
+    material: IRON_NUGGET
+    name: "&7Replay Yok"
+    lore:
+      - ''
+      - '&7Bu rapor için kayıt bulunamadı.'
+      - ''
+      - ' &8▪ &c✗ Replay mevcut değil'
+
+# Işınlanma butonu
 punishments:
-  ban:
-    slot: 38
-    material: IRON_AXE
-
-  mute:
-    slot: 39
-    material: BARRIER
-
-  kick:
-    slot: 40
-    material: LEATHER_BOOTS
-
-  warn:
-    slot: 41
-    material: PAPER
-
   teleport:
-    slot: 42
+    slot: 16
     material: ENDER_PEARL
+    name: "&b&l🌀 Işınlan"
+    lore:
+      - ''
+      - '&7Raporlanan oyuncuya ışınlan.'
+      - ''
+      - '&e► Işınlanmak için tıkla'
 
-# Navigation
-# Text is defined in messages_*.yml under "gui.report-detail.buttons.back"
+# Navigasyon
 navigation:
   back:
-    slot: 49
+    slot: 22
     material: ARROW
-
-# Background
-background:
-  material: GRAY_STAINED_GLASS_PANE
-  name: " "
+    name: "&8←"
+    lore:
+      - "&7Rapor listesine dön"

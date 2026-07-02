@@ -43,9 +43,12 @@ public class InternalBungeeProvider implements PunishmentProvider {
     public boolean kick(String playerName, String reason, String punisher) {
         ProxiedPlayer player = ProxyServer.getInstance().getPlayer(playerName);
         if (player != null) {
-            player.disconnect(ChatColor.RED + "Sunucudan atıldınız!\n\n" +
-                    ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                    ChatColor.GRAY + "Atan yetkili: " + ChatColor.WHITE + punisher);
+            String kickMsg = ChatColor.translateAlternateColorCodes('&',
+                    plugin.getConfig().getString("messages.kick.player-message",
+                            "&cSunucudan atıldınız!\n\n&7Sebep: &f%reason%\n&7Atan yetkili: &f%staff%\n\n&aTekrar girebilirsiniz."))
+                    .replace("%reason%", reason)
+                    .replace("%staff%", punisher);
+            player.disconnect(kickMsg);
             return true;
         }
         return false;

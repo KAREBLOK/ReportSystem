@@ -10,6 +10,7 @@ import java.util.Map;
  * Records all 41 inventory slots (36 inventory + 4 armor + 1 offhand)
  */
 public class InventorySnapshotAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final Map<Integer, ItemData> inventoryContents; // Slot -> ItemData
 

@@ -35,10 +35,12 @@ public class AnimatedBanGUI extends GUI {
         inventory = Bukkit.createInventory(this, size, title);
 
         // Background
-        String bgMaterial = guiConfig.getConfig().getString("background.material", "BLACK_STAINED_GLASS_PANE");
-        Material bgMat = Material.getMaterial(bgMaterial);
-        if (bgMat != null) {
-            fillBorder(bgMat);
+        if (guiConfig.isBackgroundEnabled()) {
+            String bgMaterial = guiConfig.getConfig().getString("background.material", "BLACK_STAINED_GLASS_PANE");
+            Material bgMat = Material.getMaterial(bgMaterial);
+            if (bgMat != null) {
+                fillBorder(bgMat);
+            }
         }
 
         // Player info
@@ -74,11 +76,11 @@ public class AnimatedBanGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString("player-info.name", "&4⚡ %target%");
+            String name = guiConfig.getConfigString("player-info.name", "&4⚡ %target%");
             name = name.replace("%target%", targetName);
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-            List<String> lore = guiConfig.getConfig().getStringList("player-info.lore");
+            List<String> lore = guiConfig.getConfigStringList("player-info.lore");
             List<String> processedLore = lore.stream()
                     .map(line -> ChatColor.translateAlternateColorCodes('&', line))
                     .collect(Collectors.toList());
@@ -97,10 +99,10 @@ public class AnimatedBanGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString(path + ".name", "&7Duration");
+            String name = guiConfig.getConfigString(path + ".name", "&7Duration");
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-            List<String> lore = guiConfig.getConfig().getStringList(path + ".lore");
+            List<String> lore = guiConfig.getConfigStringList(path + ".lore");
             List<String> processedLore = lore.stream()
                     .map(line -> ChatColor.translateAlternateColorCodes('&', line))
                     .collect(Collectors.toList());

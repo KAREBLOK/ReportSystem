@@ -1,31 +1,30 @@
 # ReportSystem Spigot Configuration
-# Wiki: https://github.com/yourname/ReportSystem/wiki
-# Discord: https://discord.gg/yourserver
+# Support: https://kareblok.tc
 
 # ======================
 # License Settings
 # ======================
 license:
-  # Lisans anahtarınızı buraya girin
-  # Lisans satın almak için: https://kareblok.tc
+  # Enter your license key here
+  # Purchase a license at: https://kareblok.tc
   # Format: KB-XXXX-XXXX-XXXX
   #
-  # BungeeCord Kullanıcıları:
-  # Aynı lisansı birden fazla sunucuda (Faction, Skyblock, PvP vb.) kullanabilirsiniz.
-  # Lisansınızın max_servers ayarını admin panelden kontrol edin.
+  # BungeeCord Users:
+  # You can use the same license on multiple servers (Factions, Skyblock, PvP, etc.)
+  # Check your max_servers setting from the admin panel.
   license-key: "KB-XXXX-XXXX-XXXX"
 
-  # API URL (değiştirmeyin)
+  # API URL (do not change)
   api-url: "https://kareblok.tc"
 
 # ======================
 # Telemetry Settings
 # ======================
 telemetry:
-  # Telemetri sistemini etkinleştir/devre dışı bırak
-  # Bu sistem sunucu istatistiklerini toplar (oyuncu sayısı, rapor sayısı, TPS vb.)
-  # Veriler anonim olarak toplanır ve sadece geliştirme için kullanılır
-  # İstediğiniz zaman kapatabilirsiniz
+  # Enable/disable telemetry system
+  # Collects server statistics (player count, report count, TPS, etc.)
+  # Data is collected anonymously and used only for development
+  # You can disable it anytime
   enabled: true
 
 # ======================
@@ -50,7 +49,7 @@ general:
 database:
   # Database type: 'sqlite' or 'mysql'
   # For BungeeCord networks, use 'mysql'
-  type: mysql
+  type: sqlite
 
   # MySQL settings (only if type is mysql)
   mysql:
@@ -73,7 +72,7 @@ database:
 # ======================
 bungeecord:
   # Enable BungeeCord support
-  enabled: true
+  enabled: false
 
   # Server display name (for GUIs)
   # Leave empty to use actual server name
@@ -115,12 +114,12 @@ reports:
 
   # Report categories
   categories:
-    - "Hile"
-    - "Hakaret/Küfür"
+    - "Cheating"
+    - "Harassment"
     - "Spam"
     - "Griefing"
     - "Bug Abuse"
-    - "Diğer"
+    - "Other"
 
   # Notifications
   notifications:
@@ -137,6 +136,36 @@ reports:
     # Send action bar to staff
     actionbar-enabled: false
 
+  # Reporter Feedback (Hypixel style)
+  # When a report is accepted, notify the reporter that action was taken
+  # Rejected reports do NOT send notifications (like Hypixel)
+  reporter-feedback:
+    enabled: true
+    sound-enabled: true
+    sound: "ENTITY_EXPERIENCE_ORB_PICKUP"
+
+
+# ======================
+# Trust Level (Account Standing)
+# ======================
+# Violation points decay over time using half-life formula
+# Old violations have less impact, good behavior is rewarded naturally
+trust-level:
+  enabled: true
+
+  # Violation points per punishment type
+  points:
+    ban: 40
+    mute: 15
+    kick: 10
+    warn: 5
+
+  # Decay settings
+  decay:
+    # Half-life in days - violation loses half its impact after this many days
+    # 30 days: BAN (40pts) -> 20pts after 30 days -> 10pts after 60 days
+    half-life-days: 30
+
 
 # ======================
 # Replay Settings
@@ -152,11 +181,13 @@ replay:
   recording-duration: 45
 
   # Maximum concurrent recordings
-  max-recordings: 10
+  # 3 recommended for performance (each recording uses ~3-4 ms/tick CPU)
+  max-recordings: 3
 
   # Maximum replay file size (MB)
   # Set to -1 to disable (unlimited size)
-  max-file-size: -1
+  # 5 MB = more than enough for a 45-second recording
+  max-file-size: 5
 
   # Auto-delete replays after X days
   # Set to -1 to disable
@@ -190,17 +221,18 @@ replay:
 
     # Tracking interval (ticks)
     # Lower = smoother movement, higher CPU usage
-    # Recommended: 2-3 ticks (100-150ms) for smooth movement
-    interval-ticks: 2
+    # 3 = ideal balance (150ms), 5 = performance focused, 2 = smoothest
+    interval-ticks: 3
 
     # Maximum tracking distance (blocks)
-    # Players within this range will be tracked
-    distance: 48
+    # Players within this distance are recorded as nearby NPCs
+    # 32 = normal combat range, 48 = very wide (unnecessary CPU)
+    distance: 32
 
     # Movement threshold (blocks)
-    # Minimum distance for movement to be recorded
-    # Lower = more accurate, more data
-    movement-threshold: 0.01
+    # Movements smaller than this are not recorded
+    # 0.05 = 5cm, invisible to the eye but 40-60% less data
+    movement-threshold: 0.05
 
     # Use PlayerMoveEvent for instant tracking
     # If true, uses event-based tracking (more accurate but higher CPU)
@@ -238,6 +270,35 @@ replay:
     # NPC glow color (when selected)
     glow-color: "YELLOW"
 
+  # ======================
+  # Web Replay Settings
+  # ======================
+  # Converts replay recordings to a web browser viewable format.
+  # Viewed in 3D via mcraft.fun (minecraft-web-client).
+  web-replay:
+    # Enable web replay system
+    enabled: false
+
+    # Auto-generate web replay when recording ends
+    auto-generate: false
+
+    # Directory for generated .packets.txt files
+    # Leave empty to use the plugin's own folder (plugins/ReportSystem-Spigot/web-replays)
+    storage-path: ""
+
+    # Access URL for web replay files (CDN or web server)
+    # File must be accessible at: {base-url}/replay_42.packets.txt
+    # CORS header required: Access-Control-Allow-Origin: *
+    base-url: ""
+
+    # Replay viewer URL (mcraft.fun or self-hosted)
+    viewer-url: "https://s.mcraft.fun"
+
+    # KAREBLOK.TC Web Replay API (auto upload)
+    # Replay file is automatically uploaded to kareblok.tc and displayed on the website
+    # Leave empty to disable upload, only local files will be created
+    api-url: "https://kareblok.tc/api/reportsystem/web-replay/upload.php"
+
 # ======================
 # Punishment Settings
 # ======================
@@ -248,19 +309,19 @@ punishments:
   # Default punishment reasons
   default-reasons:
     ban:
-      - "Hile kullanımı"
-      - "Uygunsuz davranış"
-      - "Ban kaçağı"
-      - "Reklam"
+      - "Cheating"
+      - "Inappropriate behavior"
+      - "Ban evasion"
+      - "Advertising"
     mute:
-      - "Hakaret/Küfür"
+      - "Harassment"
       - "Spam"
       - "Caps Lock"
-      - "Reklam"
+      - "Advertising"
     kick:
       - "AFK"
-      - "Uyarı"
-      - "Yeniden giriş"
+      - "Warning"
+      - "Rejoin required"
 
   # Punishment durations (for quick select)
   durations:
@@ -304,12 +365,14 @@ overwatch:
   min-reviewers: 3
 
   # Consensus threshold (percentage)
-  # If this percentage of reviewers vote GUILTY, auto-punishment is applied
-  # Example: 70.0 means if 70% or more vote guilty, player gets banned
+  # If this percentage of reviewers vote GUILTY, the report is marked as consensus-reached
+  # Note: Auto-punishment is not yet implemented. Admins review consensus reports manually.
+  # Example: 70.0 means if 70% or more vote guilty, consensus is reached
   consensus-threshold: 70.0
 
   # Auto-ban duration (days)
   # Duration for automatic bans when consensus is reached
+  # Note: Auto-punishment feature is planned but not yet active
   auto-ban-duration-days: 30
 
   # NPC settings
@@ -322,6 +385,7 @@ overwatch:
   queue:
     # Auto-add reports to queue
     # If true, new reports are automatically added to Overwatch queue
+    # Currently reports are added via /overwatch addqueue command or automatically on report creation
     auto-add-reports: false
 
     # Default priority for auto-added reports
@@ -336,6 +400,7 @@ overwatch:
   reviewer:
     # Allow skip voting
     # If false, reviewers must choose GUILTY or INNOCENT
+    # Note: Skip button visibility is controlled by overwatch-verdict.yml GUI config
     allow-skip: true
 
     # Cooldown between reviews (seconds)
@@ -344,17 +409,18 @@ overwatch:
 
   # XP and Ranking
   xp:
-    # XP rewards
+    # XP rewards per review
     guilty-innocent-xp: 15
     skip-xp: 5
 
-    # XP required for ranks
+    # XP thresholds for rank promotions
+    # Players reaching these XP values will be promoted to the corresponding rank
     bronze-xp: 0
     silver-xp: 500
     gold-xp: 1000
     diamond-xp: 2500
 
-    # XP per level
+    # XP required per level
     xp-per-level: 100
 
   # Reward Commands (executed when player completes a review)
@@ -378,22 +444,93 @@ overwatch:
 
     # Commands to run when player levels up
     on-level-up:
-      - "broadcast &6[Overwatch] &e%player% &7seviye &e%level% &7oldu!"
+      - "broadcast &6[Overwatch] &e%player% &7reached level &e%level%&7!"
       - "give %player% diamond 5"
 
     # Commands to run when player reaches a new rank
     on-rank-up:
       bronze:
-        - "broadcast &c[Overwatch] &e%player% &c&lBRONZE &7rütbesine ulaştı!"
+        - "broadcast &c[Overwatch] &e%player% &7reached &c&lBRONZE &7rank!"
       silver:
-        - "broadcast &7[Overwatch] &e%player% &7&lSILVER &7rütbesine ulaştı!"
+        - "broadcast &7[Overwatch] &e%player% &7reached &7&lSILVER &7rank!"
         - "give %player% iron_ingot 32"
       gold:
-        - "broadcast &6[Overwatch] &e%player% &6&lGOLD &7rütbesine ulaştı!"
+        - "broadcast &6[Overwatch] &e%player% &7reached &6&lGOLD &7rank!"
         - "give %player% gold_ingot 32"
       diamond:
-        - "broadcast &b[Overwatch] &e%player% &b&lDIAMOND &7rütbesine ulaştı!"
+        - "broadcast &b[Overwatch] &e%player% &7reached &b&lDIAMOND &7rank!"
         - "give %player% diamond 64"
+
+# ======================
+# Polar Anti-Cheat Integration
+# ======================
+# Automatically creates recording + report when Polar detects cheating
+# Requirement: Polar Anti-Cheat (PolarLoader) must be installed
+#
+# How it works:
+#   Polar sends 4 signals: Detection, Cloud ML, Mitigation, Punishment
+#   Each signal accumulates a "suspicion score". When the threshold is reached,
+#   automatic recording starts, a report is created and added to Overwatch queue.
+#   Cloud ML detections (killaura, auto-clicker) give the highest score.
+#   Movement/reach mitigations give low score (evidence accumulation only).
+#   Score decays by 50% every 60 seconds (filters temporary lag spikes).
+#
+polar:
+  # Enable integration
+  enabled: false
+
+  # Suspicion score threshold (0.5 = sensitive, 1.0 = balanced, 1.5 = conservative)
+  # Example: Cloud Combat Behavior = +0.50, Kill Aura = +0.35, Mitigation = +0.08
+  # 1.0 recommended for balanced detection
+  suspicion-threshold: 1.0
+
+  # Cooldown before re-triggering for the same player (seconds)
+  cooldown-seconds: 300
+
+  # Maximum concurrent auto-recordings
+  max-auto-recordings: 5
+
+  # Auto-recording duration (seconds)
+  recording-duration: 30
+
+  # Add auto-reports to Overwatch queue
+  add-to-overwatch: true
+
+# ======================
+# Vulcan Anti-Cheat Integration
+# ======================
+# Automatically creates recording + report when Vulcan detects cheating
+# Requirement: Vulcan must be installed + enable-api: true in its config
+#
+# Same scoring system as Polar:
+#   KillAura flag = +0.40, AutoClicker = +0.35, Scaffold = +0.35
+#   Movement (Speed, Flight) = +0.10-0.15 (mitigated by setback)
+#   Recording starts when score threshold is reached.
+#
+vulcan:
+  enabled: false
+  suspicion-threshold: 1.0
+  cooldown-seconds: 300
+  max-auto-recordings: 5
+  recording-duration: 30
+  add-to-overwatch: true
+
+# ======================
+# Grim AntiCheat Integration
+# ======================
+# Automatically creates recording + report when Grim detects cheating
+# Requirement: GrimAC must be installed (free, open source)
+#
+# Same scoring system as Polar/Vulcan.
+# Grim excels at movement, reach and scaffold detection.
+#
+grim:
+  enabled: false
+  suspicion-threshold: 1.0
+  cooldown-seconds: 300
+  max-auto-recordings: 5
+  recording-duration: 30
+  add-to-overwatch: true
 
 # ======================
 # Discord Webhook Settings
@@ -442,3 +579,24 @@ discord-webhook:
   # Debug mode
   # Shows detailed webhook logs in console
   debug: false
+
+# ============================================
+# ANTI-CHEAT BYPASS (Replay viewer korumasi)
+# ============================================
+# Replay izleyen yetkililer sunucu tarafindan paketlerle teleport edildigi
+# icin anti-cheat'ler "Timer / Blink / Flight" gibi false-positive flag atabilir
+# ve viewer disconnect olabilir. Bu sistem viewer'a otomatik bypass perm verir
+# ve kendi hook'larimizdaki (Vulcan/Grim/Polar) flag'leri yok sayar.
+#
+# Vurgulanan perm listesi default olarak yaygin anti-cheat'leri kapsar:
+#   vulcan.bypass, grim.bypass, polar.bypass, themis.bypass,
+#   aac.bypass, matrix.bypass, ncp.bypass, spartan.bypass, karhu.bypass,
+#   intave.bypass, verus.bypass, reportsystem.bypass.anticheat
+#
+# Sunucunda farkli/ozel bir anti-cheat varsa, onun bypass perm'ini buraya ekle.
+# Boylece replay izlerken o AC de pas geçecek.
+anticheat-bypass:
+  extra-permissions: []
+    # ornekler:
+    # - "myac.bypass"
+    # - "noks.bypass.replay"

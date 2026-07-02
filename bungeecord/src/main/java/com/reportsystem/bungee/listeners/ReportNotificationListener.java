@@ -49,10 +49,14 @@ public class ReportNotificationListener implements Listener {
         }
 
         // BungeeCord'daki yetkililere de bildirim gönder
-        String message = ChatColor.translateAlternateColorCodes('&',
-                "&8[&6Rapor&8] &7(&e" + serverName + "&7) &f" + reporterName +
-                        " &7➜ &c" + reportedName +
-                        "\n&7Sebep: &f" + reason + " &8(#" + reportId + ")");
+        String msgTemplate = plugin.getConfig().getString("messages.report.notification",
+                "&8[&6Rapor&8] &7(&e%server%&7) &f%reporter% &7➜ &c%reported%\n&7Sebep: &f%reason% &8(#%id%)");
+        String message = ChatColor.translateAlternateColorCodes('&', msgTemplate)
+                .replace("%server%", serverName)
+                .replace("%reporter%", reporterName)
+                .replace("%reported%", reportedName)
+                .replace("%reason%", reason)
+                .replace("%id%", String.valueOf(reportId));
 
         for (ProxiedPlayer player : ProxyServer.getInstance().getPlayers()) {
             if (player.hasPermission("reportsystem.notify")) {

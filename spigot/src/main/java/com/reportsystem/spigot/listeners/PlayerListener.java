@@ -41,8 +41,8 @@ public class PlayerListener implements Listener {
                     command.startsWith("/spawn") || command.startsWith("/tpa")) {
 
                 event.setCancelled(true);
-                player.sendMessage("§cReplay izlerken bu komutu kullanamazsınız!");
-                player.sendMessage("§eÖnce replay'i durdurun: §f/replay stop");
+                plugin.getMessageManager().sendMessage(player, "replay.command-blocked");
+                plugin.getMessageManager().sendMessage(player, "replay.command-blocked-tip");
             }
         }
     }

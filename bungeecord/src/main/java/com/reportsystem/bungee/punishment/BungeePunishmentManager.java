@@ -38,6 +38,14 @@ public class BungeePunishmentManager implements Listener {
     }
 
     /**
+     * Config'den mesaj alır ve renk kodlarını çevirir
+     */
+    private String getMessage(String path, String defaultValue) {
+        String msg = plugin.getConfig().getString("messages." + path, defaultValue);
+        return ChatColor.translateAlternateColorCodes('&', msg);
+    }
+
+    /**
      * Global ban uygular
      */
     public boolean globalBan(String playerName, String reason, String punisher, long duration, String serverOrigin) {
@@ -51,14 +59,16 @@ public class BungeePunishmentManager implements Listener {
             if (target != null) {
                 String kickMessage;
                 if (duration > 0) {
-                    kickMessage = ChatColor.RED + "Sunucudan yasaklandınız!\n\n" +
-                            ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                            ChatColor.GRAY + "Süre: " + ChatColor.WHITE + formatDuration(duration) + "\n" +
-                            ChatColor.GRAY + "Cezayı veren: " + ChatColor.WHITE + punisher;
+                    kickMessage = getMessage("ban.kick-temp",
+                                    "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Süre: &f%duration%\n&7Cezayı veren: &f%staff%")
+                            .replace("%reason%", reason)
+                            .replace("%duration%", formatDuration(duration))
+                            .replace("%staff%", punisher);
                 } else {
-                    kickMessage = ChatColor.RED + "Sunucudan kalıcı olarak yasaklandınız!\n\n" +
-                            ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                            ChatColor.GRAY + "Cezayı veren: " + ChatColor.WHITE + punisher;
+                    kickMessage = getMessage("ban.kick-permanent",
+                                    "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Cezayı veren: &f%staff%")
+                            .replace("%reason%", reason)
+                            .replace("%staff%", punisher);
                 }
                 target.disconnect(kickMessage);
             }
@@ -85,16 +95,17 @@ public class BungeePunishmentManager implements Listener {
             // Oyuncuya bildir
             ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
             if (target != null) {
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage(ChatColor.RED + "          SUSTURULDUNUZ!");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GRAY + "  Sebep: " + ChatColor.WHITE + reason);
-                target.sendMessage(ChatColor.GRAY + "  Süre: " + ChatColor.WHITE +
-                        (duration > 0 ? formatDuration(duration) : "Kalıcı"));
-                target.sendMessage(ChatColor.GRAY + "  Yetkili: " + ChatColor.WHITE + punisher);
-                target.sendMessage(ChatColor.RED + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage("");
+                String durationText = duration > 0 ? formatDuration(duration) :
+                        getMessage("duration.permanent", "Kalıcı");
+                String muteMsg = getMessage("mute.player-message",
+                                "&c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n&c          SUSTURULDUNUZ!\n\n&7  Sebep: &f%reason%\n&7  Süre: &f%duration%\n&7  Yetkili: &f%staff%\n&c▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+                        .replace("%reason%", reason)
+                        .replace("%duration%", durationText)
+                        .replace("%staff%", punisher);
+
+                for (String line : muteMsg.split("\\\\n|\\n")) {
+                    target.sendMessage(line);
+                }
             }
 
             // Veritabanına kaydet
@@ -115,10 +126,10 @@ public class BungeePunishmentManager implements Listener {
 
         ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
         if (target != null) {
-            String kickMessage = ChatColor.RED + "Sunucudan atıldınız!\n\n" +
-                    ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                    ChatColor.GRAY + "Atan yetkili: " + ChatColor.WHITE + punisher + "\n\n" +
-                    ChatColor.GREEN + "Tekrar girebilirsiniz.";
+            String kickMessage = getMessage("kick.player-message",
+                            "&cSunucudan atıldınız!\n\n&7Sebep: &f%reason%\n&7Atan yetkili: &f%staff%\n\n&aTekrar girebilirsiniz.")
+                    .replace("%reason%", reason)
+                    .replace("%staff%", punisher);
 
             target.disconnect(kickMessage);
 
@@ -142,19 +153,14 @@ public class BungeePunishmentManager implements Listener {
         if (success) {
             ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
             if (target != null) {
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GOLD + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage(ChatColor.GOLD + "          ⚠ UYARI ⚠");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "  Bir yetkili tarafından uyarıldınız!");
-                target.sendMessage("");
-                target.sendMessage(ChatColor.GRAY + "  Sebep: " + ChatColor.WHITE + reason);
-                target.sendMessage(ChatColor.GRAY + "  Yetkili: " + ChatColor.WHITE + punisher);
-                target.sendMessage("");
-                target.sendMessage(ChatColor.RED + "  Kuralları ihlal etmeye devam ederseniz");
-                target.sendMessage(ChatColor.RED + "  daha ağır cezalar alabilirsiniz!");
-                target.sendMessage(ChatColor.GOLD + "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
-                target.sendMessage("");
+                String warnMsg = getMessage("warn.player-message",
+                                "&6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n&6          ⚠ UYARI ⚠\n\n&c  Bir yetkili tarafından uyarıldınız!\n\n&7  Sebep: &f%reason%\n&7  Yetkili: &f%staff%\n\n&c  Kuralları ihlal etmeye devam ederseniz\n&c  daha ağır cezalar alabilirsiniz!\n&6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
+                        .replace("%reason%", reason)
+                        .replace("%staff%", punisher);
+
+                for (String line : warnMsg.split("\\\\n|\\n")) {
+                    target.sendMessage(line);
+                }
             }
 
             // Tüm sunuculara bildir
@@ -214,7 +220,8 @@ public class BungeePunishmentManager implements Listener {
         // Önce provider üzerinden kontrol et
         if (provider.isBanned(playerName)) {
             event.setCancelled(true);
-            event.setCancelReason(ChatColor.RED + "Bu sunucudan yasaklandınız!");
+            event.setCancelReason(getMessage("ban.login-blocked-provider",
+                    "&cBu sunucudan yasaklandınız!"));
             return;
         }
 
@@ -227,13 +234,14 @@ public class BungeePunishmentManager implements Listener {
 
             String message;
             if (remainingTime > 0) {
-                message = ChatColor.RED + "Sunucudan yasaklandınız!\n\n" +
-                        ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n" +
-                        ChatColor.GRAY + "Kalan süre: " + ChatColor.WHITE + formatDuration(remainingTime);
+                message = getMessage("ban.login-blocked-temp",
+                                "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Kalan süre: &f%duration%")
+                        .replace("%reason%", reason)
+                        .replace("%duration%", formatDuration(remainingTime));
             } else {
-                message = ChatColor.RED + "Sunucudan kalıcı olarak yasaklandınız!\n\n" +
-                        ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason + "\n\n" +
-                        ChatColor.DARK_GRAY + "Ban kaldırma başvurusu için: discord.gg/sunucu";
+                message = getMessage("ban.login-blocked-permanent",
+                                "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n\n&8Ban kaldırma başvurusu için: discord.gg/sunucu")
+                        .replace("%reason%", reason);
             }
 
             event.setCancelReason(message);
@@ -253,15 +261,20 @@ public class BungeePunishmentManager implements Listener {
                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                  )) {
 
-                // UUID'yi bul
-                String playerUUID = "";
+                // Offline oyuncular için UUID bilinmiyor — boş string yerine NULL yaz
+                // (boş string sonradan WHERE player_uuid = ? sorgularını bozar)
+                String playerUUID = null;
                 ProxiedPlayer player = ProxyServer.getInstance().getPlayer(playerName);
                 if (player != null) {
                     playerUUID = player.getUniqueId().toString();
                 }
 
                 stmt.setString(1, playerName);
-                stmt.setString(2, playerUUID);
+                if (playerUUID != null) {
+                    stmt.setString(2, playerUUID);
+                } else {
+                    stmt.setNull(2, Types.VARCHAR);
+                }
                 stmt.setString(3, type);
                 stmt.setString(4, reason);
                 stmt.setString(5, punisher);
@@ -321,8 +334,9 @@ public class BungeePunishmentManager implements Listener {
             stmt.setString(2, type);
             stmt.setLong(3, System.currentTimeMillis());
 
-            ResultSet rs = stmt.executeQuery();
-            return rs.next();
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
 
         } catch (SQLException e) {
             plugin.getLogger().severe("Ceza kontrol hatası: " + e.getMessage());
@@ -343,16 +357,17 @@ public class BungeePunishmentManager implements Listener {
             stmt.setString(1, playerName);
             stmt.setString(2, type);
 
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getString("reason");
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("reason");
+                }
             }
 
         } catch (SQLException e) {
             plugin.getLogger().severe("Ceza sebebi alma hatası: " + e.getMessage());
         }
 
-        return "Bilinmeyen sebep";
+        return plugin.getConfig().getString("messages.punishment.unknown-reason", "Bilinmeyen sebep");
     }
 
     /**
@@ -368,11 +383,12 @@ public class BungeePunishmentManager implements Listener {
             stmt.setString(1, playerName);
             stmt.setString(2, type);
 
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                long endTime = rs.getLong("end_time");
-                if (endTime > 0) {
-                    return endTime - System.currentTimeMillis();
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    long endTime = rs.getLong("end_time");
+                    if (endTime > 0) {
+                        return endTime - System.currentTimeMillis();
+                    }
                 }
             }
 
@@ -392,34 +408,47 @@ public class BungeePunishmentManager implements Listener {
         switch (type) {
             case "ban":
                 if (duration > 0) {
-                    message = ChatColor.RED + "[CEZA] " + ChatColor.WHITE + playerName +
-                            ChatColor.RED + " sunucudan " + formatDuration(duration) + " süreliğine yasaklandı!";
+                    message = getMessage("notify.ban-temp",
+                            "&c[CEZA] &f%player% &csunucudan %duration% süreliğine yasaklandı!")
+                            .replace("%player%", playerName)
+                            .replace("%duration%", formatDuration(duration));
                 } else {
-                    message = ChatColor.RED + "[CEZA] " + ChatColor.WHITE + playerName +
-                            ChatColor.RED + " sunucudan kalıcı olarak yasaklandı!";
+                    message = getMessage("notify.ban-permanent",
+                            "&c[CEZA] &f%player% &csunucudan kalıcı olarak yasaklandı!")
+                            .replace("%player%", playerName);
                 }
                 break;
             case "mute":
                 if (duration > 0) {
-                    message = ChatColor.GOLD + "[CEZA] " + ChatColor.WHITE + playerName +
-                            ChatColor.GOLD + " " + formatDuration(duration) + " süreliğine susturuldu!";
+                    message = getMessage("notify.mute-temp",
+                            "&6[CEZA] &f%player% &6%duration% süreliğine susturuldu!")
+                            .replace("%player%", playerName)
+                            .replace("%duration%", formatDuration(duration));
                 } else {
-                    message = ChatColor.GOLD + "[CEZA] " + ChatColor.WHITE + playerName +
-                            ChatColor.GOLD + " kalıcı olarak susturuldu!";
+                    message = getMessage("notify.mute-permanent",
+                            "&6[CEZA] &f%player% &6kalıcı olarak susturuldu!")
+                            .replace("%player%", playerName);
                 }
                 break;
             case "kick":
-                message = ChatColor.YELLOW + "[CEZA] " + ChatColor.WHITE + playerName +
-                        ChatColor.YELLOW + " sunucudan atıldı!";
+                message = getMessage("notify.kick",
+                        "&e[CEZA] &f%player% &esunucudan atıldı!")
+                        .replace("%player%", playerName);
                 break;
             case "warn":
-                message = ChatColor.YELLOW + "[CEZA] " + ChatColor.WHITE + playerName +
-                        ChatColor.YELLOW + " uyarı aldı!";
+                message = getMessage("notify.warn",
+                        "&e[CEZA] &f%player% &euyarı aldı!")
+                        .replace("%player%", playerName);
                 break;
         }
 
-        message += "\n" + ChatColor.GRAY + "Sebep: " + ChatColor.WHITE + reason;
-        message += "\n" + ChatColor.GRAY + "Yetkili: " + ChatColor.WHITE + punisher;
+        String reasonLine = getMessage("notify.reason-line", "&7Sebep: &f%reason%")
+                .replace("%reason%", reason);
+        String staffLine = getMessage("notify.staff-line", "&7Yetkili: &f%staff%")
+                .replace("%staff%", punisher);
+
+        message += "\n" + reasonLine;
+        message += "\n" + staffLine;
 
         // Tüm yetkililere bildir
         for (ProxiedPlayer player : ProxyServer.getInstance().getPlayers()) {
@@ -432,8 +461,13 @@ public class BungeePunishmentManager implements Listener {
     /**
      * Süreyi formatlar
      */
-    private String formatDuration(long millis) {
-        if (millis <= 0) return "0 saniye";
+    String formatDuration(long millis) {
+        String daysWord = plugin.getConfig().getString("messages.duration.days", "gün");
+        String hoursWord = plugin.getConfig().getString("messages.duration.hours", "saat");
+        String minutesWord = plugin.getConfig().getString("messages.duration.minutes", "dakika");
+        String secondsWord = plugin.getConfig().getString("messages.duration.seconds", "saniye");
+
+        if (millis <= 0) return "0 " + secondsWord;
 
         long seconds = millis / 1000;
         long minutes = seconds / 60;
@@ -441,15 +475,15 @@ public class BungeePunishmentManager implements Listener {
         long days = hours / 24;
 
         if (days > 0) {
-            return days + " gün" + (hours % 24 > 0 ? " " + (hours % 24) + " saat" : "");
+            return days + " " + daysWord + (hours % 24 > 0 ? " " + (hours % 24) + " " + hoursWord : "");
         }
         if (hours > 0) {
-            return hours + " saat" + (minutes % 60 > 0 ? " " + (minutes % 60) + " dakika" : "");
+            return hours + " " + hoursWord + (minutes % 60 > 0 ? " " + (minutes % 60) + " " + minutesWord : "");
         }
         if (minutes > 0) {
-            return minutes + " dakika" + (seconds % 60 > 0 ? " " + (seconds % 60) + " saniye" : "");
+            return minutes + " " + minutesWord + (seconds % 60 > 0 ? " " + (seconds % 60) + " " + secondsWord : "");
         }
-        return seconds + " saniye";
+        return seconds + " " + secondsWord;
     }
 
     // Interface tanımı

@@ -26,6 +26,7 @@ public class ReportDetailGUI implements InventoryHolder {
     private final Inventory inventory;
     private final GUIConfig guiConfig;
     private boolean hasReplay = false;
+    private int totalReports = 0;
 
     public ReportDetailGUI(Player viewer, Report report, ReplayDAO replayDAO) {
         this.plugin = (ReportSystemSpigot) Bukkit.getPluginManager().getPlugin("ReportSystem-Spigot");
@@ -34,9 +35,8 @@ public class ReportDetailGUI implements InventoryHolder {
         this.replayDAO = replayDAO;
         this.guiConfig = new GUIConfig(plugin, "report-detail");
 
-        // Create inventory with title from messages
-        String title = plugin.getMessageManager().getMessage("gui.report-detail.title");
-        title = plugin.getMessageManager().colorize(title.replace("%id%", String.valueOf(report.getId())));
+        // Create inventory with title from GUI config
+        String title = guiConfig.getTitle("%id%", String.valueOf(report.getId()));
         int size = guiConfig.getSize();
         this.inventory = Bukkit.createInventory(this, size, title);
 
@@ -44,17 +44,22 @@ public class ReportDetailGUI implements InventoryHolder {
         try {
             hasReplay = replayDAO.getReplayByReportId(report.getId()).isPresent();
         } catch (SQLException e) {
-            e.printStackTrace();
+            plugin.getLogger().warning("Replay kontrolü sırasında hata: " + e.getMessage());
         }
+
+        // Cache total reports count
+        this.totalReports = plugin.getReportService().getReportCount(report.getReportedPlayerName());
 
         setupInventory();
     }
 
     private void setupInventory() {
         // Background
-        ItemStack glass = createGlassPane();
-        for (int i = 0; i < inventory.getSize(); i++) {
-            inventory.setItem(i, glass);
+        if (guiConfig.isBackgroundEnabled()) {
+            ItemStack glass = createGlassPane();
+            for (int i = 0; i < inventory.getSize(); i++) {
+                inventory.setItem(i, glass);
+            }
         }
 
         // Player head (report info)
@@ -93,31 +98,39 @@ public class ReportDetailGUI implements InventoryHolder {
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            // Get total reports for player
-            int totalReports = plugin.getReportService().getReportCount(report.getReportedPlayerName());
+            // Use cached total reports for player
 
             // Get status name and color
             String statusName = plugin.getMessageManager().getStatusName(report.getStatus());
             String statusColor = getStatusColorCode(report.getStatus());
 
-            // Get labels from message file
-            String labelReportId = plugin.getMessageManager().getMessage("gui.report-detail.labels.report-id");
-            String labelReporter = plugin.getMessageManager().getMessage("gui.report-detail.labels.reporter");
-            String labelReason = plugin.getMessageManager().getMessage("gui.report-detail.labels.reason");
-            String labelDate = plugin.getMessageManager().getMessage("gui.report-detail.labels.date");
-            String labelServer = plugin.getMessageManager().getMessage("gui.report-detail.labels.server");
-            String labelTotalReports = plugin.getMessageManager().getMessage("gui.report-detail.labels.total-reports");
-            String labelStatus = plugin.getMessageManager().getMessage("gui.report-detail.labels.status");
-            String labelTimes = plugin.getMessageManager().getMessage("gui.report-detail.labels.times");
-            String labelUnknown = plugin.getMessageManager().getMessage("gui.report-detail.labels.unknown");
+            // Get labels from GUI config
+            String labelReportId = guiConfig.getConfig().getString("player-head.labels.report-id", "Rapor ID:");
+            String labelReporter = guiConfig.getConfig().getString("player-head.labels.reporter", "Raporlayan:");
+            String labelReason = guiConfig.getConfig().getString("player-head.labels.reason", "Sebep:");
+            String labelDate = guiConfig.getConfig().getString("player-head.labels.date", "Tarih:");
+            String labelServer = guiConfig.getConfig().getString("player-head.labels.server", "Sunucu:");
+            String labelTotalReports = guiConfig.getConfig().getString("player-head.labels.total-reports", "Toplam Rapor:");
+            String labelStatus = guiConfig.getConfig().getString("player-head.labels.status", "Durum:");
+            String labelTimes = guiConfig.getConfig().getString("player-head.labels.times", "kez");
+            String labelUnknown = guiConfig.getConfig().getString("player-head.labels.unknown", "Bilinmiyor");
 
-            // Name from messages
-            String name = plugin.getMessageManager().getMessage("gui.report-detail.player-head-name");
-            name = name.replace("%reported%", report.getReportedPlayerName());
+            // Name from GUI config
+            String name = guiConfig.getConfig().getString("player-head.name", "&c⚡ %reported%")
+                .replace("%reported%", report.getReportedPlayerName());
             meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
+            // Trust level
+            String trustLine = "";
+            if (plugin.getTrustLevelManager() != null) {
+                String labelTrust = guiConfig.getConfig().getString("player-head.labels.trust-level", "Hesap Durumu:");
+                org.bukkit.OfflinePlayer target = org.bukkit.Bukkit.getOfflinePlayer(report.getReportedPlayerName());
+                String trustFormatted = plugin.getTrustLevelManager().getFormattedTrustLevel(target.getUniqueId(), report.getReportedPlayerName());
+                trustLine = ChatColor.GRAY + labelTrust + " " + plugin.getMessageManager().colorize(trustFormatted);
+            }
+
             // Lore with all info
-            meta.setLore(Arrays.asList(
+            java.util.List<String> lore = new java.util.ArrayList<>(Arrays.asList(
                     "",
                     ChatColor.GRAY + labelReportId + " " + ChatColor.WHITE + "#" + report.getId(),
                     ChatColor.GRAY + labelReporter + " " + ChatColor.AQUA + report.getReporterName(),
@@ -128,6 +141,10 @@ public class ReportDetailGUI implements InventoryHolder {
                     ChatColor.GRAY + labelTotalReports + " " + ChatColor.RED + totalReports + " " + labelTimes,
                     ChatColor.GRAY + labelStatus + " " + ChatColor.translateAlternateColorCodes('&', statusColor) + statusName
             ));
+            if (!trustLine.isEmpty()) {
+                lore.add(trustLine);
+            }
+            meta.setLore(lore);
 
             item.setItemMeta(meta);
         }
@@ -136,7 +153,6 @@ public class ReportDetailGUI implements InventoryHolder {
 
     private ItemStack createReplayButton() {
         String basePath = hasReplay ? "replay.available" : "replay.unavailable";
-        String msgPath = hasReplay ? "gui.report-detail.buttons.replay-available" : "gui.report-detail.buttons.replay-unavailable";
 
         String materialName = guiConfig.getConfig().getString(basePath + ".material", "ENDER_PEARL");
         Material material = Material.getMaterial(materialName);
@@ -145,12 +161,12 @@ public class ReportDetailGUI implements InventoryHolder {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            // Get name from messages
-            String name = plugin.getMessageManager().getMessage(msgPath + ".name");
+            // Get name from GUI config
+            String name = guiConfig.getConfig().getString(basePath + ".name", "");
             meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-            // Get lore from messages
-            List<String> lore = plugin.getMessageManager().getMessageList(msgPath + ".lore");
+            // Get lore from GUI config
+            List<String> lore = guiConfig.getConfig().getStringList(basePath + ".lore");
             List<String> processedLore = lore.stream()
                     .map(line -> plugin.getMessageManager().colorize(line))
                     .collect(Collectors.toList());
@@ -162,45 +178,44 @@ public class ReportDetailGUI implements InventoryHolder {
     }
 
     private ItemStack createAcceptButton() {
-        return createButton("actions.accept", "gui.report-detail.buttons.accept", Material.LIME_DYE);
+        return createButton("actions.accept", Material.LIME_DYE);
     }
 
     private ItemStack createRejectButton() {
-        return createButton("actions.reject", "gui.report-detail.buttons.reject", Material.RED_DYE);
+        return createButton("actions.reject", Material.RED_DYE);
     }
 
     private ItemStack createBanButton() {
-        return createButton("punishments.ban", "gui.report-detail.buttons.ban", Material.IRON_AXE);
+        return createButton("punishments.ban", Material.IRON_AXE);
     }
 
     private ItemStack createMuteButton() {
-        return createButton("punishments.mute", "gui.report-detail.buttons.mute", Material.BARRIER);
+        return createButton("punishments.mute", Material.BARRIER);
     }
 
     private ItemStack createKickButton() {
-        return createButton("punishments.kick", "gui.report-detail.buttons.kick", Material.LEATHER_BOOTS);
+        return createButton("punishments.kick", Material.LEATHER_BOOTS);
     }
 
     private ItemStack createWarnButton() {
-        return createButton("punishments.warn", "gui.report-detail.buttons.warn", Material.PAPER);
+        return createButton("punishments.warn", Material.PAPER);
     }
 
     private ItemStack createTeleportButton() {
-        return createButton("punishments.teleport", "gui.report-detail.buttons.teleport", Material.ENDER_PEARL);
+        return createButton("punishments.teleport", Material.GOLD_NUGGET);
     }
 
     private ItemStack createBackButton() {
-        return createButton("navigation.back", "gui.report-detail.buttons.back", Material.ARROW);
+        return createButton("navigation.back", Material.ARROW);
     }
 
     /**
      * Helper method to create button items
-     * @param configPath Path in config for material (e.g., "actions.accept")
-     * @param messagePath Path in messages for name/lore (e.g., "gui.report-detail.buttons.accept")
+     * @param configPath Path in GUI config for material/name/lore (e.g., "actions.accept")
      * @param defaultMaterial Default material if not found in config
      * @return ItemStack for the button
      */
-    private ItemStack createButton(String configPath, String messagePath, Material defaultMaterial) {
+    private ItemStack createButton(String configPath, Material defaultMaterial) {
         // Get material from config
         String materialName = guiConfig.getConfig().getString(configPath + ".material");
         Material material = materialName != null ? Material.getMaterial(materialName) : defaultMaterial;
@@ -209,12 +224,12 @@ public class ReportDetailGUI implements InventoryHolder {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            // Get name from messages
-            String name = plugin.getMessageManager().getMessage(messagePath + ".name");
+            // Get name from GUI config
+            String name = guiConfig.getConfig().getString(configPath + ".name", "");
             meta.setDisplayName(plugin.getMessageManager().colorize(name));
 
-            // Get lore from messages
-            List<String> lore = plugin.getMessageManager().getMessageList(messagePath + ".lore");
+            // Get lore from GUI config
+            List<String> lore = guiConfig.getConfig().getStringList(configPath + ".lore");
             List<String> processedLore = lore.stream()
                     .map(line -> plugin.getMessageManager().colorize(line))
                     .collect(Collectors.toList());
@@ -263,5 +278,9 @@ public class ReportDetailGUI implements InventoryHolder {
 
     public boolean hasReplay() {
         return hasReplay;
+    }
+
+    public GUIConfig getGuiConfig() {
+        return guiConfig;
     }
 }

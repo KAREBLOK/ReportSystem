@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.PotionEffectAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -71,7 +72,7 @@ public class PotionListener implements Listener {
                 }
 
                 session.addAction(action);
-                plugin.getLogger().info("[RECORDING-DEBUG] Potion effect: " + actionType);
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Potion effect: " + actionType);
             }
         }
     }

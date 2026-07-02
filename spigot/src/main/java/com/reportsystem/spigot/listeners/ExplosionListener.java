@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.ExplosionAction;
 import com.reportsystem.spigot.recording.RecordingManager;
 import com.reportsystem.spigot.recording.RecordingSession;
@@ -86,7 +87,7 @@ public class ExplosionListener implements Listener {
                             breakBlocks
                     ));
 
-                    plugin.getLogger().info("[RECORDING-DEBUG] Explosion recorded: " + explosionType.name() +
+                    ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Explosion recorded: " + explosionType.name() +
                             " at " + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ() +
                             " (power: " + yield + ")");
                 }
@@ -140,7 +141,7 @@ public class ExplosionListener implements Listener {
                     recentExplosions.remove(loc);
                 }, 20L);
 
-                plugin.getLogger().info("[RECORDING-DEBUG] Bed explosion recorded at " +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bed explosion recorded at " +
                         loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
             }
         }

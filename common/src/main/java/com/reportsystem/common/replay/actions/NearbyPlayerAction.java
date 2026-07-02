@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public class NearbyPlayerAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     public enum ActionType {
         PLAYER_APPEAR,    // Oyuncu görünür oldu

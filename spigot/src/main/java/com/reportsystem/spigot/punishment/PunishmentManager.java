@@ -2,6 +2,7 @@ package com.reportsystem.spigot.punishment;
 
 import com.reportsystem.common.punishment.PunishmentProvider;
 import com.reportsystem.spigot.punishment.providers.*;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class PunishmentManager {
@@ -12,9 +13,16 @@ public class PunishmentManager {
         this.plugin = plugin;
 
         // BungeeCord kullanılıyor mu kontrol et
-        boolean useBungeeCord = plugin.getConfig().getBoolean("use-bungeecord", true);
+        boolean useBungeeCord = plugin.getConfig().getBoolean("bungeecord.enabled", false);
 
-        if (useBungeeCord) {
+        // LiteBans yüklü mü kontrol et
+        boolean liteBansInstalled = Bukkit.getPluginManager().getPlugin("LiteBans") != null;
+
+        if (liteBansInstalled) {
+            // LiteBans üzerinden ceza sistemi
+            this.provider = new LiteBansSpigotProvider(plugin);
+            plugin.getLogger().info("LiteBans ceza sistemi kullanılıyor.");
+        } else if (useBungeeCord) {
             // BungeeCord üzerinden global ceza sistemi
             this.provider = new GlobalPunishmentProvider(plugin);
             plugin.getLogger().info("Global ceza sistemi (BungeeCord) kullanılıyor.");

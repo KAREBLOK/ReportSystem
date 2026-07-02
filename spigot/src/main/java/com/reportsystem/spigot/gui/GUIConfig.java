@@ -1,5 +1,7 @@
 package com.reportsystem.spigot.gui;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.managers.MessageManager;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -12,6 +14,8 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -36,10 +40,18 @@ public class GUIConfig {
             plugin.saveResource("guis/" + guiName + ".yml", false);
         }
         this.config = YamlConfiguration.loadConfiguration(guiFile);
+
+        // JAR'daki varsayılan değerleri yükle - eksik key'ler için fallback
+        InputStream defaultStream = plugin.getResource("guis/" + guiName + ".yml");
+        if (defaultStream != null) {
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
+            this.config.setDefaults(defaults);
+        }
     }
 
     public String getTitle(String... replacements) {
         String title = config.getString("title", "&8GUI");
+        title = resolveText(title);
         for (int i = 0; i < replacements.length; i += 2) {
             if (i + 1 < replacements.length) {
                 title = title.replace(replacements[i], replacements[i + 1]);
@@ -115,13 +127,28 @@ public class GUIConfig {
 
         // Display name
         String name = section.getString("name", "");
+        name = resolveText(name);
         name = applyReplacements(name, replacements);
         meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
-        // Lore
+        // Lore - supports msg: per line and msg-lore: for entire list
         if (section.contains("lore")) {
-            List<String> lore = section.getStringList("lore");
+            List<String> lore;
+            if (section.isString("lore")) {
+                String loreValue = section.getString("lore");
+                if (loreValue != null && loreValue.startsWith("msg-lore:")) {
+                    lore = resolveTextList(loreValue.substring(9));
+                } else {
+                    lore = new ArrayList<>();
+                    if (loreValue != null) {
+                        lore.add(resolveText(loreValue));
+                    }
+                }
+            } else {
+                lore = section.getStringList("lore");
+            }
             List<String> coloredLore = lore.stream()
+                    .map(this::resolveText)
                     .map(line -> applyReplacements(line, replacements))
                     .map(line -> ChatColor.translateAlternateColorCodes('&', line))
                     .collect(Collectors.toList());
@@ -168,6 +195,38 @@ public class GUIConfig {
         return item;
     }
 
+    /**
+     * Resolves text that starts with "msg:" prefix through MessageManager.
+     * Falls back to the raw text if MessageManager is not available.
+     */
+    private String resolveText(String text) {
+        if (text != null && text.startsWith("msg:")) {
+            if (plugin instanceof ReportSystemSpigot) {
+                MessageManager mm = ((ReportSystemSpigot) plugin).getMessageManager();
+                if (mm != null) {
+                    return mm.getMessage(text.substring(4));
+                }
+            }
+        }
+        return text;
+    }
+
+    /**
+     * Resolves a message key to a list of strings from MessageManager.
+     */
+    private List<String> resolveTextList(String key) {
+        if (plugin instanceof ReportSystemSpigot) {
+            MessageManager mm = ((ReportSystemSpigot) plugin).getMessageManager();
+            if (mm != null) {
+                List<String> list = mm.getMessageList(key);
+                if (list != null && !list.isEmpty()) {
+                    return list;
+                }
+            }
+        }
+        return new ArrayList<>();
+    }
+
     private String applyReplacements(String text, String... replacements) {
         for (int i = 0; i < replacements.length; i += 2) {
             if (i + 1 < replacements.length) {
@@ -185,6 +244,35 @@ public class GUIConfig {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    /**
+     * Gets a config string value and resolves msg: prefix if present.
+     */
+    public String getConfigString(String path, String defaultValue) {
+        String value = config.getString(path, defaultValue);
+        return resolveText(value);
+    }
+
+    /**
+     * Gets a config string list, resolving msg-lore: and msg: prefixes.
+     * Supports both list format and single "msg-lore:key" string format.
+     */
+    public List<String> getConfigStringList(String path) {
+        if (config.isString(path)) {
+            String value = config.getString(path);
+            if (value != null && value.startsWith("msg-lore:")) {
+                return resolveTextList(value.substring(9));
+            }
+            List<String> single = new ArrayList<>();
+            if (value != null) {
+                single.add(resolveText(value));
+            }
+            return single;
+        }
+        return config.getStringList(path).stream()
+                .map(this::resolveText)
+                .collect(Collectors.toList());
     }
 
     public String getSound(String action) {

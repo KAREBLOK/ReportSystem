@@ -1,27 +1,28 @@
 package com.reportsystem.spigot.replay;
 
 import com.reportsystem.spigot.ReportSystemSpigot;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityTargetEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.entity.Projectile;
 
 /**
  * Prevents replay viewers from interacting with the world
- * - No item pickup
- * - No item drop
- * - No block break
- * - No block place
- * - No inventory interaction (except control items)
+ * and protects them from all damage sources
  */
 public class ReplayProtectionListener implements Listener {
 
@@ -32,86 +33,153 @@ public class ReplayProtectionListener implements Listener {
     }
 
     /**
-     * Prevent item pickup while watching replay
+     * Replay izliyor veya Overwatch post-replay'de (koruma gerekli)
+     */
+    private boolean needsProtection(Player player) {
+        if (plugin.getReplayManager().isWatchingReplay(player)) return true;
+        if (plugin.getOverwatchReplayListener() != null
+                && plugin.getOverwatchReplayListener().needsProtection(player.getUniqueId())) return true;
+        return false;
+    }
+
+    // ==================== HASAR KORUMASI ====================
+
+    /**
+     * Tum hasar kaynaklarini engelle (mob, dusme, ates, bogulma, void, vs.)
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player)) return;
+
+        Player player = (Player) event.getEntity();
+        if (needsProtection(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Replay viewer'in baska entity'lere hasar vermesini engelle
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        // Replay projectile hasarini engelle
+        if (event.getDamager() instanceof Projectile) {
+            Projectile projectile = (Projectile) event.getDamager();
+            if (projectile.hasMetadata("REPLAY_PROJECTILE")) {
+                event.setCancelled(true);
+                event.setDamage(0);
+                return;
+            }
+        }
+
+        // Viewer'in baskasina hasar vermesini engelle
+        if (event.getDamager() instanceof Player) {
+            Player damager = (Player) event.getDamager();
+            if (needsProtection(damager)) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Moblarin replay viewer'i hedef almasini engelle
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityTarget(EntityTargetEvent event) {
+        Entity target = event.getTarget();
+        if (target instanceof Player && needsProtection((Player) target)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Moblarin replay viewer'i hedef almasini engelle (living entity)
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityTargetLiving(EntityTargetLivingEntityEvent event) {
+        Entity target = event.getTarget();
+        if (target instanceof Player && needsProtection((Player) target)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Aclik barinin degismesini engelle
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (!(event.getEntity() instanceof Player)) return;
+
+        Player player = (Player) event.getEntity();
+        if (needsProtection(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    // ==================== ETKILESIM KORUMASI ====================
+
+    /**
+     * Item toplama engelle
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onItemPickup(EntityPickupItemEvent event) {
-        if (!(event.getEntity() instanceof Player)) {
-            return;
-        }
+        if (!(event.getEntity() instanceof Player)) return;
 
         Player player = (Player) event.getEntity();
-
-        // Check if player is watching a replay
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
+        if (needsProtection(player)) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent item drop while watching replay
+     * Item dusurme engelle
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onItemDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
-
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
+        if (needsProtection(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent block break while watching replay
+     * Blok kirma engelle
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        Player player = event.getPlayer();
-
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
+        if (needsProtection(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent block place while watching replay
+     * Blok koyma engelle
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        Player player = event.getPlayer();
-
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
+        if (needsProtection(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent inventory clicks while watching replay (except for control items)
-     * Control items are handled by ReplayControlManager
+     * Envanter tiklama engelle (GUI'ler haric)
      */
     @EventHandler(priority = EventPriority.LOW)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) {
-            return;
-        }
+        if (!(event.getWhoClicked() instanceof Player)) return;
 
         Player player = (Player) event.getWhoClicked();
-
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
-            // Cancel all inventory interactions
-            // Control items are handled in ReplayControlManager with HIGHEST priority
+        if (needsProtection(player)) {
             event.setCancelled(true);
         }
     }
 
     /**
-     * Prevent world interactions while watching replay (except control items)
+     * Dunya etkilesimlerini engelle (kontrol itemleri haric)
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerInteract(PlayerInteractEvent event) {
-        Player player = event.getPlayer();
-
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
-            // Don't cancel AIR interactions (allow control item clicks)
+        if (needsProtection(event.getPlayer())) {
             if (event.getClickedBlock() != null) {
                 event.setCancelled(true);
             }
@@ -119,29 +187,13 @@ public class ReplayProtectionListener implements Listener {
     }
 
     /**
-     * Prevent replay projectiles from dealing damage
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        // Check if damager is a replay projectile
-        if (event.getDamager() instanceof Projectile) {
-            Projectile projectile = (Projectile) event.getDamager();
-            if (projectile.hasMetadata("REPLAY_PROJECTILE")) {
-                event.setCancelled(true);
-                event.setDamage(0);
-            }
-        }
-    }
-
-    /**
-     * Cancel replay projectile hit effects
+     * Replay projectile hit efektlerini engelle
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onProjectileHit(ProjectileHitEvent event) {
         Projectile projectile = event.getEntity();
         if (projectile.hasMetadata("REPLAY_PROJECTILE")) {
             event.setCancelled(true);
-            // Remove the projectile immediately
             projectile.remove();
         }
     }

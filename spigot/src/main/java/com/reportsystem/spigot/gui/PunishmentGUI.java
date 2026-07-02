@@ -51,10 +51,12 @@ public class PunishmentGUI extends GUI {
 
     private void setupTimedPunishment() {
         // Background
-        String bgMaterial = guiConfig.getConfig().getString("background.material", "RED_STAINED_GLASS_PANE");
-        Material bgMat = Material.getMaterial(bgMaterial);
-        if (bgMat != null) {
-            fillBorder(bgMat);
+        if (guiConfig.isBackgroundEnabled()) {
+            String bgMaterial = guiConfig.getConfig().getString("background.material", "RED_STAINED_GLASS_PANE");
+            Material bgMat = Material.getMaterial(bgMaterial);
+            if (bgMat != null) {
+                fillBorder(bgMat);
+            }
         }
 
         // Player info
@@ -91,12 +93,12 @@ public class PunishmentGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString("player-info.name", "&c⚡ %target%");
+            String name = guiConfig.getConfigString("player-info.name", "&c⚡ %target%");
             name = name.replace("%target%", targetName);
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
             if (report != null) {
-                List<String> lore = guiConfig.getConfig().getStringList("player-info.lore");
+                List<String> lore = guiConfig.getConfigStringList("player-info.lore");
                 List<String> processedLore = lore.stream()
                         .map(line -> line.replace("%reason%", report.getReason()))
                         .map(line -> ChatColor.translateAlternateColorCodes('&', line))
@@ -117,7 +119,7 @@ public class PunishmentGUI extends GUI {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            String name = guiConfig.getConfig().getString(path + ".name", "&7Time");
+            String name = guiConfig.getConfigString(path + ".name", "&7Time");
             meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
 
             String duration = guiConfig.getConfig().getString(path + ".duration", "1h");
@@ -126,7 +128,7 @@ public class PunishmentGUI extends GUI {
             NamespacedKey durationKey = new NamespacedKey((ReportSystemSpigot) plugin, "punishment_duration");
             meta.getPersistentDataContainer().set(durationKey, PersistentDataType.STRING, duration);
 
-            List<String> lore = guiConfig.getConfig().getStringList(path + ".lore");
+            List<String> lore = guiConfig.getConfigStringList(path + ".lore");
             if (!lore.isEmpty()) {
                 List<String> processedLore = lore.stream()
                         .map(line -> ChatColor.translateAlternateColorCodes('&', line))

@@ -4,6 +4,7 @@ package com.reportsystem.common.replay.actions;
  * Brewing stand kullanımı (potion brewing)
  */
 public class BrewAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
 
     private final int x, y, z;
     private final String ingredient;   // Brewing ingredient (BLAZE_POWDER, NETHER_WART, etc.)

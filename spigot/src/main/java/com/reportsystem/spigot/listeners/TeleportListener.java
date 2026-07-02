@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.LocationAction;
 import com.reportsystem.common.replay.actions.TeleportAction;
 import com.reportsystem.spigot.recording.RecordingManager;
@@ -66,7 +67,7 @@ public class TeleportListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Teleport: " + cause +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Teleport: " + cause +
                     " from " + fromWorldName + " to " + toWorldName);
         }
     }
@@ -93,7 +94,7 @@ public class TeleportListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] Respawn at: " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Respawn at: " +
                     respawnLoc.getWorld().getName() + " " +
                     String.format("%.1f, %.1f, %.1f", respawnLoc.getX(), respawnLoc.getY(), respawnLoc.getZ()) +
                     " (Bed: " + event.isBedSpawn() + ")");
@@ -119,7 +120,7 @@ public class TeleportListener implements Listener {
             );
             session.addAction(action);
 
-            plugin.getLogger().info("[RECORDING-DEBUG] World changed: " +
+            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] World changed: " +
                     event.getFrom().getName() + " -> " + currentLoc.getWorld().getName());
         }
     }

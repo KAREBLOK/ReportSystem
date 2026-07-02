@@ -1,95 +1,108 @@
-# Report List GUI Configuration
-# Used for /reports command
-# NOTE: Text content (names, lores) are now in messages_*.yml files
-# This file only contains layout and visual settings
-
+# Rapor Listesi GUI
+title: "&8&nRaporlar &7(%page%/%max_page%)"
 size: 54
 
-# Report item display
+# Rapor öğesi
 report-item:
-  # Material based on status
   materials:
     PENDING: PAPER
     ACCEPTED: LIME_DYE
     REJECTED: RED_DYE
 
-  # Enchant effect for new reports
   enchant-new: true
 
-  # Status colors
   status-colors:
     PENDING: "&e"
     ACCEPTED: "&a"
     REJECTED: "&c"
     CLOSED: "&7"
 
-  # Status translations
-  status-names:
-    PENDING: "Beklemede"
-    ACCEPTED: "Kabul Edildi"
-    REJECTED: "Reddedildi"
-    CLOSED: "Kapatıldı"
+  name: "&e#%id% &8- &f%reported%"
+  labels:
+    reporter: "Raporlayan:"
+    reason: "Sebep:"
+    server: "Sunucu:"
+    date: "Tarih:"
+    status: "Durum:"
+    total-reports: "Toplam Rapor:"
+    overwatch: "Overwatch:"
+    click: "&e► Detaylar için tıkla"
 
-# Empty list
+# Yükleme hatası
+loading-error: "&cRaporlar yüklenirken bir hata oluştu!"
+
+# Boş liste
 empty-list:
   material: BARRIER
   slot: 22
+  name: "&c&lRapor Bulunamadı"
+  lore:
+    - ''
+    - '&7Filtrenize uygun'
+    - '&7rapor bulunamadı.'
+    - ''
 
-# Navigation
+# Navigasyon
 navigation:
-  # Previous page
   previous:
     slot: 48
     material: ARROW
+    name: "&e« Önceki Sayfa"
+    lore:
+      - "&7Sayfa %prev_page%'a git"
 
-  # Page info
   page-info:
     slot: 49
     material: BOOK
+    name: "&fSayfa &e%page%&f/&e%max_page%"
+    lore:
+      - ''
+      - ' &8▪ &7Toplam rapor: &a%total%'
+      - ' &8▪ &7Gösterilen: &a%showing%'
+      - ''
 
-  # Next page
   next:
     slot: 50
     material: ARROW
+    name: "&aSonraki Sayfa »"
+    lore:
+      - "&7Sayfa %next_page%'a git"
 
-# Sort options (not implemented yet)
+# Sıralama
 sort:
   slot: 16
   material: COMPARATOR
 
-# Actions (bottom row)
+# İşlemler
 actions:
-  # Refresh
   refresh:
     slot: 45
     material: SUNFLOWER
+    name: "&a↻ Yenile"
+    lore:
+      - "&7Rapor listesini yenile"
 
-  # Search (not implemented yet)
   search:
     slot: 46
     material: COMPASS
 
-  # Statistics (not implemented yet)
   stats:
     slot: 52
     material: EMERALD
 
-  # Settings (not implemented yet)
   settings:
     slot: 53
     material: REDSTONE
 
-# Background
+# Arka plan
 background:
-  # Border
   border:
-    enabled: true
+    enabled: false
     material: GRAY_STAINED_GLASS_PANE
     name: " "
     slots: [0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,45,46,47,48,49,50,51,52,53]
 
-  # Top row background
   top-row:
     material: BLACK_STAINED_GLASS_PANE
     name: " "
-    slots: [9,17]
+    slots: [0,1,2,3,4,5,6,7,8]

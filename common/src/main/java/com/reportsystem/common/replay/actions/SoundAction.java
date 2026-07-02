@@ -1,6 +1,8 @@
 package com.reportsystem.common.replay.actions;
 
 public class SoundAction extends ReplayAction {
+    private static final long serialVersionUID = 1L;
+
     private final String soundName;
     private final double x, y, z;
     private final float volume;

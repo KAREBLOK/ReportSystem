@@ -66,12 +66,12 @@ public class DatabaseManager {
         config.setUsername(configManager.getMySQLUsername());
         config.setPassword(configManager.getMySQLPassword());
 
-        // Connection pool ayarları
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
-        config.setConnectionTimeout(30000); // 30 saniye
-        config.setIdleTimeout(600000); // 10 dakika
-        config.setMaxLifetime(1800000); // 30 dakika
+        // Connection pool ayarları (configurable with defaults)
+        config.setMaximumPoolSize(configManager.getConfig().getInt("database.mysql.pool.maximum-pool-size", 10));
+        config.setMinimumIdle(configManager.getConfig().getInt("database.mysql.pool.minimum-idle", 2));
+        config.setConnectionTimeout(configManager.getConfig().getLong("database.mysql.pool.connection-timeout", 30000)); // 30 saniye
+        config.setIdleTimeout(configManager.getConfig().getLong("database.mysql.pool.idle-timeout", 600000)); // 10 dakika
+        config.setMaxLifetime(configManager.getConfig().getLong("database.mysql.pool.max-lifetime", 1800000)); // 30 dakika
 
         // Performans ayarları
         config.addDataSourceProperty("cachePrepStmts", "true");
@@ -102,22 +102,9 @@ public class DatabaseManager {
         this.database = new MySQLDatabase(dbConfig);
 
 
-        // DÜZELTİLDİ: DAO'ları oluştur - Düzeltilmiş constructor
-        this.reportDAO = new MySQLReportDAO(
-                configManager.getMySQLHost(),
-                configManager.getMySQLPort(),
-                configManager.getMySQLDatabase(),
-                configManager.getMySQLUsername(),
-                configManager.getMySQLPassword()
-        );
-
-        this.replayDAO = new MySQLReplayDAO(
-                configManager.getMySQLHost(),
-                configManager.getMySQLPort(),
-                configManager.getMySQLDatabase(),
-                configManager.getMySQLUsername(),
-                configManager.getMySQLPassword()
-        );
+        // DAO'ları oluştur (paylaşılan connection pool kullanarak)
+        this.reportDAO = new MySQLReportDAO(dataSource);
+        this.replayDAO = new MySQLReplayDAO(dataSource);
 
         plugin.getLogger().info("MySQL connection pool created successfully");
     }
@@ -324,7 +311,7 @@ public class DatabaseManager {
      * Transaction başlatır
      */
     public void beginTransaction(Connection conn) throws SQLException {
-        if (conn != null && !conn.getAutoCommit()) {
+        if (conn != null && conn.getAutoCommit()) {
             conn.setAutoCommit(false);
         }
     }
