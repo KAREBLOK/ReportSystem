@@ -1,39 +1,47 @@
-# 🛡️ ReportSystem - Gelişmiş Oyuncu Raporlama ve Replay Sistemi
+# ReportSystem
 
-🇬🇧 [Click here for the English version](README.md)
+[Click here for English Documentation](README.md)
 
-ReportSystem, Minecraft sunucuları için geliştirilmiş yeni nesil, zengin özellikli bir raporlama ve moderasyon sistemidir. Geleneksel metin tabanlı rapor eklentilerinin yerini alarak tam etkileşimli GUI'ler, **görsel tekrar (replay) kayıtları** ve Overwatch (CS:GO tarzı) topluluk inceleme sistemi sunar!
+ReportSystem, Minecraft sunucuları için geliştirilmiş yeni nesil, kapsamlı bir oyuncu raporlama ve moderasyon sistemidir. Geleneksel metin tabanlı raporların ötesine geçerek; görsel tekrar (replay) kayıtları, etkileşimli arayüzler (GUI) ve topluluk odaklı bir Overwatch inceleme sistemi sunar.
 
-Son derece optimize edilmiştir ve Spigot, BungeeCord ile Velocity ağlarını destekler.
+Ölçeklenebilirlik için tasarlanmış olup, tekli sunucuların yanı sıra BungeeCord ve Velocity ağlarını da tam olarak destekler.
 
-## ✨ Özellikler
+## Temel Özellikler
 
-- 🎥 **Replay Sistemi:** Rapor edilen oyuncunun hareketlerini, savaşını ve blok kırmalarını otomatik olarak kaydeder, yetkililerin tam olarak ne olduğunu izlemesini sağlar.
-- ⚖️ **Overwatch Sistemi:** Güvenilir oyuncularınızın raporları incelemesine ve kararlar (Suçlu/Suçsuz) vermesine olanak tanır, tıpkı CS:GO'daki gibi!
-- 🤖 **Hile Koruması Entegrasyonları:** **Polar**, **Vulcan** veya **GrimAC** tarafından şüpheli bulunan oyuncuları otomatik olarak kaydeder ve raporlar.
-- 🌐 **Sunucular Arası Destek (Cross-Server):** BungeeCord ve Velocity ağları için tam destek. Raporlar ve cezalar küresel olarak senkronize edilir!
-- 🖥️ **Etkileşimli GUI'ler:** Raporları yönetin, tekrarları izleyin ve özelleştirilebilir menüler aracılığıyla oyuncuları kolayca cezalandırın.
-- 📊 **Güven Seviyesi Sistemi (Trust Level):** Oyuncular, raporlarının doğruluğuna ve davranışlarına göre güven puanı kazanır veya kaybeder.
-- 💬 **Discord Webhook'ları:** Detaylı rapor ve ceza loglarını doğrudan Discord sunucunuza gönderir.
-- 💾 **Veritabanı Desteği:** SQLite (Yerel) veya MySQL (Ağ) ile sorunsuz çalışır.
+* **Görsel Replay Sistemi:** Rapor edilen oyuncunun hareketlerini, savaş anlarını ve blok etkileşimlerini otomatik olarak kaydeder. Yetkililer rapor anını saniyesi saniyesine görsel olarak inceleyebilir.
+* **Overwatch (Topluluk İncelemesi):** CS:GO'dan ilham alınan bu sistemle, güvenilir oyuncularınız raporları inceleyip karara bağlayabilir.
+* **Anti-Cheat Entegrasyonu:** Polar, Vulcan ve GrimAC için doğrudan destek. Şüpheli bulunan oyuncular için otomatik rapor ve kayıt oluşturur.
+* **Sunucular Arası Uyumluluk (Cross-Server):** BungeeCord ve Velocity ağları üzerinde raporların, tekrarların ve cezaların anlık senkronizasyonu.
+* **Etkileşimli Menüler:** Raporları yönetmek, kayıtları izlemek ve ceza vermek için tamamen GUI tabanlı yönetim.
+* **Güven Faktörü (Trust Factor):** Oyuncular, oluşturdukları raporların doğruluk payına göre güven puanı kazanır veya kaybeder.
+* **Discord Webhook'ları:** Yeni raporlar ve yetkili işlemleri için eşzamanlı Discord bildirimleri.
+* **Veritabanı Desteği:** SQLite (yerel) ve MySQL (ağ) ile sorunsuz entegrasyon.
 
-## 🚀 Kurulum
+## Kurulum
 
-1. Releases bölümünden en son `.jar` dosyasını indirin (veya kendiniz derleyin).
+1. **Releases** sayfasından derlenmiş en güncel `.jar` dosyasını indirin.
 2. Dosyayı sunucunuzun `plugins/` klasörüne yerleştirin.
-   - *Bir ağ (network) kullanıyorsanız, Spigot sunucularına VE BungeeCord/Velocity `plugins/` klasörüne koyun.*
-3. Yapılandırma dosyalarının oluşması için sunucunuzu yeniden başlatın.
-4. `config.yml` dosyasını isteğinize göre düzenleyin (Ağ kullanıyorsanız MySQL'i ayarlayın).
-5. Sunucuyu bir kez daha yeniden başlatın. Kullanıma hazırsınız!
+   > **Not:** Eğer bir proxy ağı kullanıyorsanız, eklentiyi hem alt sunuculara (Spigot/Paper) hem de proxy sunucusuna (BungeeCord/Velocity) kurmalısınız.
+3. Ayar dosyalarının oluşması için sunucuyu başlatın.
+4. `config.yml` dosyasını yapılandırın (Ağ uyumluluğu için MySQL ayarlarını yapmayı unutmayın).
+5. Sunucuyu yeniden başlatın.
 
-## ⚙️ Komutlar ve Yetkiler
+## Komutlar ve İzinler
 
-- `/report <oyuncu> <sebep>` - Rapor GUI'sini açar (`reportsystem.report`)
-- `/reports` - Yetkili rapor yönetim GUI'sini açar (`reportsystem.admin`)
-- `/overwatch` - Overwatch menüsünü açar (`reportsystem.overwatch`)
+| Komut | Yetki (Permission) | Açıklama |
+|---|---|---|
+| `/report <oyuncu> <sebep>` | `reportsystem.report` | Raporlama arayüzünü açar. |
+| `/reports` | `reportsystem.admin` | Yetkili rapor yönetim panelini açar. |
+| `/overwatch` | `reportsystem.overwatch` | Topluluk inceleme (Overwatch) arayüzünü açar. |
 
-## 🌐 Bağlantılar
-- **Web Sitesi ve Destek:** [kareblok.tc](https://kareblok.tc)
+## Gereksinimler
+* Java 17 veya üzeri
+* Bukkit/Spigot/Paper 1.16+
+* PacketEvents (Replay sistemi için zorunlu kütüphane)
+
+## Bağlantılar & Destek
+
+Daha fazla dökümantasyon, teknik destek ve tartışmalar için [kareblok.tc](https://kareblok.tc) adresini ziyaret edebilirsiniz.
 
 ---
-*KAREBLOK tarafından geliştirilmiştir. MIT Lisansı altındadır.*
+KAREBLOK tarafından geliştirilmiştir. MIT Lisansı altında açık kaynak olarak sunulmaktadır.
