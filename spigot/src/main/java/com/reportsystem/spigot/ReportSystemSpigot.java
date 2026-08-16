@@ -83,13 +83,6 @@ public class ReportSystemSpigot extends JavaPlugin {
     // Tasks
     private BukkitTask autoSaveTask;
     private BukkitTask cleanupTask;
-    private BukkitTask licenseCheckTask; // KAREBLOK.TC - Runtime license verification
-
-    // License Manager
-    private com.reportsystem.spigot.license.LicenseManager licenseManager; // KAREBLOK.TC
-
-    // Telemetry Manager
-    private com.reportsystem.spigot.telemetry.TelemetryManager telemetryManager; // KAREBLOK.TC
 
     // Cache
     private final Map<String, Long> cooldowns = new ConcurrentHashMap<>();
@@ -107,78 +100,6 @@ public class ReportSystemSpigot extends JavaPlugin {
 
         // Save default configs
         saveDefaultConfigs();
-
-        // =====================================
-        // KAREBLOK.TC - LICENSE VERIFICATION
-        // =====================================
-        String licenseKey = getConfig().getString("license.license-key", "RS-XXXX-XXXX-XXXX");
-        String apiUrl = getConfig().getString("license.api-url", "https://kareblok.tc");
-
-        // Lisans Manager'ı oluştur ve field'a ata
-        this.licenseManager = new com.reportsystem.spigot.license.LicenseManager(this, licenseKey, apiUrl);
-
-        try {
-            // İlk lisans doğrulamasını bekle (max 15 saniye, main thread'i bloklamayı sınırla)
-            boolean isValid = licenseManager.verifyLicense().get(15, java.util.concurrent.TimeUnit.SECONDS);
-
-            if (!isValid) {
-                getLogger().severe("");
-                getLogger().severe("╔════════════════════════════════════════════════════════╗");
-                getLogger().severe("║                                                        ║");
-                getLogger().severe("║  KAREBLOK.TC - LISANS DOĞRULAMA BAŞARISIZ!           ║");
-                getLogger().severe("║                                                        ║");
-                getLogger().severe("║  Eklenti geçersiz lisans nedeniyle devre dışı!       ║");
-                getLogger().severe("║                                                        ║");
-                getLogger().severe("║  Hata: " + String.format("%-45s",
-                        licenseManager.getErrorMessage() != null ?
-                        licenseManager.getErrorMessage() : "Bilinmeyen hata") + " ║");
-                getLogger().severe("║                                                        ║");
-                getLogger().severe("║  Lisans satın almak için:                            ║");
-                getLogger().severe("║  https://kareblok.tc                                  ║");
-                getLogger().severe("║                                                        ║");
-                getLogger().severe("╚════════════════════════════════════════════════════════╝");
-                getLogger().severe("");
-
-                // Eklentiyi devre dışı bırak
-                getServer().getPluginManager().disablePlugin(this);
-                return;
-            }
-
-            // RUNTIME VERIFICATION - Her 1 saatte bir lisansi kontrol et
-            licenseCheckTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
-                licenseManager.verifyLicenseRuntime().thenAccept(valid -> {
-                    if (!valid) {
-                        getLogger().severe("");
-                        getLogger().severe("╔════════════════════════════════════════════════════════╗");
-                        getLogger().severe("║  RUNTIME LISANS DOGRULAMA BASARISIZ!                 ║");
-                        getLogger().severe("║  Eklenti kapatiliyor...                               ║");
-                        getLogger().severe("╚════════════════════════════════════════════════════════╝");
-                        getLogger().severe("");
-                        Bukkit.getScheduler().runTask(this, () -> {
-                            getServer().getPluginManager().disablePlugin(this);
-                        });
-                    } else {
-                        getLogger().info("[KAREBLOK.TC] Runtime license check: ✓ Valid");
-                    }
-                });
-            }, 20L * 60L * 60L, 20L * 60L * 60L); // Her 1 saatte
-
-        } catch (java.util.concurrent.TimeoutException e) {
-            // Timeout = API ulasilamiyor = plugin ACILMAZ
-            getLogger().severe("===========================================");
-            getLogger().severe("Lisans dogrulama zaman asimina ugradi (15s)!");
-            getLogger().severe("API'ye ulasilamiyor. Eklenti acilamaz.");
-            getLogger().severe("API URL: " + getConfig().getString("license.api-url", "https://kareblok.tc"));
-            getLogger().severe("===========================================");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        } catch (Exception e) {
-            getLogger().severe("Lisans dogrulama sirasinda kritik hata!");
-            getLogger().log(Level.SEVERE, "Exception:", e);
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
-        // =====================================
 
         // Initialize managers
         if (!initializeManagers()) {
@@ -264,12 +185,6 @@ public class ReportSystemSpigot extends JavaPlugin {
         this.antiCheatBypassManager = new com.reportsystem.spigot.hooks.AntiCheatBypassManager(this);
         getLogger().info("[AC-BYPASS] Anti-cheat bypass manager aktif.");
 
-        // =====================================
-        // KAREBLOK.TC - TELEMETRY SYSTEM
-        // =====================================
-        telemetryManager = new com.reportsystem.spigot.telemetry.TelemetryManager(this);
-        telemetryManager.start();
-
         // PacketEvents surum kontrolu — eski PE yeni MC protokolunu bilemez (replay/NPC bozulur)
         checkPacketEventsVersion();
 
@@ -282,7 +197,6 @@ public class ReportSystemSpigot extends JavaPlugin {
         // Cancel tasks
         if (autoSaveTask != null) autoSaveTask.cancel();
         if (cleanupTask != null) cleanupTask.cancel();
-        if (licenseCheckTask != null) licenseCheckTask.cancel(); // KAREBLOK.TC
 
         // Save all active recordings
         if (recordingManager != null) {
@@ -1091,14 +1005,6 @@ public class ReportSystemSpigot extends JavaPlugin {
 
     public com.reportsystem.spigot.webhook.WebhookManager getWebhookManager() {
         return webhookManager;
-    }
-
-    public com.reportsystem.spigot.telemetry.TelemetryManager getTelemetryManager() {
-        return telemetryManager;
-    }
-
-    public com.reportsystem.spigot.license.LicenseManager getLicenseManager() {
-        return licenseManager;
     }
 
     /**

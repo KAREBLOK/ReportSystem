@@ -91,7 +91,7 @@ public class OverwatchDAO {
                     "accuracy DOUBLE DEFAULT 100.0, " +
                     "xp INT DEFAULT 0, " +
                     "level INT DEFAULT 1, " +
-                    "rank VARCHAR(20) DEFAULT 'BRONZE', " +
+                    "`rank` VARCHAR(20) DEFAULT 'BRONZE', " + // backtick: 'rank' MySQL 8'de rezerve kelime
                     "first_review_at BIGINT DEFAULT 0, " +
                     "last_review_at BIGINT DEFAULT 0, " +
                     "total_review_time INT DEFAULT 0, " +
@@ -177,7 +177,7 @@ public class OverwatchDAO {
                     "accuracy DOUBLE DEFAULT 100.0, " +
                     "xp INTEGER DEFAULT 0, " +
                     "level INTEGER DEFAULT 1, " +
-                    "rank VARCHAR(20) DEFAULT 'BRONZE', " +
+                    "`rank` VARCHAR(20) DEFAULT 'BRONZE', " + // backtick: 'rank' MySQL 8'de rezerve kelime
                     "first_review_at BIGINT DEFAULT 0, " +
                     "last_review_at BIGINT DEFAULT 0, " +
                     "total_review_time INTEGER DEFAULT 0" +
@@ -569,7 +569,7 @@ public class OverwatchDAO {
         String sql;
         if (isMySQL) {
             sql = "INSERT INTO overwatch_stats (reviewer_uuid, reviewer_name, total_reviews, guilty_verdicts, " +
-                  "innocent_verdicts, skipped_verdicts, accuracy, xp, level, rank, first_review_at, last_review_at, total_review_time, correct_verdicts) " +
+                  "innocent_verdicts, skipped_verdicts, accuracy, xp, level, `rank`, first_review_at, last_review_at, total_review_time, correct_verdicts) " +
                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                   "ON DUPLICATE KEY UPDATE " +
                   "reviewer_name = VALUES(reviewer_name), " +
@@ -580,13 +580,13 @@ public class OverwatchDAO {
                   "accuracy = VALUES(accuracy), " +
                   "xp = VALUES(xp), " +
                   "level = VALUES(level), " +
-                  "rank = VALUES(rank), " +
+                  "`rank` = VALUES(`rank`), " +
                   "last_review_at = VALUES(last_review_at), " +
                   "total_review_time = VALUES(total_review_time), " +
                   "correct_verdicts = VALUES(correct_verdicts)";
         } else {
             sql = "INSERT OR REPLACE INTO overwatch_stats (reviewer_uuid, reviewer_name, total_reviews, guilty_verdicts, " +
-                  "innocent_verdicts, skipped_verdicts, accuracy, xp, level, rank, first_review_at, last_review_at, total_review_time, correct_verdicts) " +
+                  "innocent_verdicts, skipped_verdicts, accuracy, xp, level, `rank`, first_review_at, last_review_at, total_review_time, correct_verdicts) " +
                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         }
 

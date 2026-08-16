@@ -33,6 +33,9 @@ public class RecordingManager {
     private final Map<UUID, RecordingSession> activeRecordings = new ConcurrentHashMap<>();
     private final Map<UUID, RecordingInfo> recordingInfoMap = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> entityTrackingTasks = new ConcurrentHashMap<>();
+    // Süre-sonu durdurma task'ları — iptal edilebilmeleri için ID saklanır (aksi halde
+    // aynı oyuncuya gelen 2. rapor, 1. kaydın timer'ı tarafından erken kesiliyordu).
+    private final Map<UUID, Integer> stopTasks = new ConcurrentHashMap<>();
     private final Map<UUID, NearbyPlayerTracker> nearbyPlayerTrackers = new ConcurrentHashMap<>();
 
     public RecordingManager(ReportSystemSpigot plugin, ReplayDAO replayDAO) {
@@ -136,10 +139,12 @@ public class RecordingManager {
         nearbyPlayerTrackers.put(playerUUID, nearbyTracker);
         plugin.getLogger().info("[RECORDING] NearbyPlayerTracker başlatıldı: " + player.getName());
 
-        // Belirtilen süre sonra durdurmak için task oluştur
-        plugin.getServer().getScheduler().runTaskLater(
+        // Belirtilen süre sonra durdurmak için task oluştur.
+        // Task ID'sini sakla → stopRecording bunu iptal edebilsin (erken/çift durdurma önlenir).
+        org.bukkit.scheduler.BukkitTask stopTask = plugin.getServer().getScheduler().runTaskLater(
                 plugin,
                 () -> {
+                    stopTasks.remove(playerUUID); // kendi kendine tetiklendi, kaydı temizle
                     plugin.getLogger().info("[RECORDING] Kayıt süresi doldu, durduruluyor: " + player.getName());
                     stopRecording(playerUUID).thenAccept(success -> {
                         if (success) {
@@ -188,6 +193,7 @@ public class RecordingManager {
                     });
                 },
                 durationSeconds * 20L);
+        stopTasks.put(playerUUID, stopTask.getTaskId());
     }
 
     /**
@@ -277,6 +283,13 @@ public class RecordingManager {
             plugin.getLogger().info("[RECORDING] Entity tracking task durduruldu: #" + taskId);
         }
 
+        // Süre-sonu durdurma task'ını iptal et (varsa) — böylece bu oyuncuya sonradan
+        // başlayan yeni bir kayıt, eski timer tarafından erken kesilmez.
+        Integer stopTaskId = stopTasks.remove(playerUUID);
+        if (stopTaskId != null) {
+            plugin.getServer().getScheduler().cancelTask(stopTaskId);
+        }
+
         // NearbyPlayerTracker'ı durdur
         NearbyPlayerTracker nearbyTracker = nearbyPlayerTrackers.remove(playerUUID);
         if (nearbyTracker != null) {
@@ -363,8 +376,18 @@ public class RecordingManager {
     private CompletableFuture<Boolean> saveReplayAsync(RecordingSession session, int reportId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
+                // VERİ KAYBI KORUMASI: session.getActions() bir synchronizedList; serialize
+                // onu iterasyonla yazarken başka thread (gecikmeli paket callback'i) addAction
+                // çağırırsa ConcurrentModificationException → catch → replay HİÇ kaydedilmez.
+                // Bu yüzden serialize'dan önce senkronize bir anlık kopya alıyoruz.
+                java.util.List<com.reportsystem.common.replay.actions.ReplayAction> live = session.getActions();
+                java.util.List<com.reportsystem.common.replay.actions.ReplayAction> actionsSnapshot;
+                synchronized (live) {
+                    actionsSnapshot = new java.util.ArrayList<>(live);
+                }
+
                 // Action'ları serialize et
-                byte[] data = ReplaySerializer.serialize(session.getActions(), true);
+                byte[] data = ReplaySerializer.serialize(actionsSnapshot, true);
                 double sizeKB = ReplaySerializer.calculateSizeKB(data);
                 double sizeMB = sizeKB / 1024.0;
 
@@ -387,7 +410,7 @@ public class RecordingManager {
                         session.getWorldName(),
                         session.getStartTime(),
                         session.getEndTime(),
-                        session.getActions().size(),
+                        actionsSnapshot.size(),
                         data,
                         true);
 

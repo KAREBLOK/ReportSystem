@@ -1,4 +1,4 @@
 name: ReportSystem-Bungee
 version: ${project.version}
 main: com.reportsystem.bungee.ReportSystemBungee
-author: BaranMRJ
+author: KAREBLOK

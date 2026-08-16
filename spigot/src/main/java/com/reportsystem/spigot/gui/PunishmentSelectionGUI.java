@@ -93,6 +93,15 @@ public class PunishmentSelectionGUI implements InventoryHolder {
 
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
+
+        // GÜVENLİK: ceza uygulama yetkisi olmayan hiç kimse bu GUI ile işlem yapamaz.
+        // ("Geri" ve iptal dahil kapatılır; yetkisiz kişi buraya normalde erişememeli.)
+        if (!viewer.hasPermission("reportsystem.punish")) {
+            viewer.closeInventory();
+            plugin.getMessageManager().sendNoPermission(viewer);
+            return;
+        }
+
         int slot = event.getSlot();
 
         if (slot == guiConfig.getItemSlot("ban")) {
@@ -125,7 +134,26 @@ public class PunishmentSelectionGUI implements InventoryHolder {
         }
     }
 
+    /**
+     * ÇİFT-CEZA KORUMASI: rapor bellekteki eski nesneyle işleniyordu; iki yetkili aynı
+     * PENDING raporu açıp ceza verirse hedef iki kez cezalandırılıyordu. İşlemden hemen
+     * önce DB'den taze durumu okuyup PENDING değilse iptal ediyoruz.
+     * @return true → işleme devam edilebilir; false → başka biri raporu çoktan kapatmış.
+     */
+    private boolean ensureStillPending() {
+        Report fresh = plugin.getReportService().getReportById(report.getId());
+        if (fresh == null || !fresh.isPending()) {
+            viewer.closeInventory();
+            plugin.getMessageManager().sendMessage(viewer, "reports.actions.already-handled");
+            return false;
+        }
+        return true;
+    }
+
     private void executePunishment(String type, long duration) {
+        // Başka bir yetkili bu raporu çoktan işlediyse çift cezayı engelle
+        if (!ensureStillPending()) return;
+
         // Execute punishment
         String targetPlayer = report.getReportedPlayerName();
         String reason = report.getReason();
@@ -194,6 +222,9 @@ public class PunishmentSelectionGUI implements InventoryHolder {
     }
 
     private void acceptWithoutPunishment() {
+        // Başka bir yetkili bu raporu çoktan işlediyse çift işlemi engelle
+        if (!ensureStillPending()) return;
+
         // Update report status to ACCEPTED
         report.setStatus(Report.Status.ACCEPTED.getValue());
         report.setResolvedBy(viewer.getName());

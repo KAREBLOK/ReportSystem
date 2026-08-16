@@ -2,7 +2,7 @@ name: ReportSystem-Spigot
 version: ${project.version}
 main: com.reportsystem.spigot.ReportSystemSpigot
 api-version: '1.21'
-author: BaranMRJ
+author: KAREBLOK
 website: https://kareblok.tc
 description: Gelişmiş GUI ve Replay sistemine sahip rapor eklentisi
 

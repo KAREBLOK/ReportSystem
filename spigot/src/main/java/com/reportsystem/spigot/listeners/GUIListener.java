@@ -93,7 +93,26 @@ public class GUIListener implements Listener {
         // Webhook sadece "Ceza Verme" butonuna basıldığında veya ceza uygulandığında gönderilir
     }
 
+    /**
+     * GÜVENLİK yardımcısı: yetkili aksiyonlarını izinle kapılar.
+     * İzin yoksa uyarı gönderip envanteri kapatır ve false döner.
+     */
+    private boolean requirePermission(Player player, String permission) {
+        if (player.hasPermission(permission)) {
+            return true;
+        }
+        player.closeInventory();
+        plugin.getMessageManager().sendNoPermission(player);
+        return false;
+    }
+
     private void handleReportListGUI(Player player, ReportListGUI gui, int slot) {
+        // Savunma-derinliği: liste zaten view.all ile kapılı ama detay/ceza yüzeyine
+        // geçişten önce de doğrula (GUI başka yoldan açılırsa diye).
+        if (!player.hasPermission("reportsystem.view.all")) {
+            requirePermission(player, "reportsystem.view.all");
+            return;
+        }
         if (slot == 48 && gui.getCurrentPage() > 1) {
             new ReportListGUI(plugin, player, gui.getCurrentPage() - 1).open();
         } else if (slot == 50 && gui.getCurrentPage() < gui.getMaxPage()) {
@@ -120,13 +139,16 @@ public class GUIListener implements Listener {
                 plugin.getMessageManager().sendMessage(player, "replay.not-found");
             }
         } else if (slot == config.getItemSlot("actions.accept")) {
-            // Raporu Onayla - Ceza seçim GUI'sini aç
+            // Raporu Onayla - Ceza seçim GUI'sini aç (yetkili aksiyonu)
+            if (!requirePermission(player, "reportsystem.manage")) return;
             acceptReportAndShowPunishmentSelection(player, report);
         } else if (slot == config.getItemSlot("actions.reject")) {
-            // Raporu Reddet
+            // Raporu Reddet (yetkili aksiyonu)
+            if (!requirePermission(player, "reportsystem.manage")) return;
             rejectReport(player, report);
         } else if (slot == config.getItemSlot("punishments.teleport")) {
-            // Oyuncuya Işınlan
+            // Oyuncuya Işınlan (yetkili aksiyonu)
+            if (!requirePermission(player, "reportsystem.manage")) return;
             player.closeInventory();
             teleportToPlayer(player, report.getReportedPlayerName());
         } else if (slot == config.getItemSlot("navigation.back")) {

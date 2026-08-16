@@ -37,8 +37,9 @@ public class ReplayPacketListener extends PacketListenerAbstract {
     private long lastPositionTime = 0;
     private Location lastLocation;
     private Vector lastVelocity = new Vector(0, 0, 0);
-    private boolean isUsingItem = false;
-    private long itemUseStartTime = 0;
+    // volatile: paket işleme thread'i (netty) ile diğer erişimler arası görünürlük garantisi
+    private volatile boolean isUsingItem = false;
+    private volatile long itemUseStartTime = 0;
     private boolean wasOnFire = false; // YENİ: Yanma durumu takibi
     private int packetCount = 0; // Debug counter
 
@@ -221,12 +222,17 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                     " at " + blockPos.getX() + "," + blockPos.getY() + "," + blockPos.getZ());
 
             if (wrapper.getAction() == DiggingAction.START_DIGGING) {
-                // Blok tipini kaydet (replay'de göstermek için - blok artık gerçek dünyada olmayabilir)
-                String blockTypeName = recordedPlayer.getWorld()
-                        .getBlockAt(blockPos.getX(), blockPos.getY(), blockPos.getZ())
-                        .getType().name();
-                session.addAction(new BlockAction(BlockAction.BlockActionType.START_BREAKING,
-                        blockPos.getX(), blockPos.getY(), blockPos.getZ(), 0, blockTypeName));
+                // Blok tipini kaydet (replay'de göstermek için - blok artık gerçek dünyada olmayabilir).
+                // KRİTİK: Bu handler netty (async) thread'inde çalışır; getWorld()/getBlockAt()
+                // Bukkit çağrıları MUTLAKA ana thread'de yapılmalı (async block access hatası + yanlış okuma).
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!recordedPlayer.isOnline()) return;
+                    String blockTypeName = recordedPlayer.getWorld()
+                            .getBlockAt(blockPos.getX(), blockPos.getY(), blockPos.getZ())
+                            .getType().name();
+                    session.addAction(new BlockAction(BlockAction.BlockActionType.START_BREAKING,
+                            blockPos.getX(), blockPos.getY(), blockPos.getZ(), 0, blockTypeName));
+                });
             } else if (wrapper.getAction() == DiggingAction.FINISHED_DIGGING) {
                 // Blok kırma tamamlandı
                 session.addAction(new BlockAction(BlockAction.BlockActionType.STOP_BREAKING,
@@ -239,17 +245,21 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                 // Item kullanımı bitti (yay, kalkan vb.)
                 if (isUsingItem) {
                     isUsingItem = false;
-                    int duration = (int) (System.currentTimeMillis() - itemUseStartTime) / 50; // tick'e çevir
+                    // Parantez düzeltmesi: önce fark alınıp sonra 50'ye bölünür (tick'e çevir)
+                    final int duration = (int) ((System.currentTimeMillis() - itemUseStartTime) / 50);
 
-                    // Son kullanılan item'a göre action oluştur
-                    ItemStack item = recordedPlayer.getInventory().getItemInMainHand();
-                    if (item != null && item.getType() == Material.SHIELD) {
-                        session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, duration, true, false));
-                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield use ended");
-                    } else if (item != null && item.getType() == Material.BOW) {
-                        session.addAction(new UseItemAction(UseItemAction.UseType.BOW_CHARGE, duration, true, false));
-                        ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bow charge released");
-                    }
+                    // KRİTİK: getInventory() Bukkit çağrısı ana thread'de yapılmalı (netty thread değil).
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (!recordedPlayer.isOnline()) return;
+                        ItemStack item = recordedPlayer.getInventory().getItemInMainHand();
+                        if (item != null && item.getType() == Material.SHIELD) {
+                            session.addAction(new UseItemAction(UseItemAction.UseType.SHIELD_BLOCK, duration, true, false));
+                            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Shield use ended");
+                        } else if (item != null && item.getType() == Material.BOW) {
+                            session.addAction(new UseItemAction(UseItemAction.UseType.BOW_CHARGE, duration, true, false));
+                            ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Bow charge released");
+                        }
+                    });
                 }
             }
         }
