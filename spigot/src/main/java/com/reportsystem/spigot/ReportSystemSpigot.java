@@ -126,7 +126,7 @@ public class ReportSystemSpigot extends JavaPlugin {
         }
 
         // bStats Metrics
-        new org.bstats.bukkit.Metrics(this, 25469);
+        new org.bstats.bukkit.Metrics(this, 30870);
 
         // PlaceholderAPI
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
