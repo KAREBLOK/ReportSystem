@@ -121,13 +121,13 @@ public class ReportListGUI extends GUI {
         }
 
         // Report items
+        // NOT: 'reports' listesi DAO tarafından zaten bu sayfaya dilimlenmiş (LIMIT/OFFSET)
+        // geliyor; burada TEKRAR offset uygulamak sayfa 2+'yi boş gösteriyordu (çift offset).
         if (reports != null && !reports.isEmpty()) {
-            int startIndex = (currentPage - 1) * itemsPerPage;
             for (int i = 0; i < itemsPerPage; i++) {
-                int reportIndex = startIndex + i;
-                if (reportIndex < reports.size()) {
+                if (i < reports.size()) {
                     int slot = getReportSlot(i);
-                    inventory.setItem(slot, createReportItem(reports.get(reportIndex)));
+                    inventory.setItem(slot, createReportItem(reports.get(i)));
                 }
             }
         } else {
@@ -346,9 +346,9 @@ public class ReportListGUI extends GUI {
         else if (slot >= 28 && slot <= 34) index = slot - 14;
         else if (slot >= 37 && slot <= 43) index = slot - 16;
 
-        int actualIndex = ((currentPage - 1) * itemsPerPage) + index;
-        if (index != -1 && actualIndex < reports.size()) {
-            return reports.get(actualIndex);
+        // 'reports' zaten bu sayfanın dilimi; sayfa offset'i uygulanmaz (çift offset hatası).
+        if (index != -1 && index < reports.size()) {
+            return reports.get(index);
         }
         return null;
     }

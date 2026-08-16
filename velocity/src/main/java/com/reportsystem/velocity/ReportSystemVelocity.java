@@ -26,7 +26,7 @@ import java.sql.*;
         id = "reportsystem",
         name = "ReportSystem-Velocity",
         version = "1.0.0",
-        authors = {"BaranMRJ"},
+        authors = {"KAREBLOK"},
         description = "Cross-server report system for Velocity"
 )
 public class ReportSystemVelocity {

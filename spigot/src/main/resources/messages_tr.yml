@@ -126,6 +126,7 @@ reports:
   actions:
     select-punishment: "%prefix_warning% &eLütfen bir ceza seçin veya GUI'yi kapatın."
     accept-cancelled: "%prefix_error% &cRapor kabul işlemi iptal edildi."
+    already-handled: "%prefix_error% &cBu rapor başka bir yetkili tarafından çoktan işlenmiş."
     accepted-no-punishment: "%prefix_success% &aRapor #%id% ceza verilmeden kabul edildi."
     rejected: "%prefix_error% &cRapor #%id% reddedildi."
     deleted: "%prefix_success% &aRapor #%id% ve ilgili replay silindi."

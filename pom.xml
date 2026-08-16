@@ -6,7 +6,7 @@
 
   <groupId>com.reportsystem</groupId>
   <artifactId>reportsystem-parent</artifactId>
-  <version>1.1.1</version>
+  <version>2.0.1</version>
   <packaging>pom</packaging>
   <name>ReportSystem Parent</name>
 

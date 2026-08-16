@@ -386,12 +386,15 @@ public class ReplayManager {
                     ReportSystemSpigot.getInstance().debug("[REPLAY] Sending " + viewer.getName() +
                             " back to original server '" + originalServer + "' from '" + currentServer + "'");
 
-                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                        if (viewer.isOnline()) {
-                            viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
-                            sendPlayerToServer(viewer, originalServer);
-                        }
-                    }, 10L);
+                    // Kapanışta (onDisable) scheduler kullanılamaz → istisna kapanışı yarıda keserdi.
+                    if (plugin.isEnabled()) {
+                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                            if (viewer.isOnline()) {
+                                viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
+                                sendPlayerToServer(viewer, originalServer);
+                            }
+                        }, 10L);
+                    }
 
                     // Don't restore location - player is being sent to another server
                     viewerOriginalLocations.remove(viewerUUID);
@@ -401,7 +404,12 @@ public class ReplayManager {
 
             // 4. Restore viewer's original location (same server)
             Location originalLocation = viewerOriginalLocations.remove(viewerUUID);
-            if (originalLocation != null && viewer.isOnline()) {
+            if (originalLocation != null && viewer.isOnline() && !plugin.isEnabled()) {
+                // Kapanışta (onDisable) scheduler yok → konumu SENKRON geri al.
+                viewer.teleport(originalLocation);
+                showViewerToPlayers(viewer);
+                reshowOverwatchNPCs(viewer);
+            } else if (originalLocation != null && viewer.isOnline()) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                     if (viewer.isOnline()) {
                         viewer.teleport(originalLocation);
@@ -629,12 +637,16 @@ public class ReplayManager {
 
                 showViewerToPlayers(viewer);
 
-                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    if (viewer.isOnline()) {
-                        viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
-                        sendPlayerToServer(viewer, originalServer);
-                    }
-                }, 10L);
+                // Plugin kapanıyorsa (onDisable) scheduler kullanılamaz → istisna kapanışı
+                // yarıda keserdi. Kapanışta zaten oyuncu bağlantısı kesileceği için atlanır.
+                if (plugin.isEnabled()) {
+                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                        if (viewer.isOnline()) {
+                            viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.return-server").replace("%server%", originalServer)));
+                            sendPlayerToServer(viewer, originalServer);
+                        }
+                    }, 10L);
+                }
 
                 // Don't restore location - player is being sent to another server
                 viewerOriginalLocations.remove(viewerUUID);
@@ -644,7 +656,14 @@ public class ReplayManager {
 
         // Restore viewer's original location (same server)
         Location originalLocation = viewerOriginalLocations.remove(viewerUUID);
-        if (originalLocation != null && viewer.isOnline()) {
+        if (originalLocation != null && viewer.isOnline() && !plugin.isEnabled()) {
+            // Plugin kapanıyor (onDisable): scheduler kullanılamaz (IllegalPluginAccessException
+            // stopAllReplays döngüsünü ve onDisable'ın kalanını —hook disconnect, database.close()—
+            // yarıda keserdi). Bu yüzden konumu SENKRON geri alıp çık.
+            viewer.teleport(originalLocation);
+            viewer.setFallDistance(0f);
+            showViewerToPlayers(viewer);
+        } else if (originalLocation != null && viewer.isOnline()) {
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 if (viewer.isOnline()) {
                     viewer.teleport(originalLocation);

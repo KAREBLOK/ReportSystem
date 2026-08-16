@@ -231,6 +231,13 @@ public class OverwatchManager {
             if (reviews.size() < minReviewers) {
                 plugin.debug("[OVERWATCH] Report #" + reportId +
                         " needs " + (minReviewers - reviews.size()) + " more reviews");
+                // KRİTİK FIX: rapor atandığında IN_REVIEW oluyor; yeterli oy yoksa
+                // PENDING'e geri döndür ki DİĞER inceleyiciler kuyruktan çekebilsin.
+                // (Az önce oy veren inceleyici getNextQueueItem'daki LEFT JOIN ile
+                //  zaten hariç tutulur, tekrar alamaz → sonsuz döngü yok.)
+                // Eskiden burada sadece 'return' vardı → rapor IN_REVIEW'da sonsuza
+                // kilitleniyor, min-reviewers asla dolmuyordu (tüm Overwatch hattı ölü).
+                overwatchDAO.unassignReport(reportId);
                 return;
             }
 

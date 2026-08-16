@@ -28,7 +28,10 @@ public class ReportsCommand implements CommandExecutor, TabCompleter {
 
         Player player = (Player) sender;
 
-        if (!player.hasPermission("reportsystem.view")) {
+        // GÜVENLİK: Bu GUI TÜM raporları gösterir ve ceza akışına açılır → yetkili yüzeyi.
+        // 'reportsystem.view' (varsayılan true, "kendi raporlarını gör") YETERSİZDİ; herkes
+        // listeye girip ceza verebiliyordu. Artık 'view.all' (varsayılan op) gerekiyor.
+        if (!player.hasPermission("reportsystem.view.all")) {
             plugin.getMessageManager().sendNoPermission(player);
             return true;
         }

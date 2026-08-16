@@ -126,6 +126,7 @@ reports:
   actions:
     select-punishment: "%prefix_warning% &ePlease select a punishment or close the GUI."
     accept-cancelled: "%prefix_error% &cReport acceptance cancelled."
+    already-handled: "%prefix_error% &cThis report has already been handled by another staff member."
     accepted-no-punishment: "%prefix_success% &aReport #%id% accepted without punishment."
     rejected: "%prefix_error% &cReport #%id% rejected."
     deleted: "%prefix_success% &aReport #%id% and related replay deleted."

@@ -383,7 +383,11 @@ public class ReplayControlManager {
         ItemStack[] savedInventory = savedInventories.remove(playerUUID);
         if (savedInventory != null) {
             player.getInventory().clear();
-            if (plugin.isEnabled()) {
+            // ENVANTER KAYBI KORUMASI: oyuncu çıkıyorsa (quit) veya plugin kapanıyorsa
+            // geri yüklemeyi 1 tick ertelemek boş envanterin diske yazılmasına yol açar
+            // (Bukkit quit sonrası veriyi kaydeder) → tüm eşyalar kaybolur. Bu iki durumda
+            // SENKRON geri yükle; sadece normal (online + aktif plugin) akışta ertele.
+            if (plugin.isEnabled() && player.isOnline()) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                     player.getInventory().setContents(savedInventory);
                     player.updateInventory();
@@ -392,10 +396,10 @@ public class ReplayControlManager {
                 player.getInventory().setContents(savedInventory);
                 player.updateInventory();
             }
-        } else {
-            player.getInventory().clear();
-            player.updateInventory();
         }
+        // IDEMPOTENT: kayıtlı envanter YOKSA envantere DOKUNMA. Eskiden buradaki 'else'
+        // dalı envanteri clear ediyordu → shutdown/stopAll sırasında bu metod ikinci kez
+        // çağrılınca (savedInventory zaten alınmış) oyuncunun GERÇEK envanteri siliniyordu.
     }
 
     private String formatTime(long seconds) {

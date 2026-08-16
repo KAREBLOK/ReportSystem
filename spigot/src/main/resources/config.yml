@@ -1,31 +1,7 @@
 # ReportSystem Spigot Configuration
 # Support: https://kareblok.tc
 
-# ======================
-# License Settings
-# ======================
-license:
-  # Enter your license key here
-  # Purchase a license at: https://kareblok.tc
-  # Format: KB-XXXX-XXXX-XXXX
-  #
-  # BungeeCord Users:
-  # You can use the same license on multiple servers (Factions, Skyblock, PvP, etc.)
-  # Check your max_servers setting from the admin panel.
-  license-key: "KB-XXXX-XXXX-XXXX"
 
-  # API URL (do not change)
-  api-url: "https://kareblok.tc"
-
-# ======================
-# Telemetry Settings
-# ======================
-telemetry:
-  # Enable/disable telemetry system
-  # Collects server statistics (player count, report count, TPS, etc.)
-  # Data is collected anonymously and used only for development
-  # You can disable it anytime
-  enabled: true
 
 # ======================
 # General Settings
