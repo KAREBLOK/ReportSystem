@@ -208,6 +208,11 @@ public class ReportSystemSpigot extends JavaPlugin {
             replayManager.stopAllReplays();
         }
 
+        // Cleanup Overwatch reviews (restore all reviewer inventories)
+        if (overwatchReplayListener != null) {
+            overwatchReplayListener.cleanup();
+        }
+
         // Cleanup Anti-Cheat hooks
         if (polarHook != null) polarHook.disconnect();
         if (vulcanHook != null) vulcanHook.disconnect();

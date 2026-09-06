@@ -328,6 +328,10 @@ public class ReplayControlManager {
     }
 
     public void removeControlItems(Player player) {
+        removeControlItems(player, false);
+    }
+
+    public void removeControlItems(Player player, boolean sync) {
         UUID playerUUID = player.getUniqueId();
 
         plugin.debug("[REPLAY-CONTROL] Starting cleanup for " + player.getName());
@@ -344,7 +348,7 @@ public class ReplayControlManager {
             bossBar.removeAll();
         }
 
-        restorePlayerState(player, playerUUID);
+        restorePlayerState(player, playerUUID, sync);
 
         plugin.debug("[REPLAY-CONTROL] Cleanup completed for " + player.getName());
     }
@@ -353,6 +357,10 @@ public class ReplayControlManager {
      * Oyuncu durumunu geri yukler (gamemode, can, yemek, fly, envanter)
      */
     private void restorePlayerState(Player player, UUID playerUUID) {
+        restorePlayerState(player, playerUUID, false);
+    }
+
+    private void restorePlayerState(Player player, UUID playerUUID, boolean sync) {
         GameMode savedGM = savedGameModes.remove(playerUUID);
         if (savedGM != null) {
             player.setGameMode(savedGM);
@@ -383,11 +391,11 @@ public class ReplayControlManager {
         ItemStack[] savedInventory = savedInventories.remove(playerUUID);
         if (savedInventory != null) {
             player.getInventory().clear();
-            // ENVANTER KAYBI KORUMASI: oyuncu çıkıyorsa (quit) veya plugin kapanıyorsa
-            // geri yüklemeyi 1 tick ertelemek boş envanterin diske yazılmasına yol açar
-            // (Bukkit quit sonrası veriyi kaydeder) → tüm eşyalar kaybolur. Bu iki durumda
-            // SENKRON geri yükle; sadece normal (online + aktif plugin) akışta ertele.
-            if (plugin.isEnabled() && player.isOnline()) {
+            // ENVANTER KAYBI KORUMASI: oyuncu cikiyorsa (quit/sync) veya plugin kapaniyorsa
+            // geri yuklemeyi 1 tick ertelemek bos envanterin diske yazilmasina yol acar
+            // (Bukkit quit sonrasi veriyi kaydeder) -> tum esyalar kaybolur. Bu durumlarda
+            // SENKRON geri yukle; sadece normal (online + aktif plugin + !sync) akista ertele.
+            if (!sync && plugin.isEnabled() && player.isOnline()) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                     player.getInventory().setContents(savedInventory);
                     player.updateInventory();

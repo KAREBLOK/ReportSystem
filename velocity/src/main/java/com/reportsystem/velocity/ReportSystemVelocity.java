@@ -25,7 +25,7 @@ import java.sql.*;
 @Plugin(
         id = "reportsystem",
         name = "ReportSystem-Velocity",
-        version = "1.0.0",
+        version = "2.1.4",
         authors = {"KAREBLOK"},
         description = "Cross-server report system for Velocity"
 )
