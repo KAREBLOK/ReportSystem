@@ -190,6 +190,13 @@ public class OverwatchMenuGUI implements InventoryHolder {
     }
 
     private void startReviewing() {
+        if (plugin.getReplayManager().isWatchingReplay(player) ||
+                (plugin.getOverwatchReplayListener() != null && plugin.getOverwatchReplayListener().isReviewing(player.getUniqueId()))) {
+            player.closeInventory();
+            player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("replay.already-watching")));
+            return;
+        }
+
         player.closeInventory();
 
         Optional<Integer> reportIdOpt = plugin.getOverwatchManager().getNextReportForReviewer(player);
@@ -201,12 +208,25 @@ public class OverwatchMenuGUI implements InventoryHolder {
                     .replace("%id%", String.valueOf(reportId));
             player.sendMessage(plugin.getMessageManager().colorize(loadingMsg));
 
+            // Oyuncunun GERCEK envanterini/konumunu replay baslamadan ONCE kaydet.
+            //
+            // Burasi kritik: startReplay -> giveControlItems oyuncunun envanterini
+            // kontrol esyalariyla DEGISTIRIYOR. Kayit bir tik sonra alinsaydi gercek
+            // esyalar degil kontrol esyalari saklanirdi. Bu cagri eksik oldugu icin
+            // inceleme sonunda envanter geri yuklenemiyordu (esya kaybi).
+            plugin.getOverwatchReplayListener().savePlayerState(player);
+
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 plugin.getReplayManager().startReplay(reportId, player).thenAccept(started -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         if (started) {
                             plugin.getOverwatchReplayListener().startReview(player, reportId);
                         } else {
+                            // Replay hic baslamadi: envanter degismedi, bu yuzden
+                            // GERI YUKLEME degil sadece kaydi dusur ve raporu serbest birak.
+                            plugin.getOverwatchReplayListener().dropSavedState(player.getUniqueId());
+                            plugin.getOverwatchManager().unassignReport(reportId);
+
                             String failedMsg = plugin.getMessageManager().getMessage("overwatch.review.replay-failed");
                             player.sendMessage(plugin.getMessageManager().colorize(failedMsg));
                         }

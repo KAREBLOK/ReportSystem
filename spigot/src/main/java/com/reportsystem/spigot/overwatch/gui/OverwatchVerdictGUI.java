@@ -296,8 +296,17 @@ public class OverwatchVerdictGUI implements InventoryHolder {
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
-                if (plugin.getOverwatchReplayListener() != null
-                        && plugin.getOverwatchReplayListener().hasSavedState(player.getUniqueId())) {
+                // hasSavedState() KAPISI KALDIRILDI.
+                //
+                // savePlayerState() hicbir yerden cagrilmadigi icin bu kontrol DAIMA
+                // false donuyordu; akis her zaman restoreViewerLocation'a dusuyordu.
+                // O metot yalnizca oyuncuyu isinlar, ENVANTERI GERI YUKLEMEZ - karar
+                // veren yetkili bombos envanterle kaliyordu.
+                //
+                // restoreAndReturn artik kendi kaydi yoksa ControlManager'in replay
+                // basinda aldigi kopyaya dusuyor, yani her iki durumda da envanter iade
+                // edilir. Konum da orada geri yukleniyor.
+                if (plugin.getOverwatchReplayListener() != null) {
                     plugin.getOverwatchReplayListener().restoreAndReturn(player);
                 } else {
                     plugin.getReplayManager().restoreViewerLocation(player);

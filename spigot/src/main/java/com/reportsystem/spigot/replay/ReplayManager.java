@@ -561,8 +561,8 @@ public class ReplayManager {
         if (replayPlayer != null) {
             ReportSystemSpigot.getInstance().debug("[REPLAY] Player quit during replay: " + player.getName());
 
-            // Kontrol itemlerini temizle
-            controlManager.removeControlItems(player);
+            // Kontrol itemlerini senkron temizle ve envanteri hemen iade et
+            controlManager.removeControlItems(player, true);
 
             // Viewer'ı kaldır
             replayPlayer.removeViewer(player);
@@ -570,8 +570,11 @@ public class ReplayManager {
             // Replay'i durdur (başka viewer yoksa)
             replayPlayer.stop();
 
-            // Clean up saved original location and server (player quit, no need to restore)
-            viewerOriginalLocations.remove(playerUuid);
+            // Cikis yapan oyuncuyu orijinal konumuna senkron isinla ki diske dogru konum yazilsin
+            Location origLoc = viewerOriginalLocations.remove(playerUuid);
+            if (origLoc != null) {
+                player.teleport(origLoc);
+            }
             viewerOriginalServers.remove(playerUuid);
             ReportSystemSpigot.getInstance().debug("[REPLAY] Cleaned up saved location and server for quit player " + player.getName());
 

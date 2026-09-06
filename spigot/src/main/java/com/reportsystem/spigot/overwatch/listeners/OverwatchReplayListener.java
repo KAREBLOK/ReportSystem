@@ -46,8 +46,17 @@ public class OverwatchReplayListener implements Listener {
      * OverwatchMenuGUI'den startReplay'den once cagrilir.
      */
     public void savePlayerState(Player player) {
-        savedStates.put(player.getUniqueId(), new PlayerState(player));
+        // IDEMPOTENT: "Tekrar Izle" akisi startReplay'i yeniden cagirir; o sirada
+        // envanter ZATEN temizlenmis olur. putIfAbsent olmasaydi ilk kaydedilen
+        // GERCEK envanterin uzerine BOS envanter yazilir ve esyalar kalici olarak
+        // kaybolurdu. Ilk kayit inceleme bitene kadar korunur.
+        savedStates.putIfAbsent(player.getUniqueId(), new PlayerState(player));
         plugin.debug("[OVERWATCH-REPLAY] Saved original state for " + player.getName());
+    }
+
+    /** Replay hic baslamadiysa kaydi restore etmeden birak (envantere dokunma). */
+    public void dropSavedState(UUID playerUUID) {
+        savedStates.remove(playerUUID);
     }
 
     public void startReview(Player player, int reportId) {
@@ -68,7 +77,9 @@ public class OverwatchReplayListener implements Listener {
      * Replay izliyor veya post-replay'de (koruma gerekli)
      */
     public boolean needsProtection(UUID playerUUID) {
-        return activeReviews.containsKey(playerUUID);
+        // Post-replay asamasi da korunmali: Saat/Kitap/Bariyer gercek ItemStack'ler,
+        // koruma kalkarsa oyuncu bunlari yere atip dunyaya sokabiliyordu.
+        return activeReviews.containsKey(playerUUID) || postReplayPlayers.contains(playerUUID);
     }
 
     public Integer getReviewingReportId(UUID playerUUID) {
@@ -90,12 +101,20 @@ public class OverwatchReplayListener implements Listener {
         activeReviews.remove(uuid);
         postReplayPlayers.remove(uuid);
 
-        // ReplayControlManager'daki stale veriyi temizle
-        plugin.getReplayManager().getControlManager().clearSavedState(uuid);
         plugin.getReplayManager().clearOriginalLocation(uuid);
 
+        // SIRA KRITIK: eskiden clearSavedState() burada, restore'dan ONCE cagriliyordu.
+        // clearSavedState envanteri geri YUKLEMEDEN siliyor; kendi savedStates'imiz de
+        // hic doldurulmadigi icin (savePlayerState cagrilmiyordu) oyuncu bombos kaliyordu.
         if (state != null) {
+            // Bizim kopyamiz gercek envanteri tasiyor. ControlManager'in kopyasi
+            // rewatch sirasinda bozulmus olabilecegi icin onu restore ETMEDEN dusur.
+            plugin.getReplayManager().getControlManager().clearSavedState(uuid);
             state.restore(player, plugin);
+        } else {
+            // YEDEK YOL: ControlManager replay basinda (giveControlItems) envanteri
+            // kaydetmisti. Kendi kaydimiz yoksa onu kullan - silme.
+            plugin.getReplayManager().getControlManager().removeControlItems(player);
         }
 
         // Diger oyunculara tekrar goster
@@ -148,14 +167,18 @@ public class OverwatchReplayListener implements Listener {
                     activeReviews.remove(playerUUID);
                     postReplayPlayers.remove(playerUUID);
 
-                    // State'i geri yukle
+                    // State'i geri yukle. state null olsa BILE envanter iade edilmeli:
+                    // eskiden null durumunda hicbir sey yapilmiyor, oyuncu zaman asimindan
+                    // sonra bos envanterle kaliyordu.
                     PlayerState state = savedStates.remove(playerUUID);
+                    plugin.getReplayManager().clearOriginalLocation(playerUUID);
                     if (state != null) {
                         plugin.getReplayManager().getControlManager().clearSavedState(playerUUID);
-                        plugin.getReplayManager().clearOriginalLocation(playerUUID);
                         state.restore(player, plugin);
-                        showPlayerToAll(player);
+                    } else {
+                        plugin.getReplayManager().getControlManager().removeControlItems(player);
                     }
+                    showPlayerToAll(player);
                     continue;
                 }
 
@@ -338,6 +361,22 @@ public class OverwatchReplayListener implements Listener {
             replayCheckTask.cancel();
             replayCheckTask = null;
         }
+
+        // Plugin kapanirken inceleme yapan herkesin envanterini iade et.
+        // Yoksa /reload veya sunucu kapanisinda esyalar kaybolur.
+        for (UUID uuid : new HashSet<>(savedStates.keySet())) {
+            Player player = Bukkit.getPlayer(uuid);
+            PlayerState state = savedStates.remove(uuid);
+            if (player != null && state != null) {
+                try {
+                    state.restore(player, plugin, true);
+                } catch (Throwable ignored) {
+                    // kapanista tek bir oyuncunun hatasi digerlerini engellemesin
+                }
+            }
+        }
+        activeReviews.clear();
+        postReplayPlayers.clear();
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -353,8 +392,22 @@ public class OverwatchReplayListener implements Listener {
                     " quit during review - review cancelled");
         }
 
-        savedStates.remove(playerUUID);
+        // ★ ENVANTER KAYBI KORUMASI
+        // Eskiden burada kayit sadece SILINIYORDU. Bukkit, quit olayindan sonra
+        // oyuncunun O ANKI envanterini (replay kontrol esyalari ya da bos) diske
+        // yaziyor; gercek esyalar kalici olarak yok oluyordu. Oyuncu cikarken
+        // envanteri SENKRON geri yukleniyor ki diske dogru hali yazilsin.
+        PlayerState state = savedStates.remove(playerUUID);
         postReplayPlayers.remove(playerUUID);
+
+        if (state != null) {
+            plugin.getReplayManager().getControlManager().clearSavedState(playerUUID);
+            state.restore(event.getPlayer(), plugin, true);
+        } else {
+            // Yedek yol: ControlManager'in replay basinda aldigi kopya.
+            // O metot artik senkron yaziyor.
+            plugin.getReplayManager().getControlManager().removeControlItems(event.getPlayer(), true);
+        }
 
         if (plugin.getNPCManager() != null) {
             plugin.getNPCManager().clearSelection(playerUUID);
@@ -418,6 +471,10 @@ public class OverwatchReplayListener implements Listener {
         }
 
         void restore(Player player, ReportSystemSpigot plugin) {
+            restore(player, plugin, false);
+        }
+
+        void restore(Player player, ReportSystemSpigot plugin, boolean sync) {
             player.setGameMode(gameMode);
             player.setAllowFlight(allowFlight);
             if (allowFlight) player.setFlying(flying);
@@ -429,14 +486,26 @@ public class OverwatchReplayListener implements Listener {
             player.setFallDistance(0f);
 
             player.getInventory().clear();
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) {
-                    player.getInventory().setContents(inventory);
-                    player.updateInventory();
-                    player.teleport(location);
-                    player.setFallDistance(0f);
-                }
-            }, 1L);
+
+            // Oyuncu cikiyorsa (sync) ya da plugin kapaniyorsa 1 tik ERTELEME calismaz:
+            // gorev hic kosmaz, Bukkit bos envanteri diske yazar ve esyalar gider.
+            // Bu iki durumda senkron yaz; sadece normal akista ertele (teleport
+            // ve envanterin ayni tikta catismamasi icin).
+            if (!sync && plugin.isEnabled() && player.isOnline()) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline()) {
+                        player.getInventory().setContents(inventory);
+                        player.updateInventory();
+                        player.teleport(location);
+                        player.setFallDistance(0f);
+                    }
+                }, 1L);
+            } else {
+                player.getInventory().setContents(inventory);
+                player.updateInventory();
+                player.teleport(location);
+                player.setFallDistance(0f);
+            }
         }
     }
 }
