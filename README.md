@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ ReportSystem
+# ReportSystem
 
 **Next-Generation Visual Replay, Overwatch Review & Player Moderation System for Minecraft**
 
@@ -11,13 +11,13 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/invite/WZc5bE9cK8)
 
-[🇹🇷 Türkçe Dökümantasyon için tıklayın (README_tr.md)](README_tr.md)
+[Türkçe Dökümantasyon için tıklayın (README_tr.md)](README_tr.md)
 
 </div>
 
 ---
 
-## 📖 Overview
+## Overview
 
 **ReportSystem** is a modern, high-performance moderation and reporting ecosystem engineered from the ground up for modern Minecraft networks (Paper, Purpur, Velocity, BungeeCord).
 
@@ -25,14 +25,14 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [Key Features](#-key-features)
-- [System Requirements](#-system-requirements)
-- [Installation Guide](#-installation-guide)
+- [Key Features](#key-features)
+- [System Requirements](#system-requirements)
+- [Installation Guide](#installation-guide)
   - [Standalone Server (Paper)](#standalone-server-paper)
   - [Proxy Network (Velocity / BungeeCord)](#proxy-network-velocity--bungeecord)
-- [Core Systems](#-core-systems)
+- [Core Systems](#core-systems)
   - [1. Visual Replay Engine](#1-visual-replay-engine)
   - [2. Overwatch Community Review](#2-overwatch-community-review)
   - [3. Interactive NPC System](#3-interactive-npc-system)
@@ -40,32 +40,32 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
   - [5. Smart Anti-Cheat Integration](#5-smart-anti-cheat-integration)
   - [6. Multi-Channel Notifications](#6-multi-channel-notifications)
   - [7. Discord Webhook Integration](#7-discord-webhook-integration)
-- [Configuration Reference](#-configuration-reference)
-- [Commands & Aliases](#-commands--aliases)
-- [Permissions Reference](#-permissions-reference)
-- [PlaceholderAPI Placeholders](#-placeholderapi-placeholders)
-- [Performance & Optimization](#-performance--optimization)
-- [Troubleshooting & FAQ](#-troubleshooting--faq)
-- [Support & Community](#-support--community)
+- [Configuration Reference](#configuration-reference)
+- [Commands & Aliases](#commands--aliases)
+- [Permissions Reference](#permissions-reference)
+- [PlaceholderAPI Placeholders](#placeholderapi-placeholders)
+- [Performance & Optimization](#performance--optimization)
+- [Troubleshooting & FAQ](#troubleshooting--faq)
+- [Support & Community](#support--community)
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 🎥 **Frame-Accurate Visual Replay:** Records over **53+ packet action types** (movement, combat, head rotations, sneaking, swimming, elytra flight, projectile trajectories, and block interactions).
-- 🎮 **Hotbar Replay Controls:** Seamless in-game controller items to Play, Pause, Fast-Forward (+10s), Rewind (-10s), adjust speed (0.25x to 2x), and teleport directly to suspects.
-- 👥 **Overwatch Review System:** Empower trusted players to watch anonymized replays, analyze evidence, and cast votes with XP progression, ranks, and accuracy ratings.
-- 🗳️ **Open Community Voting (v2.1.5):** Flexible voting where any qualified player can review cases, while moderators hold final verdict authority or let the queue resolve automatically.
-- ⚡ **Animated Ban Spectacle:** Ban cheaters in style with lightning strikes, falling anvils, frozen movement, and custom global death alerts.
-- 🛡️ **Anti-Cheat Hooks:** Native smart-scoring listeners for **Polar**, **Vulcan**, and **GrimAC**. Automatically records and queues suspects upon suspicious heuristic spikes.
-- 🔔 **Multi-Channel Alerts:** Staff notifications via interactive Toasts (Advancement popups), Screen Titles, Actionbar tickers, custom sounds, and clickable chat messages.
-- 🌐 **Proxy & Cross-Server Sync:** Full compatibility with BungeeCord and Velocity networks with centralized MySQL / HikariCP pooling.
-- 📊 **PlaceholderAPI Integration:** Expose report counts, trust factors, Overwatch XP, ranks, and review stats on Scoreboards and TAB menus.
-- 💬 **Discord Webhooks:** Rich embed notifications with color coding, player avatars, and interactive buttons for new reports, verdicts, and punishments.
+- **Frame-Accurate Visual Replay:** Records over **53+ packet action types** (movement, combat, head rotations, sneaking, swimming, elytra flight, projectile trajectories, and block interactions).
+- **Hotbar Replay Controls:** In-game controller items to Play, Pause, Fast-Forward (+10s), Rewind (-10s), adjust speed (0.25x to 2x), and teleport directly to suspects.
+- **Overwatch Review System:** Empower trusted players to watch anonymized replays, analyze evidence, and cast votes with XP progression, ranks, and accuracy ratings.
+- **Open Community Voting (v2.1.5):** Flexible voting where any qualified player can review cases, while moderators hold final verdict authority or let the queue resolve automatically.
+- **Animated Ban Spectacle:** Ban cheaters with lightning strikes, falling anvils, frozen movement, and custom global death alerts.
+- **Anti-Cheat Hooks:** Native smart-scoring listeners for **Polar**, **Vulcan**, and **GrimAC**. Automatically records and queues suspects upon suspicious heuristic spikes.
+- **Multi-Channel Alerts:** Staff notifications via interactive Toasts (Advancement popups), Screen Titles, Actionbar tickers, custom sounds, and clickable chat messages.
+- **Proxy & Cross-Server Sync:** Full compatibility with BungeeCord and Velocity networks with centralized MySQL / HikariCP pooling.
+- **PlaceholderAPI Integration:** Expose report counts, trust factors, Overwatch XP, ranks, and review stats on Scoreboards and TAB menus.
+- **Discord Webhooks:** Embed notifications with color coding, player avatars, and interactive buttons for new reports, verdicts, and punishments.
 
 ---
 
-## 💻 System Requirements
+## System Requirements
 
 | Component | Minimum Requirement | Recommended |
 | :--- | :--- | :--- |
@@ -80,7 +80,7 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 
 ---
 
-## 🚀 Installation Guide
+## Installation Guide
 
 ### Standalone Server (Paper)
 
@@ -91,6 +91,14 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 5. Restart your server or run `/rs reload`.
 
 ### Proxy Network (Velocity / BungeeCord)
+
+```mermaid
+graph LR
+    P[Proxy: Velocity / BungeeCord] <--> B1[Paper Backend 1]
+    P <--> B2[Paper Backend 2]
+    B1 <--> DB[(Central MySQL Database)]
+    B2 <--> DB
+```
 
 1. **Backend Servers (Paper):**
    - Install `ReportSystem.jar` + `packetevents.jar` into each backend server's `plugins/` folder.
@@ -105,7 +113,7 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 
 ---
 
-## 🕹️ Core Systems
+## Core Systems
 
 ### 1. Visual Replay Engine
 
@@ -123,13 +131,13 @@ The replay engine is powered by virtual NPC packets and local chunk data caching
 When playing a replay, the reviewer's inventory is equipped with intuitive replay control items:
 
 ```
-[ Slot 1 ]  ⏸️ / ▶️  Pause / Resume
-[ Slot 2 ]  ⏪       Rewind (-10 Seconds)
-[ Slot 3 ]  ⏩       Fast Forward (+10 Seconds)
-[ Slot 4 ]  ⏹️       Exit Replay
-[ Slot 5 ]  ⚡       Speed Control (0.25x | 0.5x | 1.0x | 1.5x | 2.0x)
-[ Slot 6 ]  🎯       Teleport to Suspect
-[ Slot 8 ]  ⚙️       Replay Settings (Show hitboxes, trails, nearby players)
+[ Slot 1 ]  Pause / Resume
+[ Slot 2 ]  Rewind (-10 Seconds)
+[ Slot 3 ]  Fast Forward (+10 Seconds)
+[ Slot 4 ]  Exit Replay
+[ Slot 5 ]  Speed Control (0.25x | 0.5x | 1.0x | 1.5x | 2.0x)
+[ Slot 6 ]  Teleport to Suspect
+[ Slot 8 ]  Replay Settings (Show hitboxes, trails, nearby players)
 ```
 
 ---
@@ -142,10 +150,10 @@ Inspired by Counter-Strike's Overwatch, ReportSystem empowers trusted community 
 
 | Rank | Required XP | Accuracy Requirement | Privileges |
 | :--- | :--- | :--- | :--- |
-| 🥉 **BRONZE** | `0 - 499 XP` | - | Standard queue access |
-| 🥈 **SILVER** | `500 - 1,499 XP` | - | Priority queue assignments |
-| 🥇 **GOLD** | `1,500 - 3,499 XP` | 75%+ accuracy | Higher vote weight multiplier |
-| 💎 **DIAMOND** | `3,500+ XP` | 85%+ accuracy | Expedited case processing & custom rewards |
+| **BRONZE** | `0 - 499 XP` | - | Standard queue access |
+| **SILVER** | `500 - 1,499 XP` | - | Priority queue assignments |
+| **GOLD** | `1,500 - 3,499 XP` | 75%+ accuracy | Higher vote weight multiplier |
+| **DIAMOND** | `3,500+ XP` | 85%+ accuracy | Expedited case processing & custom rewards |
 
 - **Anonymization:** Suspect and reporter names can be hidden (e.g. `The Suspect #842`) to eliminate review bias.
 - **Dynamic Scoring:** Players earn XP for correct verdicts. Submitting false verdicts or spamming degrades their reviewer score.
@@ -175,11 +183,11 @@ Deploy interactive Overwatch NPCs in your hubs or lobbies using PacketEvents vir
 
 Supports standalone bans/mutes as well as direct hooks into **LiteBans** and **AdvancedBan**.
 
-#### ⚡ The Animated Ban Experience
-Punish blatant cheaters with a dramatic visual sequence:
+#### The Animated Ban Experience
+Punish blatant cheaters with a visual sequence:
 1. The suspect is locked and frozen in place.
 2. An anvil falls from high sky onto their head.
-3. Thunder and lightning bolts strike the exact location.
+3. Thunder and lightning strike the exact location.
 4. A custom broadcast is shown to all server players, followed by instant disconnection.
 
 > [!NOTE]
@@ -189,16 +197,16 @@ Punish blatant cheaters with a dramatic visual sequence:
 
 ### 5. Smart Anti-Cheat Integration
 
-ReportSystem integrates with the leading anti-cheat solutions to automatically record and report cheaters:
+ReportSystem integrates with anti-cheat solutions to automatically record and report cheaters:
 
 ```
-[Anti-Cheat Flag] ➔ [Suspicion Score Accrues] ➔ [Threshold Exceeded] ➔ [Auto-Record 30s + Queue Overwatch + Discord Alert]
+[Anti-Cheat Flag] -> [Suspicion Score Accrues] -> [Threshold Exceeded] -> [Auto-Record 30s + Queue Overwatch + Discord Alert]
 ```
 
 - **Supported Engines:**
-  - 🛡️ **Polar Anti-Cheat:** Detects combat ML, movement, reach, mitigation events.
-  - 🔥 **Vulcan Anti-Cheat:** 35+ check types (KillAura, Scaffold, Speed, Flight). Requires `settings.enable-api: true`.
-  - 👁️ **GrimAC:** Deep packet prediction physics simulation.
+  - **Polar Anti-Cheat:** Detects combat ML, movement, reach, mitigation events.
+  - **Vulcan Anti-Cheat:** 35+ check types (KillAura, Scaffold, Speed, Flight). Requires `settings.enable-api: true`.
+  - **GrimAC:** Deep packet prediction physics simulation.
 - **Decay System:** Suspicion score decays by 50% every 60 seconds to eliminate false positives from lag spikes.
 
 #### Suspicion Weight Matrix
@@ -217,13 +225,13 @@ ReportSystem integrates with the leading anti-cheat solutions to automatically r
 
 ### 6. Multi-Channel Notifications
 
-Staff members can receive instant alerts through multiple simultaneous channels:
+Staff members can receive alerts through multiple channels:
 
-- 🏆 **Toast Popup:** Advancement-style notification in the top-right corner.
-- 📢 **Title Screen:** Prominent headline and subtitle across the center of the display.
-- 📜 **Action Bar:** Continuous non-intrusive HUD notifications above the hotbar.
-- 🔔 **Custom Audio:** Configurable sound alerts (pitch/volume).
-- 💬 **Interactive Chat:** Clickable JSON messages with hover details (`[Teleport]`, `[Review]`).
+- **Toast Popup:** Advancement-style notification in the top-right corner.
+- **Title Screen:** Headline and subtitle across the center of the display.
+- **Action Bar:** Continuous non-intrusive notification above the hotbar.
+- **Custom Audio:** Configurable sound alerts (pitch/volume).
+- **Interactive Chat:** Clickable JSON messages with hover details (`[Teleport]`, `[Review]`).
 
 ---
 
@@ -237,9 +245,9 @@ Synchronize in-game activity directly with your Discord staff channels:
 
 ---
 
-## ⚙️ Configuration Reference
+## Configuration Reference
 
-### `config.yml` Snippet
+### config.yml Snippet
 
 ```yaml
 general:
@@ -302,7 +310,7 @@ overwatch:
 
 ---
 
-## ⌨️ Commands & Aliases
+## Commands & Aliases
 
 ### Player & Staff Commands
 | Command | Aliases | Permission | Description |
@@ -330,7 +338,7 @@ overwatch:
 
 ---
 
-## 🔑 Permissions Reference
+## Permissions Reference
 
 ```
 reportsystem.use                   # Default: true  - Access basic system functions
@@ -356,7 +364,7 @@ reportsystem.overwatch.admin       # Default: op    - Administer Overwatch cases
 
 ---
 
-## 🧩 PlaceholderAPI Placeholders
+## PlaceholderAPI Placeholders
 
 | Placeholder | Output Example | Description |
 | :--- | :--- | :--- |
@@ -371,9 +379,9 @@ reportsystem.overwatch.admin       # Default: op    - Administer Overwatch cases
 
 ---
 
-## 🚀 Performance & Optimization
+## Performance & Optimization
 
-ReportSystem is architected for zero-tick-drop operation on high-concurrency production servers:
+ReportSystem is architected for zero-tick-drop operation on production servers:
 
 - **Asynchronous I/O:** Every database query (SQLite/MySQL) and disk write is dispatched on separate worker threads. `performance.async-database: true` guarantees zero main-thread blocking.
 - **Smart Memory Cache:** Reports and active queue entries are kept in an LRU memory cache (`performance.cache.max-size: 100`, `expiry: 10m`), eliminating repeated SQL reads when paging through GUIs.
@@ -382,7 +390,7 @@ ReportSystem is architected for zero-tick-drop operation on high-concurrency pro
 
 ---
 
-## ❓ Troubleshooting & FAQ
+## Troubleshooting & FAQ
 
 ### Frequently Asked Questions
 
@@ -423,17 +431,15 @@ ReportSystem is architected for zero-tick-drop operation on high-concurrency pro
 
 ---
 
-## 🤝 Support & Community
+## Support & Community
 
-Need help or want to suggest new features? Connect with our team:
-
-- 💬 **Discord Server:** [discord.gg/WZc5bE9cK8](https://discord.com/invite/WZc5bE9cK8)
-- 🐛 **Issue Tracker:** Report bugs and feature requests on [GitHub Issues](https://github.com/KAREBLOK/ReportSystem/issues)
-- 🌐 **Website:** [kareblok.tc](https://kareblok.tc)
+- **Discord Server:** [discord.gg/WZc5bE9cK8](https://discord.com/invite/WZc5bE9cK8)
+- **Issue Tracker:** Report bugs and feature requests on [GitHub Issues](https://github.com/KAREBLOK/ReportSystem/issues)
+- **Website:** [kareblok.tc](https://kareblok.tc)
 
 ---
 
 <div align="center">
-<b>ReportSystem</b> is engineered and maintained with ❤️ by <b>KAREBLOK</b>.<br>
+ReportSystem is engineered and maintained by <b>KAREBLOK</b>.<br>
 Licensed under the <a href="LICENSE">MIT License</a>.
 </div>
