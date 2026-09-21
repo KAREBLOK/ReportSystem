@@ -336,7 +336,13 @@ overwatch:
   # Enable Overwatch system
   enabled: true
 
-  # Minimum reviewers required for consensus
+  # Auto-complete queue after min-reviewers is reached
+  # false (Default): Open community voting. Reports remain in queue so everyone can watch and vote.
+  #                  Reports are resolved and removed when staff acts via /reports.
+  # true: Old behavior. Once min-reviewers vote, the report is closed/completed in Overwatch queue.
+  auto-complete-queue: false
+
+  # Minimum reviewers required for consensus (only used if auto-complete-queue is true)
   # A report needs this many reviews before action is taken
   min-reviewers: 3
 

@@ -144,6 +144,15 @@ public class ReportDetailGUI implements InventoryHolder {
             if (!trustLine.isEmpty()) {
                 lore.add(trustLine);
             }
+
+            // Overwatch voting statistics
+            if (plugin.getOverwatchManager() != null) {
+                String votingStats = plugin.getOverwatchManager().getVotingStats(report.getId());
+                if (votingStats != null) {
+                    lore.add(ChatColor.GRAY + "Overwatch: " + ChatColor.YELLOW + votingStats);
+                }
+            }
+
             meta.setLore(lore);
 
             item.setItemMeta(meta);

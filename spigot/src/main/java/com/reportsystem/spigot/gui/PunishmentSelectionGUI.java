@@ -204,6 +204,12 @@ public class PunishmentSelectionGUI implements InventoryHolder {
 
             try {
                 plugin.getReportService().updateReport(report);
+
+                // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU) ve kuyruktan kaldır
+                if (plugin.getOverwatchManager() != null) {
+                    plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
+                }
+
                 plugin.getMessageManager().sendMessage(viewer, "punishments.applied-with-report");
 
                 // Send Discord webhook notification
@@ -233,6 +239,12 @@ public class PunishmentSelectionGUI implements InventoryHolder {
 
         try {
             plugin.getReportService().updateReport(report);
+
+            // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU/KABUL) ve kuyruktan kaldır
+            if (plugin.getOverwatchManager() != null) {
+                plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
+            }
+
             plugin.getMessageManager().sendMessage(viewer, "reports.actions.accepted-no-punishment", "%id%", String.valueOf(report.getId()));
 
             // Send Discord webhook notification (no punishment)

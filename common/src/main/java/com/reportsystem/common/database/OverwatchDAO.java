@@ -403,10 +403,10 @@ public class OverwatchDAO {
     }
 
     public Optional<OverwatchQueueItem> getNextQueueItem(UUID reviewerUUID) throws SQLException {
-        // Get next pending item that this reviewer hasn't reviewed yet
+        // Get next pending or in-review item that this reviewer hasn't reviewed yet
         String sql = "SELECT oq.* FROM overwatch_queue oq " +
                      "LEFT JOIN overwatch_reviews orw ON oq.report_id = orw.report_id AND orw.reviewer_uuid = ? " +
-                     "WHERE oq.status = 'PENDING' AND orw.id IS NULL " +
+                     "WHERE oq.status IN ('PENDING', 'IN_REVIEW') AND orw.id IS NULL " +
                      "ORDER BY oq.priority DESC, oq.added_at ASC LIMIT 1";
 
         try (Connection conn = database.getConnection();
@@ -433,7 +433,7 @@ public class OverwatchDAO {
 
     public boolean assignReportToReviewer(int reportId, UUID reviewerUUID, String serverName) throws SQLException {
         String sql = "UPDATE overwatch_queue SET assigned_to = ?, assigned_at = ?, assigned_server = ?, status = 'IN_REVIEW' " +
-                     "WHERE report_id = ? AND status = 'PENDING'";
+                     "WHERE report_id = ? AND status IN ('PENDING', 'IN_REVIEW')";
 
         try (Connection conn = database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -464,7 +464,7 @@ public class OverwatchDAO {
      */
     public void unassignReport(int reportId) throws SQLException {
         String sql = "UPDATE overwatch_queue SET assigned_to = NULL, assigned_at = NULL, " +
-                     "assigned_server = NULL, status = 'PENDING' WHERE report_id = ?";
+                     "assigned_server = NULL, status = 'PENDING' WHERE report_id = ? AND status != 'COMPLETED'";
 
         try (Connection conn = database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -475,7 +475,7 @@ public class OverwatchDAO {
     }
 
     public int getPendingQueueCount() throws SQLException {
-        String sql = "SELECT COUNT(*) FROM overwatch_queue WHERE status = 'PENDING'";
+        String sql = "SELECT COUNT(*) FROM overwatch_queue WHERE status IN ('PENDING', 'IN_REVIEW')";
 
         try (Connection conn = database.getConnection();
              Statement stmt = conn.createStatement();

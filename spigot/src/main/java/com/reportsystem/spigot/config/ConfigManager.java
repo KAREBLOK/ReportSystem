@@ -318,6 +318,10 @@ public class ConfigManager {
         return config.getBoolean("overwatch.enabled", true);
     }
 
+    public boolean isAutoCompleteQueueEnabled() {
+        return config.getBoolean("overwatch.auto-complete-queue", false);
+    }
+
     public int getMinReviewers() {
         return config.getInt("overwatch.min-reviewers", 3);
     }

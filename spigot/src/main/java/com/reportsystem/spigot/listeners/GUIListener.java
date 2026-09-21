@@ -262,9 +262,9 @@ public class GUIListener implements Listener {
         try {
             plugin.getReportService().updateReport(report);
 
-            // Overwatch kuyruğundan çıkar (artık PENDING değil)
+            // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU) ve kuyruktan kaldır
             if (plugin.getOverwatchManager() != null) {
-                plugin.getOverwatchManager().removeReportFromQueue(report.getId());
+                plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
             }
 
             // Send single Discord webhook notification (report accepted + punishment applied)
@@ -361,6 +361,11 @@ public class GUIListener implements Listener {
 
                     try {
                         plugin.getReportService().updateReport(report);
+
+                        // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU) ve kuyruktan kaldır
+                        if (plugin.getOverwatchManager() != null) {
+                            plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
+                        }
                     } catch (SQLException e) {
                         plugin.getLogger().severe("[PunishmentGUI] Failed to update report: " + e.getMessage());
                         e.printStackTrace();
@@ -461,11 +466,6 @@ public class GUIListener implements Listener {
      * Ceza seçim GUI'sini göster (henüz rapor ACCEPTED olarak işaretlenmez)
      */
     private void acceptReportAndShowPunishmentSelection(Player staff, Report report) {
-        // Overwatch kuyruğundan çıkar (artık PENDING değil)
-        if (plugin.getOverwatchManager() != null) {
-            plugin.getOverwatchManager().removeReportFromQueue(report.getId());
-        }
-
         plugin.getMessageManager().sendMessage(staff, "reports.actions.select-punishment");
 
         // Ceza seçim GUI'sini aç (rapor henüz ACCEPTED değil, ceza seçildiğinde işaretlenecek)
@@ -479,9 +479,9 @@ public class GUIListener implements Listener {
         try {
             plugin.getReportService().updateReport(report);
 
-            // Overwatch kuyruğundan çıkar (artık PENDING değil)
+            // Overwatch oylamasını yetkili kararına göre sonlandır (MASUM) ve kuyruktan kaldır
             if (plugin.getOverwatchManager() != null) {
-                plugin.getOverwatchManager().removeReportFromQueue(report.getId());
+                plugin.getOverwatchManager().resolveReportVoting(report.getId(), false);
             }
 
             // Send Discord webhook notification
@@ -500,6 +500,9 @@ public class GUIListener implements Listener {
     private void deleteReport(Player staff, Report report) {
         plugin.getReportService().deleteReport(report.getId());
         plugin.getReplayManager().deleteReplay(report.getId());
+        if (plugin.getOverwatchManager() != null) {
+            plugin.getOverwatchManager().removeReportFromQueue(report.getId());
+        }
         staff.closeInventory();
         plugin.getMessageManager().sendMessage(staff, "reports.actions.deleted", "%id%", String.valueOf(report.getId()));
     }

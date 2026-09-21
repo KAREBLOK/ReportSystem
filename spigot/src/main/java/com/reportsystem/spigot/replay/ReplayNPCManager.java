@@ -58,6 +58,8 @@ public class ReplayNPCManager {
 
     // Son gonderilen el itemleri - 1. sahis gecisinde tekrar gondermek icin
     private List<Equipment> lastHandEquipment = new ArrayList<>();
+    // Son gonderilen tum itemler (armor + el itemleri) - teleport/respawn sonrasi tekrar gondermek icin
+    private List<Equipment> lastEquipment = new ArrayList<>();
 
     // Yakındaki oyuncular için
     private final Map<UUID, Integer> nearbyPlayerEntities = new ConcurrentHashMap<>();
@@ -390,8 +392,10 @@ public class ReplayNPCManager {
      */
     public void sendEquipment(List<Equipment> equipment) {
         try {
-            // El itemlerini kaydet (1. sahis gecisinde tekrar gondermek icin)
+            // Ekipmanları kaydet (respawn ve 1. sahis gecisinde tekrar gondermek icin)
             for (Equipment eq : equipment) {
+                lastEquipment.removeIf(e -> e.getSlot() == eq.getSlot());
+                lastEquipment.add(eq);
                 if (eq.getSlot() == EquipmentSlot.MAIN_HAND || eq.getSlot() == EquipmentSlot.OFF_HAND) {
                     lastHandEquipment.removeIf(e -> e.getSlot() == eq.getSlot());
                     lastHandEquipment.add(eq);
@@ -810,7 +814,11 @@ public class ReplayNPCManager {
      * Client dünya değiştirince tüm entity'leri siler, bu yüzden NPC'yi tekrar göndermemiz lazım
      */
     public void respawnForViewer(Player viewer, Location location) {
-        // Dünya değişiminde client'ın koruduğu/sildiği veriler:
+        // Eski varlık varsa temizle (aynı dünya TP'lerinde ghost entity kalmasını önler)
+        WrapperPlayServerDestroyEntities destroyPacket = new WrapperPlayServerDestroyEntities(entityId);
+        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroyPacket);
+
+        // Dünya değişiminde veya uzun mesafede client'ın koruduğu/sildiği veriler:
         // - PlayerInfo listesi: KORUNUR → tekrar ADD_PLAYER göndermiyoruz
         // - Team verileri: KORUNUR → tekrar CREATE göndermiyoruz
         // - Entity'ler: SİLİNİR → tekrar SpawnEntity + Metadata göndermemiz lazım
@@ -837,6 +845,14 @@ public class ReplayNPCManager {
 
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawnPacket);
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+
+        // Respawn sonrası ekipmanları tekrar gönder
+        if (!lastEquipment.isEmpty()) {
+            WrapperPlayServerEntityEquipment equipmentPacket = new WrapperPlayServerEntityEquipment(
+                    entityId, new ArrayList<>(lastEquipment)
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, equipmentPacket);
+        }
     }
 
     /**

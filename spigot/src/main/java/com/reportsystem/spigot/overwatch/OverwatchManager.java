@@ -31,12 +31,12 @@ public class OverwatchManager {
             if (queueItem.isPresent()) {
                 int reportId = queueItem.get().getReportId();
 
-                // Assign to reviewer (returns false if another reviewer grabbed it first)
+                // Assign to reviewer (returns false if report was completed or removed)
                 boolean assigned = overwatchDAO.assignReportToReviewer(reportId, reviewer.getUniqueId(), plugin.getServerName());
 
                 if (!assigned) {
                     plugin.debug("[OVERWATCH] Report #" + reportId +
-                            " was already assigned to another reviewer (race condition)");
+                            " could not be assigned (already completed or removed)");
                     return Optional.empty();
                 }
 
@@ -226,17 +226,23 @@ public class OverwatchManager {
         try {
             List<OverwatchReview> reviews = overwatchDAO.getReviewsForReport(reportId);
 
-            // Minimum reviewer requirement
-            int minReviewers = plugin.getConfig().getInt("overwatch.min-reviewers", 3);
+            boolean autoComplete = plugin.getConfigManager().isAutoCompleteQueueEnabled();
+            if (!autoComplete) {
+                // Açık Topluluk Oylaması Modu (Varsayılan):
+                // Rapor kuyrukta COMPLETED yapılmaz; unassignReport ile PENDING durumunda tutulur.
+                // Böylece 4., 5., 10. herkes izleyip oy kullanabilir. Rapor ancak yetkili
+                // /reports üzerinden onaylayana/reddedene kadar kuyrukta aktif kalır.
+                overwatchDAO.unassignReport(reportId);
+                plugin.debug("[OVERWATCH] Report #" + reportId +
+                        " kept in open queue for more reviews (current reviews: " + reviews.size() + ")");
+                return;
+            }
+
+            // Minimum reviewer requirement (Sadece auto-complete-queue: true ise çalışır)
+            int minReviewers = plugin.getConfigManager().getMinReviewers();
             if (reviews.size() < minReviewers) {
                 plugin.debug("[OVERWATCH] Report #" + reportId +
                         " needs " + (minReviewers - reviews.size()) + " more reviews");
-                // KRİTİK FIX: rapor atandığında IN_REVIEW oluyor; yeterli oy yoksa
-                // PENDING'e geri döndür ki DİĞER inceleyiciler kuyruktan çekebilsin.
-                // (Az önce oy veren inceleyici getNextQueueItem'daki LEFT JOIN ile
-                //  zaten hariç tutulur, tekrar alamaz → sonsuz döngü yok.)
-                // Eskiden burada sadece 'return' vardı → rapor IN_REVIEW'da sonsuza
-                // kilitleniyor, min-reviewers asla dolmuyordu (tüm Overwatch hattı ölü).
                 overwatchDAO.unassignReport(reportId);
                 return;
             }
@@ -333,6 +339,48 @@ public class OverwatchManager {
                 plugin.getLogger().warning("[OVERWATCH] Failed to update accuracy for " +
                         review.getReviewerName() + ": " + e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Yetkili kararı ile Overwatch oylamasını sonlandır ve doğruluk oranlarını güncelle.
+     * /reports menüsünden yetkili raporu Onayladığında (guiltyVerdict = true) veya
+     * Reddettiğinde (guiltyVerdict = false) çağrılır.
+     */
+    public void resolveReportVoting(int reportId, boolean guiltyVerdict) {
+        try {
+            List<OverwatchReview> reviews = overwatchDAO.getReviewsForReport(reportId);
+            if (!reviews.isEmpty()) {
+                // Yetkili kararına göre doğruluk oranlarını güncelle
+                updateReviewerAccuracies(reviews, guiltyVerdict);
+
+                long rawGuiltyCount = reviews.stream()
+                        .filter(r -> "GUILTY".equalsIgnoreCase(r.getVerdict())).count();
+                double consensusPercentage = reviews.size() > 0 ? ((double) rawGuiltyCount / reviews.size()) * 100.0 : 0.0;
+
+                OverwatchAction action = new OverwatchAction(
+                    reportId,
+                    guiltyVerdict ? "STAFF_ACCEPTED" : "STAFF_REJECTED",
+                    "Resolved by staff (" + (guiltyVerdict ? "Guilty" : "Innocent") + "): " +
+                    rawGuiltyCount + " guilty, " + (reviews.size() - rawGuiltyCount) + " innocent/skip",
+                    consensusPercentage,
+                    reviews.size(),
+                    (int) rawGuiltyCount,
+                    System.currentTimeMillis(),
+                    "STAFF"
+                );
+                overwatchDAO.logAction(action);
+
+                plugin.debug("[OVERWATCH] Report #" + reportId + " voting resolved by staff: " +
+                        (guiltyVerdict ? "GUILTY" : "INNOCENT") + " across " + reviews.size() + " community reviews");
+            }
+
+            // Raporu Overwatch kuyruğundan kaldır
+            removeReportFromQueue(reportId);
+
+        } catch (SQLException e) {
+            plugin.getLogger().severe("[OVERWATCH] Failed to resolve voting for report #" + reportId + ": " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
