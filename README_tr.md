@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ ReportSystem
+# ReportSystem
 
 **Minecraft Sunucuları İçin Yeni Nesil Görsel Replay, Overwatch İnceleme ve Oyuncu Moderasyon Sistemi**
 
@@ -11,13 +11,13 @@
 [![Lisans](https://img.shields.io/badge/Lisans-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Bize%20Kat%C4%B1l%C4%B1n-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/invite/WZc5bE9cK8)
 
-[🇬🇧 Click here for English Documentation (README.md)](README.md)
+[Click here for English Documentation (README.md)](README.md)
 
 </div>
 
 ---
 
-## 📖 Genel Bakış
+## Genel Bakış
 
 **ReportSystem**, modern Minecraft ağları (Paper, Purpur, Velocity, BungeeCord) için sıfırdan yüksek performans odaklı olarak geliştirilmiş kapsamlı bir raporlama ve oyuncu denetim ekosistemidir.
 
@@ -25,14 +25,14 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 
 ---
 
-## 📑 İçindekiler
+## İçindekiler
 
-- [Öne Çıkan Özellikler](#-öne-çıkan-özellikler)
-- [Sistem Gereksinimleri](#-sistem-gereksinimleri)
-- [Kurulum Rehberi](#-kurulum-rehberi)
+- [Öne Çıkan Özellikler](#öne-çıkan-özellikler)
+- [Sistem Gereksinimleri](#sistem-gereksinimleri)
+- [Kurulum Rehberi](#kurulum-rehberi)
   - [Tekil Sunucu Kurulumu (Paper)](#tekil-sunucu-kurulumu-paper)
   - [Ağ / Proxy Kurulumu (Velocity / BungeeCord)](#ağ--proxy-kurulumu-velocity--bungeecord)
-- [Temel Sistemler](#-temel-sistemler)
+- [Temel Sistemler](#temel-sistemler)
   - [1. Görsel Replay Motoru](#1-görsel-replay-motoru)
   - [2. Overwatch Topluluk İnceleme Sistemi](#2-overwatch-topluluk-i̇nceleme-sistemi)
   - [3. Etkileşimli NPC Sistemi](#3-etkileşimli-npc-sistemi)
@@ -40,32 +40,32 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
   - [5. Akıllı Anti-Cheat Entegrasyonu](#5-akıllı-anti-cheat-entegrasyonu)
   - [6. Çok Kanallı Bildirim Sistemi](#6-çok-kanallı-bildirim-sistemi)
   - [7. Discord Webhook Entegrasyonu](#7-discord-webhook-entegrasyonu)
-- [Yapılandırma Dosyası (config.yml)](#-yapılandırma-dosyası-configyml)
-- [Komutlar ve Kısayollar](#-komutlar-ve-kısayollar)
-- [Yetkiler (Permissions)](#-yetkiler-permissions)
-- [PlaceholderAPI Değişkenleri](#-placeholderapi-değişkenleri)
-- [Performans ve Optimizasyon](#-performans-ve-optimizasyon)
-- [Sorun Giderme ve S.S.S.](#-sorun-giderme-ve-sss)
-- [Destek ve Topluluk](#-destek-ve-topluluk)
+- [Yapılandırma Dosyası (config.yml)](#yapılandırma-dosyası-configyml)
+- [Komutlar ve Kısayollar](#komutlar-ve-kısayollar)
+- [Yetkiler (Permissions)](#yetkiler-permissions)
+- [PlaceholderAPI Değişkenleri](#placeholderapi-değişkenleri)
+- [Performans ve Optimizasyon](#performans-ve-optimizasyon)
+- [Sorun Giderme ve S.S.S.](#sorun-giderme-ve-sss)
+- [Destek ve Topluluk](#destek-ve-topluluk)
 
 ---
 
-## ✨ Öne Çıkan Özellikler
+## Öne Çıkan Özellikler
 
-- 🎥 **Kare Hassasiyetinde Görsel Replay:** **53'ten fazla paket eylem türünü** (yürüme, koşma, zıplama, yüzme, eğilme, süzülme/elytra, kafa hareketleri, vuruşlar, yay çekme, kalkan engelleme, eşya düşürme/alma ve blok etkileşimleri) kusursuz kaydeder.
-- 🎮 **Hotbar Kontrol Kumandası:** Replay izlerken Duraklat/Oynat, 10 Saniye İleri/Geri Sar, Hızı Ayarla (0.25x - 2x), Şüpheliye Işınlan ve Ayrıntılı Görsel Ayarları (hitbox, izler vb.) yönet.
-- 👥 **Overwatch İnceleme Sistemi:** Güvenilir oyuncuların isimleri gizlenmiş anonim tekrarları izlemesini, şüpheliyi oylamasını ve XP/Seviye/Rütbe kazanmasını sağlayın.
-- 🗳️ **Açık Topluluk Oylaması (v2.1.5):** Rapor havuzuna tüm oyuncuların oy vermesine olanak tanıyın (`auto-complete-queue: false`). Yetkililer `/reports` üzerinden oy dağılımını canlı görüp son kararı verebilir.
-- ⚡ **Animasyonlu Ban Gösterisi:** Hilecileri cezalandırırken gökten örs düşürün, yıldırım çarptırın, hareketsiz dondurun ve sunucu geneline özel ölüm mesajıyla duyurun.
-- 🛡️ **Anti-Cheat Kancaları:** **Polar**, **Vulcan** ve **GrimAC** ile doğrudan entegrasyon. Belirli bir şüphe puanı aşıldığında otomatik 30 saniyelik kayıt başlatır ve Overwatch kuyruğuna aktarır.
-- 🔔 **Çok Kanallı Bildirimler:** Yetkililere anlık Toast (Başarım tarzı popup), Ekran Ortası Title, Actionbar kayan yazı, özel sesler ve tıklanabilir JSON sohbet bildirimleri.
-- 🌐 **Proxy & Ağ Senkronizasyonu:** BungeeCord ve Velocity desteği. Merkezi MySQL (HikariCP) havuzu ile tüm sunucularda anlık rapor ve ceza senkronizasyonu.
-- 📊 **PlaceholderAPI Desteği:** Rapor sayılarını, güven puanını, Overwatch rütbesini ve başarı istatistiklerini Scoreboard veya TAB üzerinde gösterin.
-- 💬 **Gelişmiş Discord Webhook:** Renkli embed pencereleri, oyuncu kafaları ve tıklanabilir aksiyon butonlarıyla raporları ve cezaları Discord'a aktarın.
+- **Kare Hassasiyetinde Görsel Replay:** **53'ten fazla paket eylem türünü** (yürüme, koşma, zıplama, yüzme, eğilme, süzülme/elytra, kafa hareketleri, vuruşlar, yay çekme, kalkan engelleme, eşya düşürme/alma ve blok etkileşimleri) kaydeder.
+- **Hotbar Kontrol Kumandası:** Replay izlerken Duraklat/Oynat, 10 Saniye İleri/Geri Sar, Hızı Ayarla (0.25x - 2x), Şüpheliye Işınlan ve Ayrıntılı Görsel Ayarları (hitbox, izler vb.) yönet.
+- **Overwatch İnceleme Sistemi:** Güvenilir oyuncuların isimleri gizlenmiş anonim tekrarları izlemesini, şüpheliyi oylamasını ve XP/Seviye/Rütbe kazanmasını sağlayın.
+- **Açık Topluluk Oylaması (v2.1.5):** Rapor havuzuna tüm oyuncuların oy vermesine olanak tanıyın (`auto-complete-queue: false`). Yetkililer `/reports` üzerinden oy dağılımını canlı görüp son kararı verebilir.
+- **Animasyonlu Ban Gösterisi:** Hilecileri cezalandırırken gökten örs düşürün, yıldırım çarptırın, hareketsiz dondurun ve sunucu geneline özel ölüm mesajıyla duyurun.
+- **Anti-Cheat Kancaları:** **Polar**, **Vulcan** ve **GrimAC** ile doğrudan entegrasyon. Belirli bir şüphe puanı aşıldığında otomatik 30 saniyelik kayıt başlatır ve Overwatch kuyruğuna aktarır.
+- **Çok Kanallı Bildirimler:** Yetkililere anlık Toast (Başarım tarzı popup), Ekran Ortası Title, Actionbar kayan yazı, özel sesler ve tıklanabilir JSON sohbet bildirimleri.
+- **Proxy & Ağ Senkronizasyonu:** BungeeCord ve Velocity desteği. Merkezi MySQL (HikariCP) havuzu ile tüm sunucularda anlık rapor ve ceza senkronizasyonu.
+- **PlaceholderAPI Desteği:** Rapor sayılarını, güven puanını, Overwatch rütbesini ve başarı istatistiklerini Scoreboard veya TAB üzerinde gösterin.
+- **Discord Webhook Entegrasyonu:** Renkli embed pencereleri, oyuncu kafaları ve tıklanabilir butonlarla raporları ve cezaları Discord'a aktarın.
 
 ---
 
-## 💻 Sistem Gereksinimleri
+## Sistem Gereksinimleri
 
 | Bileşen | Minimum Gereksinim | Önerilen |
 | :--- | :--- | :--- |
@@ -80,7 +80,7 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 
 ---
 
-## 🚀 Kurulum Rehberi
+## Kurulum Rehberi
 
 ### Tekil Sunucu Kurulumu (Paper)
 
@@ -113,7 +113,7 @@ graph LR
 
 ---
 
-## 🕹️ Temel Sistemler
+## Temel Sistemler
 
 ### 1. Görsel Replay Motoru
 
@@ -131,13 +131,13 @@ Replay motoru sanal NPC paketleri ve yerel chunk önbelleğiyle çalışır. Ger
 Replay izlemeye başladığınızda envanterinize kontrol eşyaları yerleştirilir:
 
 ```
-[ Slot 1 ]  ⏸️ / ▶️  Duraklat / Devam Et
-[ Slot 2 ]  ⏪       10 Saniye Geri Sar
-[ Slot 3 ]  ⏩       10 Saniye İleri Sar
-[ Slot 4 ]  ⏹️       Replay'den Çık
-[ Slot 5 ]  ⚡       Hız Ayarı (0.25x | 0.5x | 1.0x | 1.5x | 2.0x)
-[ Slot 6 ]  🎯       Şüpheliye Işınlan
-[ Slot 8 ]  ⚙️       Görünüm Ayarları (Hitbox, izler, yakındaki oyuncular)
+[ Slot 1 ]  Duraklat / Devam Et
+[ Slot 2 ]  10 Saniye Geri Sar
+[ Slot 3 ]  10 Saniye İleri Sar
+[ Slot 4 ]  Replay'den Çık
+[ Slot 5 ]  Hız Ayarı (0.25x | 0.5x | 1.0x | 1.5x | 2.0x)
+[ Slot 6 ]  Şüpheliye Işınlan
+[ Slot 8 ]  Görünüm Ayarları (Hitbox, izler, yakındaki oyuncular)
 ```
 
 ---
@@ -150,10 +150,10 @@ Counter-Strike'ın Overwatch sisteminden esinlenilen bu modül; güvenilir oyunc
 
 | Rütbe | Gerekli XP | İsabet Oranı Şartı | Ayrılacıklar |
 | :--- | :--- | :--- | :--- |
-| 🥉 **BRONZE** | `0 - 499 XP` | - | Standart inceleme kuyruğu |
-| 🥈 **SILVER** | `500 - 1.499 XP` | - | Öncelikli vaka atamaları |
-| 🥇 **GOLD** | `1.500 - 3.499 XP` | %75+ Doğruluk | Yüksek oy ağırlığı çarpanı |
-| 💎 **DIAMOND** | `3.500+ XP` | %85+ Doğruluk | Hızlı vaka onayları ve özel ödüller |
+| **BRONZE** | `0 - 499 XP` | - | Standart inceleme kuyruğu |
+| **SILVER** | `500 - 1.499 XP` | - | Öncelikli vaka atamaları |
+| **GOLD** | `1.500 - 3.499 XP` | %75+ Doğruluk | Yüksek oy ağırlığı çarpanı |
+| **DIAMOND** | `3.500+ XP` | %85+ Doğruluk | Hızlı vaka onayları ve özel ödüller |
 
 - **Anonimlik:** Ön yargıyı önlemek için şüpheli ve raporlayan isimleri gizlenir (Örn: `Şüpheli #842`).
 - **Puanlama Sistemi:** Doğru karar veren oyuncular XP kazanır. Hatalı veya rastgele oy verenlerin güven puanı ve oy ağırlığı düşer.
@@ -183,8 +183,8 @@ Hub veya lobi dünyalarınıza PacketEvents destekli sanal Overwatch NPC'leri ye
 
 Dahili ceza sisteminin yanı sıra **LiteBans** ve **AdvancedBan** eklentileriyle tam entegrasyon sunar.
 
-#### ⚡ Animasyonlu Ban Deneyimi
-Hilecileri eğlenceli ve caydırıcı bir görsel şovla banlayın:
+#### Animasyonlu Ban Deneyimi
+Hilecileri etkili bir görsel akışla cezalandırın:
 1. Şüpheli oyuncu anında olduğu yerde dondurulur.
 2. Gökyüzünün en yüksek noktasından kafasına bir örs düşer.
 3. Bulunduğu konuma şimşekler ve yıldırımlar çarpar.
@@ -197,16 +197,16 @@ Hilecileri eğlenceli ve caydırıcı bir görsel şovla banlayın:
 
 ### 5. Akıllı Anti-Cheat Entegrasyonu
 
-ReportSystem piyasadaki önde gelen hile koruma eklentileriyle tam uyumlu çalışarak hile tespit anında otomatik kayıt alır:
+ReportSystem piyasadaki hile koruma eklentileriyle uyumlu çalışarak hile tespit anında otomatik kayıt alır:
 
 ```
-[Anti-Cheat Uyarısı] ➔ [Şüphe Puanı Birikir] ➔ [Eşik Aşılır] ➔ [Otomatik 30s Kayıt + Overwatch Kuyruğu + Discord Bildirimi]
+[Anti-Cheat Uyarısı] -> [Şüphe Puanı Birikir] -> [Eşik Aşılır] -> [Otomatik 30s Kayıt + Overwatch Kuyruğu + Discord Bildirimi]
 ```
 
 - **Desteklenen Eklentiler:**
-  - 🛡️ **Polar Anti-Cheat:** Combat ML (makine öğrenimi), hareket, reach ve mitigation sinyallerini dinler.
-  - 🔥 **Vulcan Anti-Cheat:** 35+ kontrol türü (KillAura, Scaffold, Speed, Flight). Vulcan `config.yml` içinde `settings.enable-api: true` olmalıdır.
-  - 👁️ **GrimAC:** Gelişmiş paket tahmin tabanlı fizik simülasyonu.
+  - **Polar Anti-Cheat:** Combat ML (makine öğrenimi), hareket, reach ve mitigation sinyallerini dinler.
+  - **Vulcan Anti-Cheat:** 35+ kontrol türü (KillAura, Scaffold, Speed, Flight). Vulcan `config.yml` içinde `settings.enable-api: true` olmalıdır.
+  - **GrimAC:** Gelişmiş paket tahmin tabanlı fizik simülasyonu.
 - **Puan Azalma Sistemi:** Lag anlarında yanlış pozitifleri önlemek için şüphe puanı her 60 saniyede bir %50 oranında azalır.
 
 #### Şüphe Puanı Tablosu
@@ -227,11 +227,11 @@ ReportSystem piyasadaki önde gelen hile koruma eklentileriyle tam uyumlu çalı
 
 Yeni bir rapor oluşturulduğunda görevli yetkililere farklı kanallardan anında haber verilir:
 
-- 🏆 **Toast Bildirimi:** Ekranın sağ üst köşesinde başarım tarzı şık açılır pencere.
-- 📢 **Ekran Başlığı (Title):** Ekranın ortasında büyük uyarı başlığı ve alt başlık.
-- 📜 **Action Bar:** Hotbar üzerinde kayan kesintisiz uyarı yazısı.
-- 🔔 **Özel Sesler:** Özelleştirilebilir bildirim sesi ve ses tonu.
-- 💬 **Etkileşimli Sohbet:** Tıklanabilir ve üzerine gelindiğinde detay gösteren JSON mesajları (`[Işınlan]`, `[İncele]`).
+- **Toast Bildirimi:** Ekranın sağ üst köşesinde başarım tarzı açılır pencere.
+- **Ekran Başlığı (Title):** Ekranın ortasında büyük uyarı başlığı ve alt başlık.
+- **Action Bar:** Hotbar üzerinde kayan kesintisiz uyarı yazısı.
+- **Özel Sesler:** Özelleştirilebilir bildirim sesi ve ses tonu.
+- **Etkileşimli Sohbet:** Tıklanabilir ve üzerine gelindiğinde detay gösteren JSON mesajları (`[Işınlan]`, `[İncele]`).
 
 ---
 
@@ -245,7 +245,7 @@ Oyun içindeki olayları doğrudan yetkili Discord kanalınıza aktarın:
 
 ---
 
-## ⚙️ Yapılandırma Dosyası (config.yml)
+## Yapılandırma Dosyası (config.yml)
 
 ### Örnek Yapılandırma
 
@@ -310,7 +310,7 @@ overwatch:
 
 ---
 
-## ⌨️ Komutlar ve Kısayollar
+## Komutlar ve Kısayollar
 
 ### Oyuncu ve Yetkili Komutları
 | Komut | Kısayol | Yetki | Açıklama |
@@ -338,7 +338,7 @@ overwatch:
 
 ---
 
-## 🔑 Yetkiler (Permissions)
+## Yetkiler (Permissions)
 
 ```
 reportsystem.use                   # Varsayılan: true  - Temel eklenti fonksiyonları
@@ -364,7 +364,7 @@ reportsystem.overwatch.admin       # Varsayılan: op    - Overwatch yönetim yet
 
 ---
 
-## 🧩 PlaceholderAPI Değişkenleri
+## PlaceholderAPI Değişkenleri
 
 | Değişken (Placeholder) | Örnek Çıktı | Açıklama |
 | :--- | :--- | :--- |
@@ -379,7 +379,7 @@ reportsystem.overwatch.admin       # Varsayılan: op    - Overwatch yönetim yet
 
 ---
 
-## 🚀 Performans ve Optimizasyon
+## Performans ve Optimizasyon
 
 ReportSystem, yüksek oyunculu sunucularda sıfır TPS kaybı hedefiyle mimarilendirilmiştir:
 
@@ -390,7 +390,7 @@ ReportSystem, yüksek oyunculu sunucularda sıfır TPS kaybı hedefiyle mimarile
 
 ---
 
-## ❓ Sorun Giderme ve S.S.S.
+## Sorun Giderme ve S.S.S.
 
 ### Sıkça Sorulan Sorular
 
@@ -431,17 +431,15 @@ ReportSystem, yüksek oyunculu sunucularda sıfır TPS kaybı hedefiyle mimarile
 
 ---
 
-## 🤝 Destek ve Topluluk
+## Destek ve Topluluk
 
-Yardıma mı ihtiyacınız var veya öneride bulunmak mı istiyorsunuz?
-
-- 💬 **Discord Sunucumuz:** [discord.gg/WZc5bE9cK8](https://discord.com/invite/WZc5bE9cK8)
-- 🐛 **Hata Bildirimi:** Hataları ve istekleri [GitHub Issues](https://github.com/KAREBLOK/ReportSystem/issues) üzerinden iletebilirsiniz.
-- 🌐 **Web Sitemiz:** [kareblok.tc](https://kareblok.tc)
+- **Discord Sunucumuz:** [discord.gg/WZc5bE9cK8](https://discord.com/invite/WZc5bE9cK8)
+- **Hata Bildirimi:** Hataları ve istekleri [GitHub Issues](https://github.com/KAREBLOK/ReportSystem/issues) üzerinden iletebilirsiniz.
+- **Web Sitemiz:** [kareblok.tc](https://kareblok.tc)
 
 ---
 
 <div align="center">
-<b>ReportSystem</b>, <b>KAREBLOK</b> tarafından sevgiyle geliştirilmekte ve sürdürülmektedir ❤️<br>
+ReportSystem, <b>KAREBLOK</b> tarafından geliştirilmekte ve sürdürülmektedir.<br>
 <a href="LICENSE">MIT Lisansı</a> altında sunulmaktadır.
 </div>
