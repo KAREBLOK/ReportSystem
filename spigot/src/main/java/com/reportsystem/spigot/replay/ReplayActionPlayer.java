@@ -1771,49 +1771,83 @@ public class ReplayActionPlayer {
                     toWorld,
                     action.getToX(), action.getToY(), action.getToZ()
             );
+            if (replayPlayer.getLastLocation() != null) {
+                toLoc.setYaw(replayPlayer.getLastLocation().getYaw());
+                toLoc.setPitch(replayPlayer.getLastLocation().getPitch());
+            }
 
-            // Teleport efektleri
+            // 1. Konumu ve NPC'yi hemen güncelle (tüm izleyicilere tek seferde paket gider)
+            replayPlayer.setLastLocation(toLoc);
+            replayPlayer.getNpcManager().absoluteTeleportNPC(toLoc);
+
+            boolean isFirstPerson = replayPlayer.getNpcManager() != null && replayPlayer.getNpcManager().isFirstPersonEnabled();
+            boolean isCommandOrPlugin = action.getCause() == TeleportAction.TeleportCause.COMMAND
+                    || action.getCause() == TeleportAction.TeleportCause.PLUGIN;
+            boolean isCrossWorld = !fromWorld.equals(toWorld);
+            boolean isLargeJump = isCrossWorld || fromLoc.distanceSquared(toLoc) > 625.0; // 25 bloktan fazla
+
+            // Teleport efektleri ve izleyici yönetimi
             for (Player viewer : replayPlayer.getViewers()) {
-                // Başlangıç noktası efektleri
-                viewer.spawnParticle(Particle.PORTAL, fromLoc.clone().add(0, 1, 0), 50, 0.5, 1, 0.5, 0.1);
-                viewer.playSound(fromLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                if (viewer == null || !viewer.isOnline()) continue;
 
-                // Bitiş noktası efektleri
-                viewer.spawnParticle(Particle.PORTAL, toLoc.clone().add(0, 1, 0), 30, 0.3, 0.5, 0.3, 0.05);
+                // Başlangıç noktası efektleri (izleyici başlangıç dünyasındaysa)
+                if (viewer.getWorld().equals(fromWorld)) {
+                    viewer.spawnParticle(Particle.PORTAL, fromLoc.clone().add(0, 1, 0), 50, 0.5, 1, 0.5, 0.1);
+                    viewer.playSound(fromLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                }
 
-                // Eğer farklı bir dünyaya TP yapılıyorsa izleyiciyi de TP ettir
-                boolean crossWorldTeleport = !viewer.getWorld().equals(toWorld);
+                // İzleyicinin de hedef konuma ışınlanması gerekiyor mu?
+                boolean crossWorldForViewer = !viewer.getWorld().equals(toWorld);
+                boolean viewerFarAway = viewer.getWorld().equals(toWorld) && viewer.getLocation().distanceSquared(toLoc) > 900.0;
+                boolean shouldTeleportViewer = crossWorldForViewer || isCommandOrPlugin || isFirstPerson || isLargeJump || viewerFarAway;
 
-                if (crossWorldTeleport) {
-                    // Dünya değişince client tüm entity'leri siler
-                    // teleportAsync chunk yükleme ve göndermeyi düzgün yönetir
+                if (shouldTeleportViewer) {
+                    // teleportAsync chunk yükleme ve göndermeyi asenkron/düzgün yönetir
                     viewer.teleportAsync(toLoc);
 
-                    // NPC respawn + flight/gamemode restore (5 tick sonra dünya değişimi kesinlikle tamamlanmış olur)
+                    // NPC respawn + flight/gamemode restore (5 tick sonra chunk ve oyuncu yüklemesi kesinlikle tamamlanmış olur)
                     plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                         if (currentGen != replayPlayer.getActionHandler().getSeekGeneration()) return;
                         if (!viewer.isOnline()) return;
 
-                        // Dünya değişiminde Paper gamemode/flight sıfırlayabilir, zorla geri koy
+                        // Teleport sonrası Paper gamemode/flight sıfırlayabilir, koru
                         viewer.setGameMode(org.bukkit.GameMode.ADVENTURE);
                         viewer.setAllowFlight(true);
                         viewer.setFlying(true);
                         viewer.setFallDistance(0f);
 
+                        // Chunk yüklendiğinden NPC'yi bu izleyici için kesin olarak spawn et ve hizala
                         replayPlayer.getNpcManager().respawnForViewer(viewer, toLoc);
-                        ReportSystemSpigot.getInstance().debug("[REPLAY] NPC respawned + flight restored in new world for " + viewer.getName());
+                        replayPlayer.getNpcManager().absoluteTeleportNPC(toLoc);
+
+                        // 1. şahıs modundaysa kamerayı tekrar bağla
+                        if (replayPlayer.getNpcManager().isFirstPersonEnabled()) {
+                            WrapperPlayServerCamera cameraPacket = new WrapperPlayServerCamera(replayPlayer.getNpcManager().getEntityId());
+                            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, cameraPacket);
+                            replayPlayer.getNpcManager().resendFirstPersonEquipment(viewer);
+                        }
+
+                        // Bitiş noktası efektleri (izleyici vardıktan sonra)
+                        viewer.spawnParticle(Particle.PORTAL, toLoc.clone().add(0, 1, 0), 30, 0.3, 0.5, 0.3, 0.05);
+                        viewer.playSound(toLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
                     }, 5L);
 
-                    com.reportsystem.spigot.ReportSystemSpigot spigotPlugin = (com.reportsystem.spigot.ReportSystemSpigot) plugin;
-                    viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.world-change").replace("%world%", toWorld.getName())));
-                    ReportSystemSpigot.getInstance().debug("[REPLAY] Teleporting viewer " + viewer.getName() +
-                            " to world: " + toWorld.getName());
+                    if (crossWorldForViewer) {
+                        com.reportsystem.spigot.ReportSystemSpigot spigotPlugin = (com.reportsystem.spigot.ReportSystemSpigot) plugin;
+                        viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.world-change").replace("%world%", toWorld.getName())));
+                        ReportSystemSpigot.getInstance().debug("[REPLAY] Teleporting viewer " + viewer.getName() +
+                                " to world: " + toWorld.getName());
+                    } else {
+                        ReportSystemSpigot.getInstance().debug("[REPLAY] Teleporting viewer " + viewer.getName() +
+                                " to same-world location: " + toLoc.getX() + ", " + toLoc.getY() + ", " + toLoc.getZ() + " (Cause: " + action.getCause() + ")");
+                    }
                 } else {
-                    // Aynı dünya - sadece NPC'yi teleport et
-                    replayPlayer.getNpcManager().absoluteTeleportNPC(toLoc);
+                    // Kısa mesafeli (örn: küçük ender pearl) - izleyici yerinde kalır, varış noktası efektini hemen göster
+                    if (viewer.getWorld().equals(toWorld)) {
+                        viewer.spawnParticle(Particle.PORTAL, toLoc.clone().add(0, 1, 0), 30, 0.3, 0.5, 0.3, 0.05);
+                        viewer.playSound(toLoc, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                    }
                 }
-
-                replayPlayer.setLastLocation(toLoc);
 
                 // Bilgi göster
                 switch (action.getCause()) {
