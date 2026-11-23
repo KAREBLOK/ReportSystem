@@ -40,3 +40,7 @@ build/
 .idea/
 *.zip
 release_build/
+dependency-reduced-pom.xml
+### Claude çalışma notları (depo herkese açık — commit etme) ###
+CLAUDE.md
+notlar/

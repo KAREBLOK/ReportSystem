@@ -4,10 +4,10 @@
 
 **Next-Generation Visual Replay, Overwatch Review & Player Moderation System for Minecraft**
 
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.oracle.com/java/)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://www.oracle.com/java/)
 [![Minecraft](https://img.shields.io/badge/Minecraft-Paper%201.21%2B-blue.svg)](https://papermc.io/)
-[![PacketEvents](https://img.shields.io/badge/PacketEvents-2.11.2%2B-green.svg)](https://github.com/retrooper/packetevents)
-[![Release](https://img.shields.io/badge/Release-v2.1.5-brightgreen.svg)](https://github.com/KAREBLOK/ReportSystem/releases)
+[![PacketEvents](https://img.shields.io/badge/PacketEvents-2.14.0%2B-green.svg)](https://github.com/retrooper/packetevents)
+[![Release](https://img.shields.io/badge/Release-v2.2.0-brightgreen.svg)](https://github.com/KAREBLOK/ReportSystem/releases)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/invite/WZc5bE9cK8)
 
@@ -32,6 +32,7 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 - [Installation Guide](#installation-guide)
   - [Standalone Server (Paper)](#standalone-server-paper)
   - [Proxy Network (Velocity / BungeeCord)](#proxy-network-velocity--bungeecord)
+- [Upgrading to 2.2.0](#upgrading-to-220)
 - [Core Systems](#core-systems)
   - [1. Visual Replay Engine](#1-visual-replay-engine)
   - [2. Overwatch Community Review](#2-overwatch-community-review)
@@ -55,7 +56,7 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 - **Frame-Accurate Visual Replay:** Records over **53+ packet action types** (movement, combat, head rotations, sneaking, swimming, elytra flight, projectile trajectories, and block interactions).
 - **Hotbar Replay Controls:** In-game controller items to Play, Pause, Fast-Forward (+10s), Rewind (-10s), adjust speed (0.25x to 2x), and teleport directly to suspects.
 - **Overwatch Review System:** Empower trusted players to watch anonymized replays, analyze evidence, and cast votes with XP progression, ranks, and accuracy ratings.
-- **Open Community Voting (v2.1.5):** Flexible voting where any qualified player can review cases, while moderators hold final verdict authority or let the queue resolve automatically.
+- **Open Community Voting (v2.1.5+):** Flexible voting where any qualified player can review cases, while moderators hold final verdict authority or let the queue resolve automatically.
 - **Animated Ban Spectacle:** Ban cheaters with lightning strikes, falling anvils, frozen movement, and custom global death alerts.
 - **Anti-Cheat Hooks:** Native smart-scoring listeners for **Polar**, **Vulcan**, and **GrimAC**. Automatically records and queues suspects upon suspicious heuristic spikes.
 - **Multi-Channel Alerts:** Staff notifications via interactive Toasts (Advancement popups), Screen Titles, Actionbar tickers, custom sounds, and clickable chat messages.
@@ -69,11 +70,14 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 
 | Component | Minimum Requirement | Recommended |
 | :--- | :--- | :--- |
-| **Platform** | Paper 1.21+ (Purpur, Folia, Pufferfish) | Latest Paper 1.21.x |
-| **Java** | Java 21 | Java 21+ |
-| **PacketEvents** | **v2.11.2+ (MANDATORY)** | Latest 2.x Release |
-| **Database** | SQLite (Built-in for single server) | MySQL 8.0+ / MariaDB 10.5+ (HikariCP) |
-| **Proxy (Optional)** | BungeeCord or Velocity 3.3+ | Velocity 3.3+ |
+| **Platform** | Paper 1.21+ (or a Paper fork such as Purpur) | Latest Paper |
+| **Java** | Java 17+ (plugin bytecode target) | The Java version your Paper build requires (Paper 1.21 needs Java 21) |
+| **PacketEvents** | **v2.13+ (MANDATORY)** | **v2.14.0+** (required for Minecraft 26.3) |
+| **Database** | SQLite (Built-in for single server) | MySQL 8.0+ (HikariCP) |
+| **Proxy (Optional)** | BungeeCord or Velocity 3.4+ (the Velocity jar requires Java 21) | Velocity 3.5+ |
+
+> [!NOTE]
+> **Folia is not supported.** The plugin does not declare `folia-supported` and uses the regular Bukkit scheduler.
 
 > [!IMPORTANT]
 > **PacketEvents is strictly required.** The Replay recording and playback engine depends directly on PacketEvents packet wrappers. The plugin will disable itself safely if PacketEvents is absent.
@@ -84,10 +88,10 @@ Instead of relying on ambiguous text logs or easily falsified chat screenshots, 
 
 ### Standalone Server (Paper)
 
-1. Download `ReportSystem-v2.1.5.jar` and `packetevents-spigot.jar`.
+1. Download `ReportSystem-Spigot-2.2.0.jar` and `packetevents-spigot.jar`.
 2. Place both JAR files into your server's `plugins/` directory.
 3. Start the server once to generate default configuration files and SQLite storage.
-4. Customize `plugins/ReportSystem/config.yml` and `messages_en.yml` (or `messages_tr.yml`).
+4. Customize `plugins/ReportSystem-Spigot/config.yml` and `messages_en.yml` (or `messages_tr.yml`).
 5. Restart your server or run `/rs reload`.
 
 ### Proxy Network (Velocity / BungeeCord)
@@ -101,15 +105,36 @@ graph LR
 ```
 
 1. **Backend Servers (Paper):**
-   - Install `ReportSystem.jar` + `packetevents.jar` into each backend server's `plugins/` folder.
-   - In `plugins/ReportSystem/config.yml`:
+   - Install `ReportSystem-Spigot-2.2.0.jar` + `packetevents-spigot.jar` into each backend server's `plugins/` folder.
+   - In `plugins/ReportSystem-Spigot/config.yml`:
      - Set `database.type: "mysql"`
      - Configure your centralized MySQL credentials (`host`, `port`, `database`, `username`, `password`).
-     - Set a unique identifier: `general.server-name: "survival-1"` (or "bedwars-1", etc.).
+     - Set `bungeecord.enabled: true` and `bungeecord.display-name` to the server's name **exactly as it is registered in the proxy** (e.g. `"survival-1"`).
+     - Set `bungeecord.message-secret` to the same value on every backend and on the proxy (write it in quotes).
 2. **Proxy Server:**
-   - Place `ReportSystem.jar` into `plugins/` on your Velocity or BungeeCord proxy.
-   - Configure MySQL credentials in the proxy config to allow network-wide report sync.
+   - Place `ReportSystem-Bungee-2.2.0.jar` (BungeeCord) or `ReportSystem-Velocity-2.2.0.jar` (Velocity) into the proxy's `plugins/` folder.
+   - Configure the same MySQL credentials and the same `message-secret` in the proxy config.
 3. Restart the entire network.
+
+---
+
+## Upgrading to 2.2.0
+
+2.2.0 changes the proxy-server message protocol and several default behaviours. Read this list before updating.
+
+1. **Update the proxy and ALL backend servers to 2.2.0 together.** Mixed 2.1.x / 2.2.0 networks do not work. `message-secret` must be identical everywhere (proxy `message-secret`, Spigot `bungeecord.message-secret`) and server clocks must be NTP-synchronised (messages are accepted within a 30-second window). For cross-server replays, Spigot `bungeecord.display-name` must equal the server name in the proxy config.
+2. **Write `message-secret` in quotes** (e.g. `message-secret: "abc123"`). Unquoted numeric-looking values are converted by YAML and will not match.
+3. **Proxy ban check:** it now runs after login authentication (LoginEvent) and matches by UUID. The database is the source of truth; the in-memory list is only a fallback. Old bans that were stored by name only are bound to the player's UUID on their first join. Proxy `warn` now works.
+4. **Hybrid premium/cracked networks** (FastLogin, or Floodgate without a username prefix): the same name can belong to different UUIDs. Name-only bans are bound to the UUID of the first account that joins with that name, so review such bans after upgrading and prefer issuing bans to online players.
+5. **Spigot MySQL pool settings** (`database.mysql.pool.*`) are now actually applied (they were ignored before). The recommended `connection-timeout` is `5000`; if your existing file still has `30000`, lower it manually. New `database.mysql.ssl-mode` (default `DISABLED` = previous behaviour), also available in the proxy configs.
+6. While watching a Replay or Overwatch case, only commands listed in `replay.viewer-allowed-commands` can be used (staff included). Viewers without `reportsystem.view.all` cannot move further than `replay.viewer-max-distance` (48 blocks) from the replayed player; movement is locked on the Overwatch "replay finished" screen.
+7. Servers with a `language` other than `tr` (e.g. `en`) now read GUIs from `plugins/ReportSystem-Spigot/guis/en/`. If you customised `guis/*.yml`, move your changes there.
+8. **Recording limits:** see `replay.limits.*`. A replay that exceeds the size limit is no longer discarded; it is trimmed from the end. Crash recovery uses the `recording-journal/` folder.
+9. Replay data is read through a safety filter; recordings containing unrecognised data are not opened and are reported in the console.
+10. **Dependencies:** sqlite-jdbc 3.54.1.0 (Paper downloads it on first start), mysql-connector-j 26.10.0, PacketEvents 2.14.0+ for Minecraft 26.3. Connector/J 26.x officially supports **MySQL 8.0 and newer**.
+11. In the custom duration field, `perm` / `-1` / `forever` are now treated as an invalid duration; choose "permanent" for a permanent punishment.
+12. New database columns `resolved_by` and `resolved_at` are added automatically. PlaceholderAPI values update with up to 30 seconds of delay. Proxy notifications go to players with `reportsystem.notify` (instead of the undefined `reportsystem.staff`).
+13. The Spigot jar is no longer obfuscated (ProGuard was removed from the build).
 
 ---
 
@@ -157,7 +182,7 @@ Inspired by Counter-Strike's Overwatch, ReportSystem empowers trusted community 
 
 - **Anonymization:** Suspect and reporter names can be hidden (e.g. `The Suspect #842`) to eliminate review bias.
 - **Dynamic Scoring:** Players earn XP for correct verdicts. Submitting false verdicts or spamming degrades their reviewer score.
-- **Open Community Voting (v2.1.5):** Servers can enable open voting (`auto-complete-queue: false`), allowing the community to vote on cases while staff inspect statistics in `/reports` and issue the final ruling.
+- **Open Community Voting (v2.1.5+):** Servers can enable open voting (`auto-complete-queue: false`), allowing the community to vote on cases while staff inspect statistics in `/reports` and issue the final ruling.
 
 ---
 
@@ -171,9 +196,9 @@ Deploy interactive Overwatch NPCs in your hubs or lobbies using PacketEvents vir
 
 ```bash
 /overwatch npc create &b&lOVERWATCH &7(Click)
-/overwatch npc skin Steve
-/overwatch npc look true
-/overwatch npc move
+/overwatch npc skin <npc> Steve
+/overwatch npc look <npc>
+/overwatch npc move <npc>
 /overwatch npc delete <id>
 ```
 
@@ -249,64 +274,68 @@ Synchronize in-game activity directly with your Discord staff channels:
 
 ### config.yml Snippet
 
+An excerpt of `plugins/ReportSystem-Spigot/config.yml` (the generated file contains every key with comments):
+
 ```yaml
 general:
+  debug: false
   language: "en"               # en (English) or tr (Turkish)
-  server-name: "survival-1"    # Unique server identifier for network sync
   check-updates: true
 
 database:
-  type: "sqlite"               # "sqlite" or "mysql"
-  sqlite:
-    file: "reports.db"
+  type: sqlite                 # "sqlite" or "mysql" (use mysql for proxy networks)
   mysql:
     host: "localhost"
     port: 3306
     database: "reportsystem"
     username: "root"
-    password: "password"
+    password: "CHANGE_THIS_PASSWORD"
+    ssl-mode: "DISABLED"
     pool:
       maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
+      minimum-idle: 2
+      connection-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+bungeecord:
+  enabled: false
+  display-name: ""             # Must match the server name in the proxy config
+  message-secret: ""           # Same value on the proxy and every backend, in quotes
 
 reports:
-  cooldown-seconds: 60
-  max-pending-per-player: 3
-  reasons:
-    - "KillAura"
-    - "Fly / Speed"
-    - "Scaffold"
-    - "X-Ray"
-    - "Chat Toxicity"
-  notifications:
-    notify-staff: true
-    title-enabled: true
-    actionbar-enabled: true
-    sound-enabled: true
-    sound: "ENTITY_EXPERIENCE_ORB_PICKUP"
+  require-online: true
+  cooldown: 60
+  global-rate-limit: 5
+  max-reports-per-player: 3
 
 replay:
   enabled: true
   auto-record: true
-  duration-seconds: 45
+  recording-duration: 45
+  max-recordings: 3
+  max-file-size: 5
   auto-delete-days: 7
-  max-recordings: 5
-  nearby-player-tracking:
-    enabled: true
-    radius: 16
-    interval-ticks: 3
-    movement-threshold: 0.05
 
 overwatch:
   enabled: true
-  auto-complete-queue: false   # v2.1.5: Set false for open community voting
-  required-reviews: 3          # Votes required to complete when auto-complete is true
-  anonymize-names: true
-  rewards:
-    xp-correct: 50
-    xp-incorrect: -20
+  auto-complete-queue: false   # false: open community voting (v2.1.5+)
+  min-reviewers: 3             # Only used when auto-complete-queue is true
 ```
+
+### Configuration keys added in 2.2.0
+
+| Key | Default | Description |
+| :--- | :--- | :--- |
+| `database.mysql.ssl-mode` | `DISABLED` | Connector/J `sslMode`: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`. Also in the proxy configs. |
+| `database.mysql.pool.*` | see above | HikariCP pool (`maximum-pool-size`, `minimum-idle`, `connection-timeout`, `idle-timeout`, `max-lifetime`); now actually applied. |
+| `replay.limits.max-actions` | `150000` | Maximum actions per recording (`0` or `-1` = unlimited). |
+| `replay.limits.max-actions-per-type-per-second` | `400` | Maximum actions of one type per second (`0` or `-1` = unlimited). |
+| `replay.crash-recovery.enabled` | `true` | Periodically checkpoints active recordings to `recording-journal/` and saves them on the next start after a crash. |
+| `replay.crash-recovery.interval-seconds` | `10` | Checkpoint interval (minimum 2). |
+| `replay.viewer-allowed-commands` | ReportSystem commands, private messages, `helpop` | Only these command labels work while watching a replay / Overwatch case. |
+| `replay.viewer-max-distance` | `48` | Maximum distance (blocks) a viewer can move away from the replayed player; `0` = disabled. `reportsystem.view.all` is exempt. |
+| `guis/en/` (folder) | - | English GUI files, used when `language` is not `tr`. |
 
 ---
 
@@ -315,51 +344,56 @@ overwatch:
 ### Player & Staff Commands
 | Command | Aliases | Permission | Description |
 | :--- | :--- | :--- | :--- |
-| `/report <player> [reason]` | `/sikayet` | `reportsystem.report` | Opens report creation GUI or files report |
-| `/reports` | `/raporlar` | `reportsystem.reports` | Opens staff report management panel |
-| `/overwatch` | `/ow` | `reportsystem.overwatch` | Opens community Overwatch review menu |
-| `/overwatch stats [player]` | `/ow stats` | `reportsystem.overwatch.stats` | Displays Overwatch level, XP & accuracy |
-| `/overwatch queue` | `/ow queue` | `reportsystem.overwatch.queue` | Displays cases waiting for review |
-| `/overwatch top` | `/ow top` | `reportsystem.overwatch.top` | Opens top reviewers leaderboard |
-| `/overwatch history` | `/ow history` | `reportsystem.overwatch.history` | View your past review verdicts |
+| `/report <player> [reason]` | `/rapor`, `/reportplayer`, `/raporla` | `reportsystem.report` | Reports a player (opens the report GUI) |
+| `/reports [page]` | `/raporlar`, `/reportlist`, `/raporlistesi` | `reportsystem.view.all` | Opens the staff report list (all reports) |
+| `/overwatch` | `/ow`, `/overwatchsystem` | `reportsystem.overwatch` | Opens the Overwatch main menu |
+| `/overwatch stats [player]` | `/ow stats` | `reportsystem.overwatch` | Shows Overwatch statistics (online player) |
+| `/overwatch leaderboard` | `/ow lb`, `/ow top` | `reportsystem.overwatch` | Opens the reviewer leaderboard |
+| `/overwatch help` | `/ow help` | `reportsystem.overwatch` | Shows Overwatch command help |
 
 ### Administrator Commands
+`/reportsystem` aliases: `/rs`, `/rsystem`, `/raporsistem`.
+
 | Command | Permission | Description |
 | :--- | :--- | :--- |
-| `/reportsystem reload` | `reportsystem.admin` | Reloads configurations and language files |
-| `/reportsystem stats` | `reportsystem.admin` | View server-wide report & replay statistics |
-| `/reportsystem delete <id>` | `reportsystem.delete` | Permanently deletes a specific report & replay |
-| `/reportsystem deleteall` | `reportsystem.admin` | Clears all stored reports and replays |
-| `/reportsystem purge <days>` | `reportsystem.admin` | Purges reports and replays older than X days |
-| `/reportsystem debug` | `reportsystem.admin` | Toggles detailed debug logging in console |
-| `/reportsystem verdict <id> <verdict>` | `reportsystem.punish` | Staff resolution for community report votes |
-| `/overwatch addqueue <reportId>` | `reportsystem.admin` | Manually push a report to the review queue |
-| `/overwatch npc <create/delete/skin/look/move/name/select>` | `reportsystem.overwatch.npc` | Manages Overwatch lobby NPCs |
+| `/reportsystem reload` | `reportsystem.admin` | Reloads configuration and language files |
+| `/reportsystem stats` | `reportsystem.admin` | Shows report statistics |
+| `/reportsystem info` | `reportsystem.admin` | Shows plugin information |
+| `/reportsystem lang` | `reportsystem.admin` | Shows the active language file |
+| `/reportsystem debug <true/false>` | `reportsystem.admin` | Toggles debug logging |
+| `/reportsystem testnotif` | `reportsystem.admin` | Sends a test toast notification to yourself |
+| `/reportsystem checkadv` | `reportsystem.admin` | Checks the advancement (toast) status |
+| `/reportsystem ban <player> <reason> [duration]` | `reportsystem.admin` | Bans a player |
+| `/reportsystem unban <player>` | `reportsystem.admin` | Removes a ban |
+| `/reportsystem unmute <player>` | `reportsystem.admin` | Removes a mute |
+| `/reportsystem webreplay <reportId>` | `reportsystem.admin` | Generates a web replay link (when web replay is enabled) |
+| `/overwatch addqueue <reportId> [priority]` | `reportsystem.overwatch.admin` | Adds a report to the Overwatch queue |
+| `/overwatch npc <create/delete/list/skin/look/move/name/select>` | `reportsystem.overwatch.admin` | Manages Overwatch NPCs |
+
+The proxy plugins (BungeeCord / Velocity) register no commands.
 
 ---
 
 ## Permissions Reference
 
+These are the permissions declared in `plugin.yml`:
+
 ```
-reportsystem.use                   # Default: true  - Access basic system functions
-reportsystem.report                # Default: true  - Permission to report players
-reportsystem.reports               # Default: op    - Open staff report dashboard
-reportsystem.view                  # Default: op    - View detailed report information
-reportsystem.view.other            # Default: op    - View other staff members' reports
-reportsystem.delete                # Default: op    - Delete reports & replays
-reportsystem.punish                # Default: op    - Issue punishments through GUI
-reportsystem.admin                 # Default: op    - Full administrative controls
-reportsystem.bypass                # Default: false - Exemption from being reported
-reportsystem.notify                # Default: op    - Receive incoming report alerts
-reportsystem.overwatch             # Default: true  - Access Overwatch system
-reportsystem.overwatch.review      # Default: true  - Watch replays & submit verdicts
-reportsystem.overwatch.stats       # Default: true  - View personal reviewer stats
-reportsystem.overwatch.stats.other # Default: op    - View other players' stats
-reportsystem.overwatch.top         # Default: true  - View reviewer leaderboards
-reportsystem.overwatch.history     # Default: true  - View past personal verdict history
-reportsystem.overwatch.queue       # Default: op    - View all queue entries
-reportsystem.overwatch.npc         # Default: op    - Manage lobby NPCs
-reportsystem.overwatch.admin       # Default: op    - Administer Overwatch cases
+reportsystem.*                     # Default: op    - All ReportSystem permissions (children below, except bypass.anticheat)
+reportsystem.report                # Default: true  - Create reports
+reportsystem.report.others         # Default: op    - Create reports on behalf of others
+reportsystem.view                  # Default: true  - View own reports
+reportsystem.view.all              # Default: op    - View all reports (/reports); exempt from replay viewer distance limit
+reportsystem.admin                 # Default: op    - /reportsystem admin commands
+reportsystem.notify                # Default: op    - Receive report notifications (also used by the proxy plugins)
+reportsystem.manage                # Default: op    - Accept / reject reports
+reportsystem.punish                # Default: op    - Issue punishments (ban, mute, kick, warn)
+reportsystem.delete                # Default: op    - Delete reports
+reportsystem.cooldown.bypass       # Default: op    - Bypass the report cooldown
+reportsystem.exempt                # Default: op    - Cannot be reported
+reportsystem.overwatch             # Default: op    - Use the Overwatch system
+reportsystem.overwatch.admin       # Default: op    - Overwatch admin commands (NPC and queue management)
+reportsystem.bypass.anticheat      # Default: false - Given automatically to replay viewers so anti-cheats can use it as a bypass rule
 ```
 
 ---
@@ -421,11 +455,11 @@ ReportSystem is architected for zero-tick-drop operation on production servers:
 ### Common Issues
 
 - **Plugin fails to load:**
-  - Verify Java version (`java -version` must be 21 or higher).
-  - Verify PacketEvents is installed and matches your server version.
+  - Verify Java version (`java -version` must be 17 or higher and meet your Paper build's requirement).
+  - Verify PacketEvents is installed and matches your server version (2.14.0+ for Minecraft 26.3).
 - **Replay won't record:**
   - Ensure `replay.auto-record: true` is set in `config.yml`.
-  - Check that the server has write permissions in `plugins/ReportSystem/replays/`.
+  - Replays are stored in the database: check the console for database errors and that the server can write to `plugins/ReportSystem-Spigot/` (crash-recovery journal).
 - **Database Connection Refused:**
   - Verify MySQL host, port, credentials, and check if your database server allows incoming connections through the firewall.
 

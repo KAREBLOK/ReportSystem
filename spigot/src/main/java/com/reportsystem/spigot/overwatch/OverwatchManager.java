@@ -4,6 +4,7 @@ import com.reportsystem.common.database.OverwatchDAO;
 import com.reportsystem.common.models.Report;
 import com.reportsystem.common.models.overwatch.*;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.sql.SQLException;
@@ -15,6 +16,8 @@ public class OverwatchManager {
 
     private final ReportSystemSpigot plugin;
     private final OverwatchDAO overwatchDAO;
+    /** İstatistik oku-değiştir-yaz bölgeleri için tek kilit (yalnız async thread'ler tutar) [THR-20]. */
+    private final Object statsLock = new Object();
 
     public OverwatchManager(ReportSystemSpigot plugin) {
         this.plugin = plugin;
@@ -26,7 +29,7 @@ public class OverwatchManager {
      */
     public Optional<Integer> getNextReportForReviewer(Player reviewer) {
         try {
-            Optional<OverwatchQueueItem> queueItem = overwatchDAO.getNextQueueItem(reviewer.getUniqueId());
+            Optional<OverwatchQueueItem> queueItem = overwatchDAO.getNextQueueItem(reviewer.getUniqueId(), reviewer.getName());
 
             if (queueItem.isPresent()) {
                 int reportId = queueItem.get().getReportId();
@@ -46,19 +49,30 @@ public class OverwatchManager {
                 return Optional.of(reportId);
             }
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to get next report: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to get next report", e);
         }
 
         return Optional.empty();
     }
 
+    /** submitVerdict sonucu. */
+    public enum VerdictResult { ACCEPTED, REJECTED_INVOLVED, ERROR }
+
     /**
-     * Submit a review verdict
+     * Submit a review verdict.
+     * UYARI: Bloklayan JDBC içerir; ASYNC thread'den çağrılmalı. Bukkit çağrıları
+     * (mesaj) içeride ana thread'e taşınır. Sonucu çağıran işler.
      */
-    public void submitVerdict(Player reviewer, int reportId, String verdict, String category,
+    public VerdictResult submitVerdict(Player reviewer, int reportId, String verdict, String category,
                              String subcategory, int reviewDuration) {
         try {
+            // Kendi raporunu (raporlayan/raporlanan) inceleme koruması
+            if (overwatchDAO.isReviewerInvolved(reportId, reviewer.getUniqueId(), reviewer.getName())) {
+                plugin.getLogger().warning("[OVERWATCH] " + reviewer.getName() +
+                        " tried to review own report #" + reportId + " - verdict rejected");
+                return VerdictResult.REJECTED_INVOLVED;
+            }
+
             // Create review
             OverwatchReview review = new OverwatchReview(
                 0, // ID auto-generated
@@ -86,11 +100,26 @@ public class OverwatchManager {
 
             plugin.debug("[OVERWATCH] Verdict submitted by " + reviewer.getName() +
                     " for report #" + reportId + ": " + verdict);
+            return VerdictResult.ACCEPTED;
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to submit verdict: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to submit verdict", e);
+            return VerdictResult.ERROR;
         }
+    }
+
+    /**
+     * Birden çok rapor için oylama özetini tek seferde çeker (ASYNC thread'den çağır).
+     * Oy yoksa haritada anahtar bulunmaz.
+     */
+    public java.util.Map<Integer, String> getVotingStatsForReports(List<Integer> reportIds) {
+        java.util.Map<Integer, String> result = new java.util.HashMap<>();
+        for (Integer id : reportIds) {
+            if (id == null || result.containsKey(id)) continue;
+            String stats = getVotingStats(id);
+            if (stats != null) result.put(id, stats);
+        }
+        return result;
     }
 
     /**
@@ -98,24 +127,29 @@ public class OverwatchManager {
      */
     private void updateReviewerStats(Player reviewer, String verdict, int reviewDuration) {
         try {
-            Optional<OverwatchStats> statsOpt = overwatchDAO.getStats(reviewer.getUniqueId());
+            final int previousLevel;
+            final String previousRank;
+            final OverwatchStats stats;
 
-            // Store previous stats for comparison (for level-up/rank-up detection)
-            int previousLevel = statsOpt.map(OverwatchStats::getLevel).orElse(0);
-            String previousRank = statsOpt.map(OverwatchStats::getRank).orElse("BRONZE");
-            int previousXp = statsOpt.map(OverwatchStats::getXp).orElse(0);
+            // Yalnız DB oku-değiştir-yaz bölgesi kilitli; mesaj / ödül komutu kilit DIŞINDA [THR-20]
+            synchronized (statsLock) {
+                Optional<OverwatchStats> statsOpt = overwatchDAO.getStats(reviewer.getUniqueId());
 
-            OverwatchStats stats;
-            if (statsOpt.isPresent()) {
-                stats = statsOpt.get();
-                stats.setReviewerName(reviewer.getName());
-                stats.addReview(verdict, reviewDuration);
-            } else {
-                stats = OverwatchStats.createNew(reviewer.getUniqueId().toString(), reviewer.getName());
-                stats.addReview(verdict, reviewDuration);
+                // Store previous stats for comparison (for level-up/rank-up detection)
+                previousLevel = statsOpt.map(OverwatchStats::getLevel).orElse(0);
+                previousRank = statsOpt.map(OverwatchStats::getRank).orElse("BRONZE");
+
+                if (statsOpt.isPresent()) {
+                    stats = statsOpt.get();
+                    stats.setReviewerName(reviewer.getName());
+                    stats.addReview(verdict, reviewDuration);
+                } else {
+                    stats = OverwatchStats.createNew(reviewer.getUniqueId().toString(), reviewer.getName());
+                    stats.addReview(verdict, reviewDuration);
+                }
+
+                overwatchDAO.createOrUpdateStats(stats);
             }
-
-            overwatchDAO.createOrUpdateStats(stats);
 
             // Get XP gained
             int xpGained = verdict.equals("SKIP") ?
@@ -124,11 +158,17 @@ public class OverwatchManager {
 
             // Notify player
             String rankColor = getRankColor(stats.getRank());
-            reviewer.sendMessage(plugin.getMessageManager().colorize(
+            final String completedMsg = plugin.getMessageManager().colorize(
                     plugin.getMessageManager().getMessage("overwatch.review.completed")
                             .replace("%xp%", String.valueOf(xpGained))
                             .replace("%rank%", rankColor + stats.getRank())
-                            .replace("%level%", String.valueOf(stats.getLevel()))));
+                            .replace("%level%", String.valueOf(stats.getLevel())));
+            // Bu metot async thread'den çağrılır: oyuncu mesajı ana thread'de gönderilir
+            if (plugin.isEnabled()) { // kapanışta runTask IllegalPluginAccessException atar [THR-17]
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (reviewer.isOnline()) reviewer.sendMessage(completedMsg);
+                });
+            }
 
             // Execute reward commands if enabled
             if (plugin.getConfigManager().isRewardCommandsEnabled()) {
@@ -136,8 +176,7 @@ public class OverwatchManager {
             }
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to update stats: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to update stats", e);
         }
     }
 
@@ -273,8 +312,13 @@ public class OverwatchManager {
                     rawGuiltyCount + "/" + reviews.size() + " votes, weighted: " +
                     String.format("%.1f", guiltyWeight) + "/" + String.format("%.1f", totalWeight) + ")");
 
-            // Mark as completed
-            overwatchDAO.completeQueueItem(reportId);
+            // Mark as completed — koşullu: eşzamanlı iki karar aynı uzlaşmayı iki kez
+            // saymasın (logAction + updateReviewerAccuracies yalnız kazanan thread'de) [DATA-26]
+            if (overwatchDAO.completeQueueItem(reportId) == 0) {
+                plugin.debug("[OVERWATCH] Report #" + reportId +
+                        " consensus already completed (or not in queue) - skipping duplicate processing");
+                return;
+            }
 
             // Log voting results
             OverwatchAction action = new OverwatchAction(
@@ -295,8 +339,7 @@ public class OverwatchManager {
             updateReviewerAccuracies(reviews, consensusGuilty);
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to process consensus: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to process consensus", e);
         }
     }
 
@@ -323,18 +366,21 @@ public class OverwatchManager {
             if ("SKIP".equalsIgnoreCase(review.getVerdict())) continue;
 
             try {
-                Optional<OverwatchStats> statsOpt = overwatchDAO.getStatsByUuid(review.getReviewerUUID());
-                if (statsOpt.isEmpty()) continue;
+                // Oku-değiştir-yaz atomik olsun: eşzamanlı karar/istatistik güncellemesiyle ezişme olmasın [THR-20]
+                synchronized (statsLock) {
+                    Optional<OverwatchStats> statsOpt = overwatchDAO.getStatsByUuid(review.getReviewerUUID());
+                    if (statsOpt.isEmpty()) continue;
 
-                OverwatchStats stats = statsOpt.get();
+                    OverwatchStats stats = statsOpt.get();
 
-                if (correctVerdict.equalsIgnoreCase(review.getVerdict())) {
-                    stats.addCorrectVerdict();
-                } else {
-                    stats.recalculateAccuracy();
+                    if (correctVerdict.equalsIgnoreCase(review.getVerdict())) {
+                        stats.addCorrectVerdict();
+                    } else {
+                        stats.recalculateAccuracy();
+                    }
+
+                    overwatchDAO.createOrUpdateStats(stats);
                 }
-
-                overwatchDAO.createOrUpdateStats(stats);
             } catch (SQLException e) {
                 plugin.getLogger().warning("[OVERWATCH] Failed to update accuracy for " +
                         review.getReviewerName() + ": " + e.getMessage());
@@ -346,6 +392,7 @@ public class OverwatchManager {
      * Yetkili kararı ile Overwatch oylamasını sonlandır ve doğruluk oranlarını güncelle.
      * /reports menüsünden yetkili raporu Onayladığında (guiltyVerdict = true) veya
      * Reddettiğinde (guiltyVerdict = false) çağrılır.
+     * <p>ASYNC thread'den çağrılmalı (DB erişimi + istatistik kilidi).
      */
     public void resolveReportVoting(int reportId, boolean guiltyVerdict) {
         try {
@@ -379,62 +426,81 @@ public class OverwatchManager {
             removeReportFromQueue(reportId);
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to resolve voting for report #" + reportId + ": " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to resolve voting for report #" + reportId, e);
         }
     }
 
     /**
-     * Add report to overwatch queue
+     * Kuyruk yazımlarını ana thread'den çıkarır: ana thread'den (ve eklenti açıkken) çağrıldıysa
+     * async görev olarak çalıştırır, aksi halde (zaten async thread ya da kapanış sırasında)
+     * senkron çalıştırır — kapanışta yazım kaybolmaz, çağıranlar değişmez [THR-01][THR-17].
+     * Not: async yazımlar arasında sıra garantisi yoktur.
+     */
+    private void runDb(Runnable r) {
+        if (Bukkit.isPrimaryThread() && plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, r);
+        } else {
+            r.run();
+        }
+    }
+
+    /**
+     * Add report to overwatch queue (ana thread'den çağrılırsa async yazılır)
      */
     public void addReportToQueue(int reportId, int priority) {
-        try {
-            overwatchDAO.addToQueue(reportId, priority);
-            plugin.debug("[OVERWATCH] Added report #" + reportId + " to queue (priority: " + priority + ")");
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to add report to queue: " + e.getMessage());
-            e.printStackTrace();
-        }
+        runDb(() -> {
+            try {
+                overwatchDAO.addToQueue(reportId, priority);
+                plugin.debug("[OVERWATCH] Added report #" + reportId + " to queue (priority: " + priority + ")");
+            } catch (SQLException e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to add report to queue", e);
+            }
+        });
     }
 
     /**
      * Remove report from Overwatch queue (when status changes to non-PENDING)
+     * (ana thread'den çağrılırsa async yazılır)
      */
     public void removeReportFromQueue(int reportId) {
-        try {
-            overwatchDAO.removeFromQueue(reportId);
-            plugin.debug("[OVERWATCH] Removed report #" + reportId + " from queue");
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to remove report from queue: " + e.getMessage());
-            e.printStackTrace();
-        }
+        runDb(() -> {
+            try {
+                overwatchDAO.removeFromQueue(reportId);
+                plugin.debug("[OVERWATCH] Removed report #" + reportId + " from queue");
+            } catch (SQLException e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to remove report from queue", e);
+            }
+        });
     }
 
     /**
      * Unassign a report and return it to PENDING status
      * Used when reviewer closes verdict GUI without submitting
+     * (ana thread'den çağrılırsa async yazılır)
      */
     public void unassignReport(int reportId) {
-        try {
-            overwatchDAO.unassignReport(reportId);
-            plugin.debug("[OVERWATCH] Unassigned report #" + reportId + " - returned to PENDING queue");
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to unassign report: " + e.getMessage());
-            e.printStackTrace();
-        }
+        runDb(() -> {
+            try {
+                overwatchDAO.unassignReport(reportId);
+                plugin.debug("[OVERWATCH] Unassigned report #" + reportId + " - returned to PENDING queue");
+            } catch (SQLException e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to unassign report", e);
+            }
+        });
     }
 
     /**
-     * Update queue status
+     * Update queue status (ana thread'den çağrılırsa async yazılır)
      */
     public void updateQueueStatus(int reportId, String status) {
-        try {
-            overwatchDAO.updateQueueStatus(reportId, status);
-            plugin.debug("[OVERWATCH] Updated queue status for report #" + reportId + " to " + status);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH] Failed to update queue status: " + e.getMessage());
-            e.printStackTrace();
-        }
+        runDb(() -> {
+            try {
+                overwatchDAO.updateQueueStatus(reportId, status);
+                plugin.debug("[OVERWATCH] Updated queue status for report #" + reportId + " to " + status);
+            } catch (SQLException e) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to update queue status", e);
+            }
+        });
     }
 
     /**
@@ -510,7 +576,7 @@ public class OverwatchManager {
     }
 
     private String getRankColor(String rank) {
-        switch (rank.toUpperCase()) {
+        switch (rank.toUpperCase(java.util.Locale.ROOT)) {
             case "DIAMOND": return "§b";
             case "GOLD": return "§6";
             case "SILVER": return "§7";

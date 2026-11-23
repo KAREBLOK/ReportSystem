@@ -43,6 +43,10 @@ public class OverwatchVerdictGUI implements InventoryHolder {
     private VerdictState state = VerdictState.MAIN_MENU;
     private String selectedVerdict = null;
     private boolean verdictSubmitted = false;
+    /** Async yüklenen rapor (yalnız ana thread'de yazılır/okunur). */
+    private Report cachedReport = null;
+    /** Rapor sorgusu bir kez başlatıldı mı (rapor silinmişse null sonuç için tekrar sorgu atılmaz). */
+    private boolean reportLookupStarted = false;
 
     public enum VerdictState {
         MAIN_MENU,
@@ -72,19 +76,12 @@ public class OverwatchVerdictGUI implements InventoryHolder {
             inventory.setItem(i, blackGlass);
         }
 
-        // Report Info (Slot 4)
-        Report report = plugin.getReportService().getReportById(reportId);
-        if (report != null) {
-            List<String> reportLore = new ArrayList<>();
-            reportLore.add("");
-            reportLore.add(cfg.getString("report-info.lore-reported", "").replace("%reported%", report.getReportedPlayerName()));
-            reportLore.add(cfg.getString("report-info.lore-reporter", "").replace("%reporter%", report.getReporterName()));
-            reportLore.add(cfg.getString("report-info.lore-reason", "").replace("%reason%", report.getReason()));
-            reportLore.add(cfg.getString("report-info.lore-server", "").replace("%server%", report.getServerName()));
-            reportLore.add("");
-
-            inventory.setItem(4, createItem(Material.PAPER,
-                    cfg.getString("report-info.name", "").replace("%id%", String.valueOf(reportId)), reportLore));
+        // Report Info (Slot 4) — rapor DB'den ana thread'de okunmaz [THR-01]:
+        // önbellekte varsa hemen konur, yoksa async yüklenip ana thread'de yerleştirilir.
+        if (cachedReport != null) {
+            placeReportInfo(cachedReport);
+        } else if (!reportLookupStarted) {
+            loadReportAsync();
         }
 
         // GUILTY Button (Slot 20)
@@ -126,6 +123,44 @@ public class OverwatchVerdictGUI implements InventoryHolder {
         List<String> backLore = new ArrayList<>();
         backLore.add(cfg.getString("back.lore", ""));
         inventory.setItem(49, createItem(Material.ARROW, cfg.getString("back.name", "&8←"), backLore));
+    }
+
+    /** Rapor bilgisini async yükler; sonuç ana thread'de önbelleğe alınır ve ana menüdeyse slot 4'e konur. */
+    private void loadReportAsync() {
+        if (!plugin.isEnabled()) return; // kapanışta görev planlanamaz [THR-17]
+        reportLookupStarted = true;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Report report;
+            try {
+                report = plugin.getReportService().getReportById(reportId);
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[OVERWATCH] Failed to load report #" + reportId + " for verdict GUI", t);
+                report = null;
+            }
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            final Report loaded = report;
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                cachedReport = loaded;
+                if (loaded != null && state == VerdictState.MAIN_MENU) {
+                    placeReportInfo(loaded);
+                }
+            });
+        });
+    }
+
+    /** Ana thread: rapor bilgi öğesini (slot 4) yerleştirir. */
+    private void placeReportInfo(Report report) {
+        List<String> reportLore = new ArrayList<>();
+        reportLore.add("");
+        reportLore.add(cfg.getString("report-info.lore-reported", "").replace("%reported%", report.getReportedPlayerName()));
+        reportLore.add(cfg.getString("report-info.lore-reporter", "").replace("%reporter%", report.getReporterName()));
+        reportLore.add(cfg.getString("report-info.lore-reason", "").replace("%reason%", report.getReason()));
+        reportLore.add(cfg.getString("report-info.lore-server", "").replace("%server%", report.getServerName()));
+        reportLore.add("");
+
+        inventory.setItem(4, createItem(Material.PAPER,
+                cfg.getString("report-info.name", "").replace("%id%", String.valueOf(reportId)), reportLore));
     }
 
     private void setupCategorySelection() {
@@ -260,12 +295,47 @@ public class OverwatchVerdictGUI implements InventoryHolder {
     }
 
     private void submitVerdict(String verdict, String category, String subcategory) {
+        // Çift tık koruması (DB işi async sürerken ikinci tık yok sayılır)
+        if (verdictSubmitted) return;
         verdictSubmitted = true;
         int reviewDuration = (int) ((System.currentTimeMillis() - reviewStartTime) / 1000);
 
-        plugin.getOverwatchManager().submitVerdict(player, reportId, verdict, category, subcategory, reviewDuration);
+        // DB işi ana thread'i bloklamasın: async çalıştır, sonra ana thread'e dön
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult result;
+            try {
+                result = plugin.getOverwatchManager().submitVerdict(player, reportId, verdict, category, subcategory, reviewDuration);
+            } catch (Exception e) {
+                plugin.getLogger().severe("[OVERWATCH] Karar gönderilirken hata: " + e.getMessage());
+                result = com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult.ERROR;
+            }
+            final com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult finalResult = result;
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            Bukkit.getScheduler().runTask(plugin, () -> finishVerdict(finalResult, verdict, category, reviewDuration));
+        });
+    }
+
+    /** Ana thread: karar sonrası oyuncuya geri bildirim + dönüş. */
+    private void finishVerdict(com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult result,
+                               String verdict, String category, int reviewDuration) {
+        // Async aşama sürerken oyuncu çıkmış olabilir
+        if (!player.isOnline()) return;
 
         player.closeInventory();
+
+        if (result == com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult.REJECTED_INVOLVED) {
+            player.sendMessage(plugin.getMessageManager().colorize(
+                    plugin.getMessageManager().getMessage("overwatch.review.own-report-rejected")));
+            scheduleReturn();
+            return;
+        }
+        if (result == com.reportsystem.spigot.overwatch.OverwatchManager.VerdictResult.ERROR) {
+            // Karar kaydedilemedi: oyuncuya bildir, sonra normal dönüş
+            player.sendMessage(plugin.getMessageManager().colorize(
+                    plugin.getMessageManager().getMessage("overwatch.verdict.error")));
+            scheduleReturn();
+            return;
+        }
 
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.header")));
         player.sendMessage(plugin.getMessageManager().colorize(plugin.getMessageManager().getMessage("overwatch.verdict.title")));
@@ -294,6 +364,10 @@ public class OverwatchVerdictGUI implements InventoryHolder {
 
         player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
 
+        scheduleReturn();
+    }
+
+    private void scheduleReturn() {
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
                 // hasSavedState() KAPISI KALDIRILDI.
@@ -316,13 +390,13 @@ public class OverwatchVerdictGUI implements InventoryHolder {
     }
 
     private String getLocalizedVerdict(String verdict) {
-        String key = "overwatch.verdict.types." + verdict.toLowerCase();
+        String key = "overwatch.verdict.types." + verdict.toLowerCase(java.util.Locale.ROOT);
         String localized = plugin.getMessageManager().getMessage(key);
-        return (localized == null || localized.equals(key)) ? verdict.toUpperCase() : localized;
+        return (localized == null || localized.equals(key)) ? verdict.toUpperCase(java.util.Locale.ROOT) : localized;
     }
 
     private String getLocalizedCategory(String category) {
-        String key = "overwatch.verdict.categories." + category.toLowerCase();
+        String key = "overwatch.verdict.categories." + category.toLowerCase(java.util.Locale.ROOT);
         String localized = plugin.getMessageManager().getMessage(key);
         return (localized == null || localized.equals(key)) ? category : localized;
     }

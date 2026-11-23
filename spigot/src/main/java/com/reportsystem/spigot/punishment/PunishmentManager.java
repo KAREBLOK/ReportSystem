@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.punishment;
 
+import com.reportsystem.common.punishment.DurationFormat;
 import com.reportsystem.common.punishment.PunishmentProvider;
 import com.reportsystem.spigot.punishment.providers.*;
 import org.bukkit.Bukkit;
@@ -37,14 +38,24 @@ public class PunishmentManager {
         return provider;
     }
 
+    /**
+     * Yalnız dahili sağlayıcıda: hedef oyuncu çevrimiçi/önbellekte yoksa (HTTP'siz) ban uygulanamaz.
+     * Diğer sağlayıcılar (LiteBans, global) oyuncuyu kendisi çözer -> false.
+     */
+    public boolean isUnknownBanTarget(String playerName) {
+        return provider instanceof InternalPunishmentProvider
+                && !((InternalPunishmentProvider) provider).isKnownPlayer(playerName);
+    }
+
     // Süre parse etme helper metodu
     public static long parseDuration(String duration) {
         if (duration == null || duration.isEmpty()) return -1;
 
         try {
             // Eğer sadece sayıysa, dakika olarak kabul et
+            // T-1: üst sınırı (100 yıl) aşan süre kırpılır (bkz. DurationFormat.fromUnits)
             if (duration.matches("\\d+")) {
-                return Long.parseLong(duration) * 60 * 1000;
+                return DurationFormat.fromUnits(Long.parseLong(duration), 60_000L);
             }
 
             // Format: 1d, 2h, 30m, etc.
@@ -53,14 +64,16 @@ public class PunishmentManager {
             long value = Long.parseLong(time);
 
             switch (Character.toLowerCase(unit)) {
-                case 's': return value * 1000;
-                case 'm': return value * 60 * 1000;
-                case 'h': return value * 60 * 60 * 1000;
-                case 'd': return value * 24 * 60 * 60 * 1000;
-                case 'w': return value * 7 * 24 * 60 * 60 * 1000;
-                case 'y': return value * 365 * 24 * 60 * 60 * 1000;
+                case 's': return DurationFormat.fromUnits(value, 1000L);
+                case 'm': return DurationFormat.fromUnits(value, 60_000L);
+                case 'h': return DurationFormat.fromUnits(value, 3_600_000L);
+                case 'd': return DurationFormat.fromUnits(value, 86_400_000L);
+                case 'w': return DurationFormat.fromUnits(value, 604_800_000L);
+                case 'y': return DurationFormat.fromUnits(value, 31_536_000_000L);
                 default: return -1;
             }
+        } catch (ArithmeticException e) {
+            return -1; // negatif taşma: geçersiz süre
         } catch (Exception e) {
             return -1;
         }

@@ -10,6 +10,7 @@ import java.util.Optional;
 
 // NOT: SQLite ve MySQL replay semalari uyumsuz. Veritabani tipi degistirmek veri kaybina neden olur.
 public class MySQLReplayDAO implements ReplayDAO {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger("ReportSystem");
 
     private final HikariDataSource dataSource;
 
@@ -48,7 +49,7 @@ public class MySQLReplayDAO implements ReplayDAO {
                 // Kolon zaten varsa hata verir, sessizce devam et
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReplayDAO.createTables failed", e);
         }
     }
 

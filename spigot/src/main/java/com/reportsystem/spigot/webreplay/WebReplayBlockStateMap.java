@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.webreplay;
 
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -396,7 +397,7 @@ public final class WebReplayBlockStateMap {
     public static int getBlockStateId(String materialName) {
         if (materialName == null) return 0; // AIR
 
-        String name = materialName.replace("minecraft:", "").toUpperCase();
+        String name = materialName.replace("minecraft:", "").toUpperCase(Locale.ROOT);
         int colonIdx = name.indexOf(':');
         if (colonIdx > 0) {
             name = name.substring(0, colonIdx);

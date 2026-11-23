@@ -1,0 +1,90 @@
+# Report Detail GUI
+title: "&8&nReport #%id%"
+size: 27
+
+# Background
+background:
+  enabled: false
+
+# Player header
+player-head:
+  slot: 4
+  name: "&c⚡ %reported%"
+  labels:
+    report-id: "Report ID:"
+    reporter: "Reporter:"
+    reason: "Reason:"
+    date: "Date:"
+    server: "Server:"
+    total-reports: "Total Reports:"
+    status: "Status:"
+    times: "times"
+    unknown: "Unknown"
+    trust-level: "Account Standing:"
+
+# Action buttons
+actions:
+  accept:
+    slot: 10
+    material: LIME_DYE
+    name: "&a&l✓ Accept"
+    lore:
+      - ''
+      - '&7Mark the report as valid.'
+      - ''
+      - '&e► Click to accept'
+
+  reject:
+    slot: 12
+    material: RED_DYE
+    name: "&c&l✗ Reject"
+    lore:
+      - ''
+      - '&7Mark the report as invalid.'
+      - ''
+      - '&e► Click to reject'
+
+# Replay button
+replay:
+  slot: 14
+
+  available:
+    material: SUNFLOWER
+    name: "&d&l▶ Watch Replay"
+    lore:
+      - ''
+      - '&7Watch the recording of the incident.'
+      - ''
+      - ' &8▪ &a✓ Replay available'
+      - ''
+      - '&e► Click to watch'
+
+  unavailable:
+    material: IRON_NUGGET
+    name: "&7No Replay"
+    lore:
+      - ''
+      - '&7No recording found for this report.'
+      - ''
+      - ' &8▪ &c✗ Replay not available'
+
+# Teleport button
+punishments:
+  teleport:
+    slot: 16
+    material: ENDER_PEARL
+    name: "&b&l🌀 Teleport"
+    lore:
+      - ''
+      - '&7Teleport to the reported player.'
+      - ''
+      - '&e► Click to teleport'
+
+# Navigation
+navigation:
+  back:
+    slot: 22
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Back to report list"

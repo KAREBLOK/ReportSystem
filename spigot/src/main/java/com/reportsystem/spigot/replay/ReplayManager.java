@@ -51,6 +51,8 @@ public class ReplayManager {
         this.replayDAO = replayDAO;
         this.recordingManager = recordingManager;
         this.controlManager = new ReplayControlManager((ReportSystemSpigot) plugin, this);
+        // Replay entity'si artıklarını chunk yüklenirken / açılışta temizle
+        new ReplayEntityMarker(plugin).register();
     }
 
     /**
@@ -98,8 +100,14 @@ public class ReplayManager {
                                 Bukkit.getScheduler().runTask(plugin, () -> {
                                     try {
                                         viewerOriginalServers.put(uuid, currentServer);
-                                        spigotPlugin.storePendingReplay(uuid, reportId);
-                                        sendPlayerToServer(viewer, replayServer);
+                                        // Proxy'ye imzali istek: oyuncuyu rapor sunucusuna tasi, varinca
+                                        // hedef sunucuya StartReplay gonder (bekleyen replay oraya duser).
+                                        com.google.common.io.ByteArrayDataOutput req = com.google.common.io.ByteStreams.newDataOutput();
+                                        req.writeUTF("CheckServerAndReplay");
+                                        req.writeUTF(viewer.getName());
+                                        req.writeUTF(replayServer);
+                                        req.writeInt(reportId);
+                                        spigotPlugin.sendSigned(viewer, spigotPlugin.getChannelName(), req.toByteArray());
                                         viewer.sendMessage(spigotPlugin.getMessageManager().colorize(spigotPlugin.getMessageManager().getMessage("replay.cross-server").replace("%server%", replayServer)));
                                         future.complete(true);
                                     } finally {
@@ -144,6 +152,7 @@ public class ReplayManager {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     try {
                         if (!viewer.isOnline()) {
+                            startingReplays.remove(uuid);
                             future.complete(false);
                             return;
                         }
@@ -162,20 +171,37 @@ public class ReplayManager {
                         boolean crossWorld = !startLocation.getWorld().equals(viewer.getWorld());
 
                         if (crossWorld) {
-                            viewer.teleportAsync(startLocation).thenAccept(success -> {
-                                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                                    try {
-                                        if (!viewer.isOnline()) {
+                            viewer.teleportAsync(startLocation).whenComplete((success, teleportError) -> {
+                                if (teleportError != null) {
+                                    // Işınlanma istisnayla bittiyse kilidi bırak, aksi halde UUID kilitli kalır
+                                    plugin.getLogger().log(Level.WARNING, "[REPLAY] teleportAsync başarısız", teleportError);
+                                    startingReplays.remove(uuid);
+                                    viewerOriginalLocations.remove(uuid);
+                                    future.complete(false);
+                                    return;
+                                }
+                                try {
+                                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                                        try {
+                                            if (!viewer.isOnline()) {
+                                                future.complete(false);
+                                                return;
+                                            }
+                                            viewer.setFallDistance(0f);
+                                            finishReplayStart(viewer, replayPlayer, startLocation, reportId);
+                                            future.complete(true);
+                                        } catch (Exception ex) {
+                                            plugin.getLogger().log(Level.SEVERE, "[REPLAY] Cross-world başlatma hatası", ex);
                                             future.complete(false);
-                                            return;
+                                        } finally {
+                                            startingReplays.remove(uuid);
                                         }
-                                        viewer.setFallDistance(0f);
-                                        finishReplayStart(viewer, replayPlayer, startLocation, reportId);
-                                        future.complete(true);
-                                    } finally {
-                                        startingReplays.remove(uuid);
-                                    }
-                                }, 20L);
+                                    }, 20L);
+                                } catch (Exception schedEx) {
+                                    // Zamanlayıcı kurulamadı (ör. eklenti kapanıyor)
+                                    startingReplays.remove(uuid);
+                                    future.complete(false);
+                                }
                             });
                         } else {
                             finishReplayStart(viewer, replayPlayer, startLocation, reportId);
@@ -368,6 +394,13 @@ public class ReplayManager {
         if (replayPlayer != null) {
             ReportSystemSpigot.getInstance().debug("[REPLAY] Stopping replay for " + viewer.getName());
 
+            // 0. Anti-cheat muafiyetini kaldir (Durdur / Overwatch zaman asimi yolu).
+            // Idempotent; unutulmus yollar icin AntiCheatBypassManager uzlastirma gorevi de var.
+            ReportSystemSpigot acPlugin = (ReportSystemSpigot) plugin;
+            if (acPlugin.getAntiCheatBypassManager() != null) {
+                acPlugin.getAntiCheatBypassManager().unexempt(viewer);
+            }
+
             // 1. ÖNCE ReplayPlayer'ı durdur (bu NPC'leri ve blokları temizleyecek)
             replayPlayer.stop();
 
@@ -440,6 +473,13 @@ public class ReplayManager {
      */
     public boolean isWatchingReplay(Player player) {
         return activeReplays.containsKey(player.getUniqueId());
+    }
+
+    /**
+     * UUID ile replay izleme kontrolu (AntiCheatBypassManager uzlastirma gorevi icin)
+     */
+    public boolean isWatchingReplay(UUID uuid) {
+        return uuid != null && activeReplays.containsKey(uuid);
     }
 
     /**
@@ -545,6 +585,9 @@ public class ReplayManager {
     public void handlePlayerQuit(Player player) {
         UUID playerUuid = player.getUniqueId();
 
+        // Başlatma kilidi takılı kalmasın (çıkış sırasında yarım kalmış startReplay)
+        startingReplays.remove(playerUuid);
+
         // Anti-cheat bypass'i temizle (set'te kalmasin)
         ReportSystemSpigot spigotPlugin = (ReportSystemSpigot) plugin;
         if (spigotPlugin.getAntiCheatBypassManager() != null) {
@@ -553,7 +596,8 @@ public class ReplayManager {
 
         // Aktif kaydı durdur
         if (recordingManager.isRecording(playerUuid)) {
-            recordingManager.stopRecording(playerUuid);
+            // Süre dolmadan biten kaydın raporları için de bildirim gönder (F-Ö3)
+            recordingManager.stopRecording(playerUuid, true);
         }
 
         // İzlediği replay'i durdur
@@ -575,7 +619,6 @@ public class ReplayManager {
             if (origLoc != null) {
                 player.teleport(origLoc);
             }
-            viewerOriginalServers.remove(playerUuid);
             ReportSystemSpigot.getInstance().debug("[REPLAY] Cleaned up saved location and server for quit player " + player.getName());
 
             // Double check - activeReplays'den tamamen kaldırıldığından emin ol
@@ -583,6 +626,36 @@ public class ReplayManager {
                 activeReplays.remove(playerUuid);
                 plugin.getLogger().warning("[REPLAY] Had to force remove quit player " + player.getName() + " from activeReplays");
             }
+        } else {
+            // K7: aktif replay yok ama replay basinda alinmis bayat kontrol kopyasi kalmis olabilir
+            // (orn. Overwatch kapaliyken). Senkron iade et; Overwatch incelemesi kendi temizligini yapar.
+            // hasSavedState sarti zorunlu: removeControlItems kosulsuz NIGHT_VISION siler.
+            com.reportsystem.spigot.overwatch.listeners.OverwatchReplayListener owl = spigotPlugin.getOverwatchReplayListener();
+            if ((owl == null || !owl.isReviewing(playerUuid)) && controlManager.hasSavedState(playerUuid)) {
+                controlManager.removeControlItems(player, true);
+            }
+        }
+
+        // H-20: donus sunucusu kaydi replay olsun olmasin temizlenir (kaynak sunucudan ayrilan
+        // izleyicinin ve suresi dolan bekleyen replay'in girdisi sizmasin)
+        viewerOriginalServers.remove(playerUuid);
+    }
+
+    /**
+     * H-20: Sunucular arasi replay'de izleyicinin geldigi (donecegi) sunucuyu kaydeder.
+     * Proxy'nin StartReplay mesajindaki kaynak sunucu alanindan doldurulur (hedef sunucuda).
+     */
+    public void rememberOriginServer(UUID playerUuid, String serverName) {
+        if (playerUuid == null || serverName == null || serverName.isEmpty()) {
+            return;
+        }
+        viewerOriginalServers.put(playerUuid, serverName);
+    }
+
+    /** H-20: Bekleyen replay hic baslamadan dustuyse donus sunucusu kaydini siler. */
+    public void forgetOriginServer(UUID playerUuid) {
+        if (playerUuid != null) {
+            viewerOriginalServers.remove(playerUuid);
         }
     }
 

@@ -10,19 +10,16 @@ import org.bukkit.entity.Player;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public class BungeeCordPunishmentProvider implements PunishmentProvider {
 
     private final ReportSystemSpigot plugin;
-    private final Map<String, CompletableFuture<Boolean>> pendingRequests = new ConcurrentHashMap<>();
+    private final ProxyRequestTracker tracker;
     private final Map<String, Integer> playerWarnings = new HashMap<>();
 
     public BungeeCordPunishmentProvider(ReportSystemSpigot plugin) {
         this.plugin = plugin;
+        this.tracker = new ProxyRequestTracker(plugin);
     }
 
     @Override
@@ -56,7 +53,7 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
     @Override
     public boolean warn(String playerName, String reason, String punisher) {
         // Warn local olarak tutulur
-        Player player = Bukkit.getPlayer(playerName);
+        Player player = Bukkit.getPlayerExact(playerName);
         if (player != null) {
             int warnings = playerWarnings.getOrDefault(playerName, 0) + 1;
             com.reportsystem.spigot.managers.MessageManager mm = plugin.getMessageManager();
@@ -92,64 +89,54 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
 
     @Override
     public boolean isBanned(String playerName) {
-        // BungeeCord'a sorgu gönder ve cevap bekle
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
-        String requestId = UUID.randomUUID().toString();
-        pendingRequests.put(requestId, future);
-
-        ByteArrayDataOutput out = ByteStreams.newDataOutput();
-        out.writeUTF("CheckPunishment");
-        out.writeUTF(requestId);
-        out.writeUTF(playerName);
-        out.writeUTF("ban");
-
-        Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
-        if (sender == null) return false;
-
-        sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
-
-        try {
-            return future.get(500, TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-            pendingRequests.remove(requestId);
-            return false;
-        }
+        return checkPunishment(playerName, "ban");
     }
 
     @Override
     public boolean isMuted(String playerName) {
-        // BungeeCord'a sorgu gönder ve cevap bekle
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        return checkPunishment(playerName, "mute");
+    }
+
+    /**
+     * Ana thread'i bekletmez: son bilinen değeri döndürür, arka planda proxy'den tazeleme ister.
+     * İlk sorguda (önbellek boşken) false döner.
+     */
+    private boolean checkPunishment(String playerName, String type) {
         String requestId = UUID.randomUUID().toString();
-        pendingRequests.put(requestId, future);
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("CheckPunishment");
         out.writeUTF(requestId);
         out.writeUTF(playerName);
-        out.writeUTF("mute");
+        out.writeUTF(type);
 
-        Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
-        if (sender == null) return false;
-
-        sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
-
-        try {
-            return future.get(500, TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-            pendingRequests.remove(requestId);
-            return false;
+        byte[] data = out.toByteArray();
+        Runnable refresh = () -> {
+            if (tracker.trackCheck(requestId, type, playerName) && !tracker.send(data)) {
+                tracker.abort(requestId);
+            }
+        };
+        // Async thread'den (örn. chat event) çağrılırsa tazeleme ana thread'e devredilir; cevap yine önbellekten
+        if (Bukkit.isPrimaryThread()) {
+            refresh.run();
+        } else {
+            Bukkit.getScheduler().runTask(plugin, refresh);
         }
+        return tracker.cached(type, playerName);
     }
 
     public int getWarningCount(String playerName) {
         return playerWarnings.getOrDefault(playerName, 0);
     }
 
+    /** Bekletmez: istek gönderilince true ("proxy'ye iletildi"); sonuç/zaman aşımı yetkiliye asenkron bildirilir. */
     private boolean sendPunishmentRequest(String playerName, String type, String reason, String punisher, long duration) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!Bukkit.isPrimaryThread()) {
+            // Async çağrı: plugin message yalnız ana thread'den gönderilir; "istek iletildi" kabul edilir
+            Bukkit.getScheduler().runTask(plugin, () -> sendPunishmentRequest(playerName, type, reason, punisher, duration));
+            return true;
+        }
         String requestId = UUID.randomUUID().toString();
-        pendingRequests.put(requestId, future);
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("GlobalPunishment");
@@ -160,35 +147,22 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         out.writeUTF(punisher);
         out.writeLong(duration);
 
-        // İlk online oyuncuyu bul ve mesajı gönder
-        Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
-        if (sender == null) {
+        tracker.trackAction(requestId, type, playerName, punisher);
+        if (!tracker.send(out.toByteArray())) {
             plugin.getLogger().warning("No online players to send punishment request!");
-            pendingRequests.remove(requestId);
+            tracker.abort(requestId);
             return false;
         }
-
-        sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
-
-        try {
-            boolean result = future.get(2, TimeUnit.SECONDS);
-            plugin.getLogger().info("[BUNGEECORD] Punishment request result: " + result);
-            return result;
-        } catch (TimeoutException e) {
-            plugin.getLogger().warning("[BUNGEECORD] Punishment request timeout for " + playerName);
-            pendingRequests.remove(requestId);
-            return false;
-        } catch (Exception e) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[BUNGEECORD] Punishment request error", e);
-            pendingRequests.remove(requestId);
-            return false;
-        }
+        return true;
     }
 
     private boolean sendUnpunishmentRequest(String playerName, String type) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        if (!Bukkit.isPrimaryThread()) {
+            // Async çağrı: plugin message yalnız ana thread'den gönderilir; "istek iletildi" kabul edilir
+            Bukkit.getScheduler().runTask(plugin, () -> sendUnpunishmentRequest(playerName, type));
+            return true;
+        }
         String requestId = UUID.randomUUID().toString();
-        pendingRequests.put(requestId, future);
 
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("GlobalUnpunishment");
@@ -196,35 +170,21 @@ public class BungeeCordPunishmentProvider implements PunishmentProvider {
         out.writeUTF(playerName);
         out.writeUTF(type);
 
-        Player sender = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
-        if (sender == null) {
-            pendingRequests.remove(requestId);
+        tracker.trackAction(requestId, type, playerName, null);
+        if (!tracker.send(out.toByteArray())) {
+            tracker.abort(requestId);
             return false;
         }
-
-        sender.sendPluginMessage(plugin, "reportsystem:channel", out.toByteArray());
-
-        try {
-            return future.get(2, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            pendingRequests.remove(requestId);
-            return false;
-        }
+        return true;
     }
 
-    // BungeeCord'dan gelen cevapları işle
+    // BungeeCord'dan gelen cevapları işle (ana thread)
     public void handlePunishmentResult(String requestId, boolean success) {
-        CompletableFuture<Boolean> future = pendingRequests.remove(requestId);
-        if (future != null) {
-            future.complete(success);
-        }
+        tracker.complete(requestId, success);
     }
 
-    // BungeeCord'dan gelen kontrol cevaplarını işle
+    // BungeeCord'dan gelen kontrol cevaplarını işle (ana thread)
     public void handleCheckResult(String requestId, boolean result) {
-        CompletableFuture<Boolean> future = pendingRequests.remove(requestId);
-        if (future != null) {
-            future.complete(result);
-        }
+        tracker.complete(requestId, result);
     }
 }

@@ -1,31 +1,29 @@
 package com.reportsystem.bungee.punishment.providers;
 
+import com.reportsystem.common.punishment.PunishmentCommandSanitizer;
 import com.reportsystem.bungee.punishment.BungeePunishmentManager.PunishmentProvider;
 import net.md_5.bungee.api.ProxyServer;
 
 public class AdvancedBanBungeeProvider implements PunishmentProvider {
 
-    /**
-     * Komut enjeksiyonunu önlemek için reason string'ini temizler.
-     * Sadece alfanumerik, boşluk ve temel noktalama işaretlerine izin verir.
-     */
-    private String sanitizeInput(String input) {
-        if (input == null) return "";
-        // Sadece alfanumerik, boşluk, nokta, virgül, tire, alt çizgi ve Türkçe karakterler
-        return input.replaceAll("[^a-zA-Z0-9çÇğĞıİöÖşŞüÜ .,_\\-]", "").trim();
+    /** Geçersiz oyuncu adı: komut ÇALIŞTIRILMAZ (ad silinip başka oyuncuya dönüşmesin) [CRA-02]. */
+    private boolean rejectName(String playerName) {
+        ProxyServer.getInstance().getLogger().warning("[AdvancedBan] Invalid player name rejected, command not sent: " + PunishmentCommandSanitizer.logSafe(playerName));
+        return false;
     }
 
     @Override
     public boolean ban(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         String command;
         if (duration > 0) {
             // AdvancedBan süre formatı: s, m, h, d, w, mo, y
             String timeString = convertDuration(duration);
-            command = String.format("aban tempban %s %s %s", safePlayer, timeString, safeReason);
+            command = PunishmentCommandSanitizer.command("aban tempban", safePlayer, timeString, safeReason);
         } else {
-            command = String.format("aban ban %s %s", safePlayer, safeReason);
+            command = PunishmentCommandSanitizer.command("aban ban", safePlayer, safeReason);
         }
 
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
@@ -36,14 +34,15 @@ public class AdvancedBanBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean mute(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         String command;
         if (duration > 0) {
             String timeString = convertDuration(duration);
-            command = String.format("aban tempmute %s %s %s", safePlayer, timeString, safeReason);
+            command = PunishmentCommandSanitizer.command("aban tempmute", safePlayer, timeString, safeReason);
         } else {
-            command = String.format("aban mute %s %s", safePlayer, safeReason);
+            command = PunishmentCommandSanitizer.command("aban mute", safePlayer, safeReason);
         }
 
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
@@ -54,9 +53,10 @@ public class AdvancedBanBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean kick(String playerName, String reason, String punisher) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
-        String command = String.format("aban kick %s %s", safePlayer, safeReason);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        String command = PunishmentCommandSanitizer.command("aban kick", safePlayer, safeReason);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
                 ProxyServer.getInstance().getConsole(), command
         );
@@ -65,9 +65,10 @@ public class AdvancedBanBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean warn(String playerName, String reason, String punisher) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
-        String command = String.format("aban warn %s %s", safePlayer, safeReason);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        String command = PunishmentCommandSanitizer.command("aban warn", safePlayer, safeReason);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
                 ProxyServer.getInstance().getConsole(), command
         );
@@ -76,18 +77,20 @@ public class AdvancedBanBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean unban(String playerName) {
-        String safePlayer = sanitizeInput(playerName);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
-                ProxyServer.getInstance().getConsole(), "aban unban " + safePlayer
+                ProxyServer.getInstance().getConsole(), PunishmentCommandSanitizer.command("aban unban", safePlayer)
         );
         return true;
     }
 
     @Override
     public boolean unmute(String playerName) {
-        String safePlayer = sanitizeInput(playerName);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
-                ProxyServer.getInstance().getConsole(), "aban unmute " + safePlayer
+                ProxyServer.getInstance().getConsole(), PunishmentCommandSanitizer.command("aban unmute", safePlayer)
         );
         return true;
     }

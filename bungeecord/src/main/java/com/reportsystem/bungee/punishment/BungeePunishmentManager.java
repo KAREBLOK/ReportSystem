@@ -1,20 +1,22 @@
 package com.reportsystem.bungee.punishment;
 
+import com.reportsystem.common.punishment.DurationFormat;
 import com.reportsystem.bungee.punishment.providers.LiteBansBungeeProvider;
 import com.reportsystem.bungee.punishment.providers.AdvancedBanBungeeProvider;
 import com.reportsystem.bungee.punishment.providers.InternalBungeeProvider;
 import com.reportsystem.bungee.ReportSystemBungee;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.ProxyServer;
+import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
-import net.md_5.bungee.api.event.PreLoginEvent;
+import net.md_5.bungee.api.event.LoginEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 import net.md_5.bungee.event.EventPriority;
 
 import java.sql.*;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class BungeePunishmentManager implements Listener {
 
@@ -32,8 +34,18 @@ public class BungeePunishmentManager implements Listener {
             this.provider = new AdvancedBanBungeeProvider();
             plugin.getLogger().info("AdvancedBan (BungeeCord) entegrasyonu aktif!");
         } else {
-            this.provider = new InternalBungeeProvider(plugin);
+            InternalBungeeProvider internal = new InternalBungeeProvider(plugin);
+            this.provider = internal;
             plugin.getLogger().info("Dahili ceza sistemi kullanılıyor.");
+
+            // Aktif ban/mute'ları açılışta belleğe yükle (async — proxy başlangıcını bekletmez)
+            ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
+                try (Connection c = plugin.getDatabase().getConnection()) {
+                    internal.loadActive(c);
+                } catch (SQLException e) {
+                    plugin.getLogger().log(Level.SEVERE, "Aktif cezalar yüklenemedi!", e);
+                }
+            });
         }
     }
 
@@ -51,11 +63,14 @@ public class BungeePunishmentManager implements Listener {
     public boolean globalBan(String playerName, String reason, String punisher, long duration, String serverOrigin) {
         plugin.getLogger().info("[PUNISHMENT] Global ban for " + playerName + " from " + serverOrigin);
 
+        // UUID disconnect'ten ÖNCE alınır (atıldıktan sonra getPlayer null döner → kayıt UUID'siz kalırdı)
+        ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
+        UUID targetUuid = target != null ? target.getUniqueId() : null;
+
         boolean success = provider.ban(playerName, reason, punisher, duration);
 
         if (success) {
             // Oyuncu online ise at
-            ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
             if (target != null) {
                 String kickMessage;
                 if (duration > 0) {
@@ -74,7 +89,7 @@ public class BungeePunishmentManager implements Listener {
             }
 
             // Veritabanına kaydet
-            savePunishment(playerName, "ban", reason, punisher, duration, serverOrigin);
+            savePunishment(playerName, targetUuid, "ban", reason, punisher, duration, serverOrigin);
 
             // Tüm sunuculara bildir
             notifyAllServers(playerName, reason, punisher, "ban", duration);
@@ -89,11 +104,13 @@ public class BungeePunishmentManager implements Listener {
     public boolean globalMute(String playerName, String reason, String punisher, long duration, String serverOrigin) {
         plugin.getLogger().info("[PUNISHMENT] Global mute for " + playerName + " from " + serverOrigin);
 
+        ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
+        UUID targetUuid = target != null ? target.getUniqueId() : null;
+
         boolean success = provider.mute(playerName, reason, punisher, duration);
 
         if (success) {
             // Oyuncuya bildir
-            ProxiedPlayer target = ProxyServer.getInstance().getPlayer(playerName);
             if (target != null) {
                 String durationText = duration > 0 ? formatDuration(duration) :
                         getMessage("duration.permanent", "Kalıcı");
@@ -109,7 +126,7 @@ public class BungeePunishmentManager implements Listener {
             }
 
             // Veritabanına kaydet
-            savePunishment(playerName, "mute", reason, punisher, duration, serverOrigin);
+            savePunishment(playerName, targetUuid, "mute", reason, punisher, duration, serverOrigin);
 
             // Tüm sunuculara bildir
             notifyAllServers(playerName, reason, punisher, "mute", duration);
@@ -197,61 +214,205 @@ public class BungeePunishmentManager implements Listener {
     }
 
     /**
-     * Ceza durumunu kontrol eder
+     * Ceza durumunu kontrol eder. ASYNC thread'den çağrılmalı (DB sorgusu yapar).
+     * DB erişilebilirse DB esastır (DB "yok" derse bellek girdisi de silinir — çoklu proxy'de öbür proxy'nin
+     * unban/unmute'u geçerli olsun); DB hatasında bellekteki sonuca düşülür.
      */
     public boolean isActivePunishment(String playerName, String type) {
-        switch (type) {
-            case "ban":
-                return provider.isBanned(playerName);
-            case "mute":
-                return provider.isMuted(playerName);
-            default:
-                return false;
+        if (!"ban".equals(type) && !"mute".equals(type)) {
+            return false;
+        }
+        boolean ban = "ban".equals(type);
+        ProxiedPlayer online = ProxyServer.getInstance().getPlayer(playerName);
+        UUID uuid = online != null ? online.getUniqueId() : null;
+
+        boolean memory;
+        if (provider instanceof InternalBungeeProvider internal) {
+            memory = ban ? internal.isBanned(playerName, uuid) : internal.isMuted(playerName, uuid);
+        } else {
+            memory = ban ? provider.isBanned(playerName) : provider.isMuted(playerName);
+        }
+
+        if (plugin.getDatabase() == null) {
+            return memory;
+        }
+        // UUID biliniyorsa: UUID'li kayıt ya da UUID'si henüz bağlanmamış isim kaydı; bilinmiyorsa isimle
+        String sql = uuid != null
+                ? "SELECT 1 FROM global_punishments WHERE punishment_type = ? AND active = TRUE " +
+                  "AND (end_time IS NULL OR end_time > ?) " +
+                  "AND (player_uuid = ? OR ((player_uuid IS NULL OR player_uuid = '') AND player_name = ?)) LIMIT 1"
+                : "SELECT 1 FROM global_punishments WHERE punishment_type = ? AND active = TRUE " +
+                  "AND (end_time IS NULL OR end_time > ?) AND player_name = ? LIMIT 1";
+        try (Connection conn = plugin.getDatabase().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setQueryTimeout(3);
+            stmt.setString(1, type);
+            stmt.setLong(2, System.currentTimeMillis());
+            if (uuid != null) {
+                stmt.setString(3, uuid.toString());
+                stmt.setString(4, playerName);
+            } else {
+                stmt.setString(3, playerName);
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
+            // DB'de yok: bellekteki eski girdi silinir; yalnız bu proxy'de az önce verilmiş (DB'ye henüz
+            // yazılmamış) ceza kalırsa geçerli sayılır
+            if (memory && provider instanceof InternalBungeeProvider internal) {
+                return internal.forget(ban, playerName, uuid);
+            }
+            return false;
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Ceza kontrolü DB hatası (" + playerName + ", " + type
+                    + "), bellek sonucu kullanılıyor: " + e.getMessage());
+            return memory;
         }
     }
 
     /**
-     * Giriş öncesi ban kontrolü
+     * Giriş ban kontrolü. LoginEvent kimlik doğrulamasından SONRA gelir → UUID kesin (giriş öncesi
+     * olayda online-mode'da UUID henüz yoktur). Olay Netty thread'inde çağrılır; DB işi intent + runAsync ile yapılır.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPreLogin(PreLoginEvent event) {
-        String playerName = event.getConnection().getName();
-
-        // Önce provider üzerinden kontrol et
-        if (provider.isBanned(playerName)) {
-            event.setCancelled(true);
-            event.setCancelReason(getMessage("ban.login-blocked-provider",
-                    "&cBu sunucudan yasaklandınız!"));
+    public void onLogin(LoginEvent event) {
+        if (event.isCancelled()) {
             return;
         }
-
-        // Veritabanından da kontrol et (backup)
-        if (isActivePunishmentInDB(playerName, "ban")) {
-            event.setCancelled(true);
-
-            String reason = getPunishmentReason(playerName, "ban");
-            long remainingTime = getRemainingTime(playerName, "ban");
-
-            String message;
-            if (remainingTime > 0) {
-                message = getMessage("ban.login-blocked-temp",
-                                "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Kalan süre: &f%duration%")
-                        .replace("%reason%", reason)
-                        .replace("%duration%", formatDuration(remainingTime));
-            } else {
-                message = getMessage("ban.login-blocked-permanent",
-                                "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n\n&8Ban kaldırma başvurusu için: discord.gg/sunucu")
-                        .replace("%reason%", reason);
-            }
-
-            event.setCancelReason(message);
+        event.registerIntent(plugin);
+        try {
+            ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
+                try {
+                    checkLoginBan(event);
+                } catch (Throwable t) {
+                    plugin.getLogger().log(Level.SEVERE, "Giriş ban kontrolü hatası ("
+                            + event.getConnection().getName() + ")", t);
+                } finally {
+                    event.completeIntent(plugin);
+                }
+            });
+        } catch (Throwable t) {
+            // Görev planlanamadı: girişi asılı bırakma
+            plugin.getLogger().log(Level.SEVERE, "Giriş ban kontrolü planlanamadı!", t);
+            event.completeIntent(plugin);
         }
+    }
+
+    /**
+     * ASYNC giriş ban kontrolü. DB ESAS, bellek YEDEK:
+     * <ul>
+     *   <li>DB satır döndürürse → ayrıntılı mesajla (sebep, kalan süre) red.</li>
+     *   <li>DB "aktif ban yok" derse → bellekteki eski girdi silinir, giriş serbest (çoklu proxy'de öbür
+     *       proxy'nin unban'ı işlesin). Yalnız bu proxy'de az önce verilmiş, DB'ye henüz yazılmamış ban kalırsa red.</li>
+     *   <li>DB hatası → bellek banlı diyorsa genel mesajla red, değilse fail-open (eski davranış).</li>
+     * </ul>
+     * Ardından isimle verilmiş (UUID'siz) aktif cezalar bu UUID'ye bağlanır.
+     */
+    private void checkLoginBan(LoginEvent event) {
+        UUID uuid = event.getConnection().getUniqueId();
+        String name = event.getConnection().getName();
+
+        // Bellek (yedek) sonucu — dahili sağlayıcıda UUID de kontrol edilir
+        boolean memoryBanned = provider instanceof InternalBungeeProvider internal
+                ? internal.isBanned(name, uuid)
+                : provider.isBanned(name);
+
+        try {
+            try (Connection conn = plugin.getDatabase().getConnection()) {
+                // (1) Tek sorgu: UUID ile, ya da UUID'si henüz bilinmeyen (çevrimdışı verilmiş) isim kaydı
+                boolean dbBanned = false;
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "SELECT id, reason, end_time, player_uuid FROM global_punishments " +
+                                "WHERE punishment_type = 'ban' AND active = TRUE " +
+                                "AND (end_time IS NULL OR end_time > ?) " +
+                                "AND (player_uuid = ? OR ((player_uuid IS NULL OR player_uuid = '') AND player_name = ?)) " +
+                                "ORDER BY start_time DESC LIMIT 1")) {
+                    stmt.setQueryTimeout(3);
+                    long now = System.currentTimeMillis();
+                    stmt.setLong(1, now);
+                    if (uuid != null) {
+                        stmt.setString(2, uuid.toString());
+                    } else {
+                        stmt.setNull(2, Types.VARCHAR);
+                    }
+                    stmt.setString(3, name);
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            dbBanned = true;
+                            String reason = rs.getString("reason");
+                            if (reason == null || reason.isEmpty()) {
+                                reason = plugin.getConfig().getString("messages.punishment.unknown-reason", "Bilinmeyen sebep");
+                            }
+                            long endTime = rs.getLong("end_time");
+                            boolean permanent = rs.wasNull() || endTime <= 0;
+
+                            String message;
+                            if (!permanent) {
+                                message = getMessage("ban.login-blocked-temp",
+                                                "&cSunucudan yasaklandınız!\n\n&7Sebep: &f%reason%\n&7Kalan süre: &f%duration%")
+                                        .replace("%reason%", reason)
+                                        .replace("%duration%", formatDuration(endTime - now));
+                            } else {
+                                message = getMessage("ban.login-blocked-permanent",
+                                                "&cSunucudan kalıcı olarak yasaklandınız!\n\n&7Sebep: &f%reason%\n\n&8Ban kaldırma başvurusu için: discord.gg/sunucu")
+                                        .replace("%reason%", reason);
+                            }
+                            event.setCancelled(true);
+                            event.setCancelReason(TextComponent.fromLegacyText(message));
+                        }
+                    }
+                }
+
+                // (2) DB'de aktif ban yok: bellekteki eski girdiyi sil; az önce bu proxy'de verilmiş ban kalırsa red
+                if (!dbBanned && memoryBanned) {
+                    boolean stillBanned = provider instanceof InternalBungeeProvider internal
+                            && internal.forget(true, name, uuid);
+                    if (stillBanned) {
+                        rejectGeneric(event);
+                    }
+                }
+
+                // (3) UUID bağlama: isimle verilmiş aktif cezalar bu UUID'ye bağlanır (isim değişse de takip eder).
+                // Banlı girişte de yapılır — asıl amacı budur.
+                if (uuid != null) {
+                    try (PreparedStatement bind = conn.prepareStatement(
+                            "UPDATE global_punishments SET player_uuid = ? " +
+                                    "WHERE (player_uuid IS NULL OR player_uuid = '') AND player_name = ? AND active = TRUE")) {
+                        bind.setQueryTimeout(3);
+                        bind.setString(1, uuid.toString());
+                        bind.setString(2, name);
+                        bind.executeUpdate();
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            // DB'ye erişilemedi: bellek yedeğine düş; bellek de temizse fail-open (eski davranış)
+            plugin.getLogger().severe("Giriş ban kontrolü DB hatası (" + name + "): " + e.getMessage()
+                    + (memoryBanned ? " — bellek kaydına göre reddedildi" : " — giriş engellenmedi"));
+            if (memoryBanned && !event.isCancelled()) {
+                rejectGeneric(event);
+            }
+        } finally {
+            if (uuid != null && provider instanceof InternalBungeeProvider internal) {
+                internal.bind(name, uuid);
+            }
+        }
+    }
+
+    /** Ayrıntı bilinmeyen (yalnız bellek kaynaklı) ban reddi. */
+    private void rejectGeneric(LoginEvent event) {
+        event.setCancelled(true);
+        event.setCancelReason(TextComponent.fromLegacyText(getMessage("ban.login-blocked-provider",
+                "&cBu sunucudan yasaklandınız!")));
     }
 
     /**
      * Cezayı veritabanına kaydeder
      */
-    private void savePunishment(String playerName, String type, String reason, String punisher,
+    private void savePunishment(String playerName, UUID targetUuid, String type, String reason, String punisher,
                                 long duration, String serverOrigin) {
         ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
             try (Connection conn = plugin.getDatabase().getConnection();
@@ -261,13 +422,9 @@ public class BungeePunishmentManager implements Listener {
                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                  )) {
 
-                // Offline oyuncular için UUID bilinmiyor — boş string yerine NULL yaz
-                // (boş string sonradan WHERE player_uuid = ? sorgularını bozar)
-                String playerUUID = null;
-                ProxiedPlayer player = ProxyServer.getInstance().getPlayer(playerName);
-                if (player != null) {
-                    playerUUID = player.getUniqueId().toString();
-                }
+                // UUID çağıran tarafından (disconnect'ten önce) alınır; offline oyuncuda NULL yazılır
+                // (boş string sonradan WHERE player_uuid = ? sorgularını bozar). Giriş anında bağlanır.
+                String playerUUID = targetUuid != null ? targetUuid.toString() : null;
 
                 stmt.setString(1, playerName);
                 if (playerUUID != null) {
@@ -281,7 +438,7 @@ public class BungeePunishmentManager implements Listener {
                 stmt.setLong(6, System.currentTimeMillis());
 
                 if (duration > 0) {
-                    stmt.setLong(7, System.currentTimeMillis() + duration);
+                    stmt.setLong(7, DurationFormat.expiryFrom(System.currentTimeMillis(), duration));
                 } else {
                     stmt.setNull(7, Types.BIGINT);
                 }
@@ -298,105 +455,53 @@ public class BungeePunishmentManager implements Listener {
     }
 
     /**
-     * Ceza durumunu günceller
+     * Ceza durumunu günceller (async). Oyuncu çevrimiçiyse UUID'si, değilse DB'de isimle bilinen son UUID
+     * kullanılır; böylece UUID'ye bağlanmış (isim değiştirmiş) kayıtlar da kapanır.
      */
     private void updatePunishmentStatus(String playerName, String type, boolean active) {
         ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
-            try (Connection conn = plugin.getDatabase().getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(
-                         "UPDATE global_punishments SET active = ? WHERE player_name = ? AND punishment_type = ? AND active = ?"
-                 )) {
+            try (Connection conn = plugin.getDatabase().getConnection()) {
+                String playerUUID = null;
+                ProxiedPlayer online = ProxyServer.getInstance().getPlayer(playerName);
+                if (online != null) {
+                    playerUUID = online.getUniqueId().toString();
+                } else {
+                    try (PreparedStatement find = conn.prepareStatement(
+                            "SELECT player_uuid FROM global_punishments WHERE player_name = ? " +
+                                    "AND player_uuid IS NOT NULL AND player_uuid <> '' ORDER BY start_time DESC LIMIT 1")) {
+                        find.setString(1, playerName);
+                        try (ResultSet rs = find.executeQuery()) {
+                            if (rs.next()) {
+                                playerUUID = rs.getString("player_uuid");
+                            }
+                        }
+                    }
+                }
 
-                stmt.setBoolean(1, active);
-                stmt.setString(2, playerName);
-                stmt.setString(3, type);
-                stmt.setBoolean(4, !active);
-
-                stmt.executeUpdate();
+                String sql = playerUUID != null
+                        ? "UPDATE global_punishments SET active = ? WHERE punishment_type = ? AND active = ? " +
+                          "AND (player_name = ? OR player_uuid = ?)"
+                        : "UPDATE global_punishments SET active = ? WHERE punishment_type = ? AND active = ? " +
+                          "AND player_name = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setBoolean(1, active);
+                    stmt.setString(2, type);
+                    stmt.setBoolean(3, !active);
+                    stmt.setString(4, playerName);
+                    if (playerUUID != null) {
+                        stmt.setString(5, playerUUID);
+                    }
+                    int changed = stmt.executeUpdate();
+                    if (changed == 0) {
+                        plugin.getLogger().warning("[PUNISHMENT] " + type + " durumu güncellenemedi: " + playerName
+                                + " için " + (active ? "pasif" : "aktif") + " kayıt bulunamadı (DB'de 0 satır).");
+                    }
+                }
 
             } catch (SQLException e) {
                 plugin.getLogger().severe("Ceza durumu güncelleme hatası: " + e.getMessage());
             }
         });
-    }
-
-    /**
-     * Veritabanından aktif ceza kontrolü
-     */
-    private boolean isActivePunishmentInDB(String playerName, String type) {
-        try (Connection conn = plugin.getDatabase().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT * FROM global_punishments WHERE player_name = ? AND punishment_type = ? " +
-                             "AND active = TRUE AND (end_time IS NULL OR end_time > ?)"
-             )) {
-
-            stmt.setString(1, playerName);
-            stmt.setString(2, type);
-            stmt.setLong(3, System.currentTimeMillis());
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Ceza kontrol hatası: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Ceza sebebini alır
-     */
-    private String getPunishmentReason(String playerName, String type) {
-        try (Connection conn = plugin.getDatabase().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT reason FROM global_punishments WHERE player_name = ? AND punishment_type = ? " +
-                             "AND active = TRUE ORDER BY start_time DESC LIMIT 1"
-             )) {
-
-            stmt.setString(1, playerName);
-            stmt.setString(2, type);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("reason");
-                }
-            }
-
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Ceza sebebi alma hatası: " + e.getMessage());
-        }
-
-        return plugin.getConfig().getString("messages.punishment.unknown-reason", "Bilinmeyen sebep");
-    }
-
-    /**
-     * Kalan ceza süresini alır
-     */
-    private long getRemainingTime(String playerName, String type) {
-        try (Connection conn = plugin.getDatabase().getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT end_time FROM global_punishments WHERE player_name = ? AND punishment_type = ? " +
-                             "AND active = TRUE ORDER BY start_time DESC LIMIT 1"
-             )) {
-
-            stmt.setString(1, playerName);
-            stmt.setString(2, type);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    long endTime = rs.getLong("end_time");
-                    if (endTime > 0) {
-                        return endTime - System.currentTimeMillis();
-                    }
-                }
-            }
-
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Ceza süresi alma hatası: " + e.getMessage());
-        }
-
-        return -1; // Kalıcı
     }
 
     /**

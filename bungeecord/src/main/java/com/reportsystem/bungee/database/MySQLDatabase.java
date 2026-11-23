@@ -14,20 +14,20 @@ public class MySQLDatabase {
     public MySQLDatabase(DatabaseConfig config) throws SQLException {
         HikariConfig hikariConfig = new HikariConfig();
 
-        // JDBC URL'i düzgün formatla
-        String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-                config.getHost(), config.getPort(), config.getDatabase());
+        // JDBC URL: sslMode config'ten (varsayilan DISABLED = eski useSSL=false davranisi)
+        String jdbcUrl = String.format("jdbc:mysql://%s:%d/%s?sslMode=%s&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+                config.getHost(), config.getPort(), config.getDatabase(), config.getSslMode());
 
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setUsername(config.getUsername());
         hikariConfig.setPassword(config.getPassword());
 
-        // Connection pool ayarları
-        hikariConfig.setMaximumPoolSize(10);
-        hikariConfig.setMinimumIdle(2);
-        hikariConfig.setConnectionTimeout(30000); // 30 saniye
-        hikariConfig.setIdleTimeout(600000); // 10 dakika
-        hikariConfig.setMaxLifetime(1800000); // 30 dakika
+        // Connection pool ayarları (DatabaseConfig.withPool ile config'ten; sınırlara kırpılmış)
+        hikariConfig.setMaximumPoolSize(config.getMaxPoolSize());
+        hikariConfig.setMinimumIdle(config.getMinIdle());
+        hikariConfig.setConnectionTimeout(config.getConnectionTimeoutMs());
+        hikariConfig.setIdleTimeout(config.getIdleTimeoutMs());
+        hikariConfig.setMaxLifetime(config.getMaxLifetimeMs());
         hikariConfig.setLeakDetectionThreshold(60000); // 1 dakika
 
         // MySQL specific settings

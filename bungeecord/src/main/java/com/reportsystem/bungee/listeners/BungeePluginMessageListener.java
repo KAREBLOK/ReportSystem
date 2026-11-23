@@ -7,18 +7,39 @@ import com.reportsystem.bungee.ReportSystemBungee;
 import com.reportsystem.common.models.Report;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.ProxyServer;
+import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.connection.Server;
+import net.md_5.bungee.api.ServerConnectRequest;
+import net.md_5.bungee.api.event.PlayerDisconnectEvent;
+import net.md_5.bungee.api.event.ServerConnectEvent;
+import net.md_5.bungee.api.event.ServerKickEvent;
 import net.md_5.bungee.api.event.PluginMessageEvent;
+import net.md_5.bungee.api.event.ServerConnectedEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class BungeePluginMessageListener implements Listener {
 
+    private static final long SIG_WARN_INTERVAL_MS = 60_000L;
+
+    /** K-a/K-b: bekleyen StartReplay zaman asimi (sn, K-j: 120). */
+    private static final long PENDING_REPLAY_TIMEOUT_SEC = 120L;
+
+    /** Staff'i hedef sunucuya baglarken bekleyen StartReplay istegi. */
+    private record PendingReplay(ServerInfo target, int reportId, String origin, long createdAt) { }
+
     private final ReportSystemBungee plugin;
+    /** Bekleyen replay'ler: staff UUID -> istek (ServerConnectedEvent'te gonderilip silinir). */
+    private final Map<UUID, PendingReplay> pendingReplays = new ConcurrentHashMap<>();
+    /** Güvenlik uyarısı hız sınırı: anahtar (kaynak) → son uyarı zamanı. */
+    private final Map<String, Long> lastSigWarn = new ConcurrentHashMap<>();
 
     public BungeePluginMessageListener(ReportSystemBungee plugin) {
         this.plugin = plugin;
@@ -26,23 +47,60 @@ public class BungeePluginMessageListener implements Listener {
 
     @EventHandler
     public void onPluginMessage(PluginMessageEvent event) {
-        if (!event.getTag().equals("reportsystem:channel")) {
+        String tag = event.getTag();
+        boolean main = tag.equals("reportsystem:channel");
+        if (!main && !tag.equals("reportsystem:notification")) {
             return;
         }
 
+        // Kanal yalnizca proxy <-> backend arasindadir: ne istemciye ne de istemciden iletilir.
+        event.setCancelled(true);
+
+        // Istemciden (oyuncu baglantisindan) gelen her sey atilir (sahte mesaj denemesi)
         if (!(event.getSender() instanceof Server)) {
+            String sender = event.getSender() instanceof ProxiedPlayer p ? p.getName() : String.valueOf(event.getSender());
+            if (shouldWarn("client:" + sender)) {
+                plugin.getLogger().warning("[SECURITY] Istemci kaynakli plugin message atildi (" + tag + "): " + event.getSender()
+                        + " (60 sn icinde tekrarlar loglanmaz)");
+            }
             return;
         }
 
         Server connection = (Server) event.getSender();
-        ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
 
-        String subchannel = in.readUTF();
+        // Bildirim kanali: backend'in yerel olarak olusturdugu raporu (NewReport) diger sunuculara yayar
+        if (!main) {
+            handleBackendNotification(connection, tag, event.getData());
+            return;
+        }
+
+        // HMAC-SHA256 dogrulamasi (bkz. MessageSigner)
+        byte[] payload = plugin.getMessageSigner().verify(tag, event.getData());
+        if (payload == null) {
+            String server = connection.getInfo().getName();
+            if (shouldWarn("main:" + server)) {
+                plugin.getLogger().warning("[SECURITY] Gecersiz imza/zaman damgasi, mesaj reddedildi (sunucu: "
+                        + server + "). message-secret tum sunucularda ayni mi? (60 sn icinde tekrarlar loglanmaz)");
+            }
+            return;
+        }
+
+        ByteArrayDataInput in = ByteStreams.newDataInput(payload);
+
+        String subchannel;
+        try {
+            subchannel = in.readUTF();
+        } catch (RuntimeException e) {
+            return;
+        }
 
         // Otomatik olarak hangi sunucudan geldiğini al
         String serverName = connection.getInfo().getName();
 
-        plugin.getLogger().info("[PLUGIN-MESSAGE] Received from " + serverName + ": " + subchannel);
+        // Her mesajda koşulsuz INFO log taşkını yapmasın: yalnız debug.log-messages açıkken
+        if (plugin.getConfig().getBoolean("debug.log-messages", false)) {
+            plugin.getLogger().info("[PLUGIN-MESSAGE] Received from " + serverName + ": " + subchannel);
+        }
 
         switch (subchannel) {
             case "CreateReport":
@@ -60,6 +118,38 @@ public class BungeePluginMessageListener implements Listener {
             case "CheckServerAndReplay":
                 handleCheckServerAndReplay(connection, in);
                 break;
+        }
+    }
+
+    /** reportsystem:notification (backend -> proxy): NewReport(int id, UTF reporter, UTF reported, UTF reason, UTF server). */
+    private void handleBackendNotification(Server connection, String tag, byte[] data) {
+        byte[] payload = plugin.getMessageSigner().verify(tag, data);
+        if (payload == null) {
+            String server = connection.getInfo().getName();
+            if (shouldWarn("notification:" + server)) {
+                plugin.getLogger().warning("[SECURITY] Gecersiz imzali bildirim reddedildi (sunucu: "
+                        + server + "). (60 sn icinde tekrarlar loglanmaz)");
+            }
+            return;
+        }
+        try {
+            ByteArrayDataInput in = ByteStreams.newDataInput(payload);
+            if (!in.readUTF().equals("NewReport")) {
+                return;
+            }
+            int reportId = in.readInt();
+            String reporter = in.readUTF();
+            String reported = in.readUTF();
+            String reason = in.readUTF();
+            String serverName = in.readUTF();
+            ReportNotificationListener listener = plugin.getReportNotificationListener();
+            if (listener != null) {
+                // Kaynak sunucu kendi yetkililerine zaten yerel bildirim gonderdi -> tekrar gonderme
+                listener.broadcastReportNotification(reportId, reporter, reported, reason, serverName,
+                        connection.getInfo().getName());
+            }
+        } catch (RuntimeException e) {
+            plugin.getLogger().warning("[NOTIFICATION] Bozuk bildirim mesaji: " + e.getMessage());
         }
     }
 
@@ -119,17 +209,18 @@ public class BungeePluginMessageListener implements Listener {
 
                     // Target oyuncunun sunucusuna report ID'yi gönder
                     ProxiedPlayer target = ProxyServer.getInstance().getPlayer(targetName);
-                    if (target != null && target.getServer() != null) {
+                    // K-1 deseni: getServer() bir kez okunur (sunucu degisimi sirasinda null/farkli donebilir)
+                    Server targetServer = target != null ? target.getServer() : null;
+                    if (targetServer != null) {
                         ByteArrayDataOutput out = ByteStreams.newDataOutput();
                         out.writeUTF("ReportCreated");
-                        out.writeUTF(reporterName);
+                        out.writeUTF(target.getUniqueId().toString());
                         out.writeInt(reportId);
-                        out.writeUTF(targetName);
 
-                        target.getServer().sendData("reportsystem:channel", out.toByteArray());
+                        plugin.sendSigned(targetServer, "reportsystem:channel", out.toByteArray());
 
                         plugin.getLogger().info("[REPORT] Sent report ID #" + reportId +
-                                " to server: " + target.getServer().getInfo().getName());
+                                " to server: " + targetServer.getInfo().getName());
                     }
                 }, 0, TimeUnit.MILLISECONDS);
             } else if (reportId == -2) {
@@ -175,34 +266,41 @@ public class BungeePluginMessageListener implements Listener {
         int reportId = in.readInt();
 
         ProxiedPlayer player = ProxyServer.getInstance().getPlayer(playerName);
-        if (player == null) {
-            plugin.getLogger().warning("[REPLAY] Player not found: " + playerName);
+        // K-1: getServer() bir kez okunur (sunucu degisimi sirasinda cagrilar arasi null/farkli donebilir)
+        Server playerServer = player != null ? player.getServer() : null;
+        if (playerServer == null) {
+            plugin.getLogger().warning("[REPLAY] Player not found or not connected: " + playerName);
             return;
         }
+        String currentServer = playerServer.getInfo().getName();
 
-        String currentServer = player.getServer().getInfo().getName();
+        // H-21: istek, oyuncunun BULUNDUGU sunucudan gelmeli (baska sunucu adina oyuncu tasinamasin)
+        String senderServer = connection.getInfo().getName();
+        if (!currentServer.equals(senderServer)) {
+            if (shouldWarn("replay:" + senderServer)) {
+                plugin.getLogger().warning("[SECURITY] CheckServerAndReplay reddedildi: " + playerName
+                        + " su an " + currentServer + " sunucusunda, istek "
+                        + senderServer + " sunucusundan geldi. (60 sn icinde tekrarlar loglanmaz)");
+            }
+            return;
+        }
 
         plugin.getLogger().info("[REPLAY] Check server - Player: " + playerName +
                 ", Current: " + currentServer + ", Report Server: " + reportServerName);
 
         // Aynı sunucuda mı kontrol et
         if (currentServer.equalsIgnoreCase(reportServerName)) {
-            // Aynı sunucuda, direkt replay başlat
-            ByteArrayDataOutput out = ByteStreams.newDataOutput();
-            out.writeUTF("StartReplayDirect");
-            out.writeUTF(playerName);
-            out.writeInt(reportId);
-
-            player.getServer().sendData("reportsystem:channel", out.toByteArray());
-
+            // Aynı sunucuda, direkt replay başlat (dönüş sunucusu yok)
+            // (oyuncunun kendi baglantisi uzerinden; onceki davranis korunur)
+            plugin.sendSigned(playerServer, "reportsystem:channel", buildStartReplay(player, reportId, ""));
             plugin.getLogger().info("[REPLAY] Same server, starting replay directly on: " + currentServer);
         } else {
-            // Farklı sunucu, önce oyuncuyu transfer et
+            // Farklı sunucu: oyuncuyu proxy bağlar, bağlanınca hedef sunucuya StartReplay gider
             plugin.getLogger().info("[REPLAY] Different server, need to transfer from " +
                     currentServer + " to " + reportServerName);
 
-            // Önce target sunucunun var olup olmadığını kontrol et
-            if (ProxyServer.getInstance().getServerInfo(reportServerName) == null) {
+            net.md_5.bungee.api.config.ServerInfo targetInfo = ProxyServer.getInstance().getServerInfo(reportServerName);
+            if (targetInfo == null) {
                 plugin.getLogger().severe("[REPLAY] Target server not found: " + reportServerName);
                 player.sendMessage(ChatColor.translateAlternateColorCodes('&',
                         plugin.getConfig().getString("messages.report.server-not-found",
@@ -211,17 +309,129 @@ public class BungeePluginMessageListener implements Listener {
                 return;
             }
 
-            // Transfer mesajını mevcut sunucuya gönder
-            ByteArrayDataOutput out = ByteStreams.newDataOutput();
-            out.writeUTF("TransferForReplay");
-            out.writeUTF(playerName);
-            out.writeUTF(reportServerName);
-            out.writeInt(reportId);
+            // H-20: hedef sunucu replay bitince izleyiciyi buraya geri gönderir
+            final String origin = currentServer;
+            // E-1: Bungee connect callback'i backend login/setServer ONCESI (TCP baglantisinda) cagrilir;
+            // o an player.getServer() hala KAYNAK sunucudur. StartReplay bu yuzden dogrudan hedef
+            // ServerInfo'ya gider: ServerInfo.sendData hedefte oyuncu varsa hemen iletir (Spigot
+            // storePendingReplay ile 30 sn bekletir, izleyici katilinca baslar), yoksa kuyruklar ve
+            // izleyicinin baglantisi kurulunca iletir.
+            // K-a/K-b: paket artik connect callback'inde degil, ServerConnectedEvent'te (staff hedefe
+            // GERCEKTEN baglaninca) event.getServer() uzerinden gider; bekleyen harita zaman asimi,
+            // baglanti hatasi ve oyuncu cikisinda temizlenir (paket baska oyuncunun baglantisina sizmaz).
+            final UUID staffId = player.getUniqueId();
+            final PendingReplay pending = new PendingReplay(targetInfo, reportId, origin, System.currentTimeMillis());
+            pendingReplays.put(staffId, pending);
+            plugin.getProxy().getScheduler().schedule(plugin, () -> {
+                if (pendingReplays.remove(staffId, pending)) {
+                    plugin.getLogger().warning("[REPLAY] Pending replay timed out for " + playerName
+                            + " (" + reportServerName + ")");
+                    if (player.isConnected()) {
+                        sendReplayFailed(player, reportServerName);
+                    }
+                }
+            }, PENDING_REPLAY_TIMEOUT_SEC, TimeUnit.SECONDS);
 
-            player.getServer().sendData("reportsystem:channel", out.toByteArray());
-
-            plugin.getLogger().info("[REPLAY] Sent transfer request to current server");
+            ServerConnectRequest request = ServerConnectRequest.builder()
+                    .target(targetInfo)
+                    .reason(ServerConnectEvent.Reason.PLUGIN)
+                    .callback((net.md_5.bungee.api.Callback<ServerConnectRequest.Result>) (result, error) -> {
+                        if (error == null && result != null) {
+                            switch (result) {
+                                case SUCCESS:
+                                case ALREADY_CONNECTING:
+                                    return; // gonderim ServerConnectedEvent'te (K-i)
+                                case ALREADY_CONNECTED:
+                                    if (pendingReplays.remove(staffId, pending)) {
+                                        Server now = player.getServer();
+                                        if (now != null && now.getInfo().getName().equals(targetInfo.getName())) {
+                                            plugin.sendSigned(now, "reportsystem:channel",
+                                                    buildStartReplay(player, reportId, origin));
+                                        } else {
+                                            sendReplayFailed(player, reportServerName);
+                                        }
+                                    }
+                                    return;
+                                default:
+                                    break; // FAIL / EVENT_CANCEL
+                            }
+                        }
+                        if (!pendingReplays.remove(staffId, pending)) {
+                            return; // zaten gonderildi / temizlendi
+                        }
+                        if (error != null) {
+                            plugin.getLogger().log(Level.WARNING, "[REPLAY] Could not connect " + playerName
+                                    + " to " + reportServerName, error);
+                        } else {
+                            plugin.getLogger().warning("[REPLAY] Could not connect " + playerName + " to "
+                                    + reportServerName + " (" + result + ")");
+                        }
+                        sendReplayFailed(player, reportServerName);
+                    })
+                    .build();
+            player.connect(request);
         }
+    }
+
+    private void sendReplayFailed(ProxiedPlayer player, String serverName) {
+        player.sendMessage(ChatColor.translateAlternateColorCodes('&',
+                plugin.getConfig().getString("messages.report.replay-connect-failed",
+                        "&cReplay başlatılamadı: &f%server% &csunucusuna bağlanılamadı. &7(Could not connect to the target server.)")
+                        .replace("%server%", serverName)));
+    }
+
+    /** K-k: hedefe baglanirken kick yenirse bekleyen replay iptal edilir. */
+    @EventHandler
+    public void onServerKick(ServerKickEvent event) {
+        if (event.getState() != ServerKickEvent.State.CONNECTING || event.getKickedFrom() == null) {
+            return;
+        }
+        ProxiedPlayer player = event.getPlayer();
+        PendingReplay pending = pendingReplays.get(player.getUniqueId());
+        if (pending == null || !pending.target().getName().equals(event.getKickedFrom().getName())) {
+            return;
+        }
+        if (pendingReplays.remove(player.getUniqueId(), pending)) {
+            sendReplayFailed(player, pending.target().getName());
+        }
+    }
+
+    /** K-a/K-b: staff hedef sunucuya baglandi -> bekleyen StartReplay'i o baglantidan gonder. */
+    @EventHandler
+    public void onServerConnected(ServerConnectedEvent event) {
+        ProxiedPlayer player = event.getPlayer();
+        PendingReplay pending = pendingReplays.get(player.getUniqueId());
+        if (pending == null) {
+            return;
+        }
+        if (!pending.target().getName().equals(event.getServer().getInfo().getName())) {
+            return; // baska sunucuya baglandi (orn. fallback); zaman asimina kadar bekle
+        }
+        if (!pendingReplays.remove(player.getUniqueId(), pending)) {
+            return;
+        }
+        plugin.sendSigned(event.getServer(), "reportsystem:channel",
+                buildStartReplay(player, pending.reportId(), pending.origin()));
+        plugin.getLogger().info("[REPLAY] StartReplay sent to " + player.getName() + " on " + pending.target().getName());
+    }
+
+    @EventHandler
+    public void onPlayerDisconnect(PlayerDisconnectEvent event) {
+        pendingReplays.remove(event.getPlayer().getUniqueId());
+    }
+
+    /**
+     * StartReplay yükü (imzalama sendSigned'da):
+     * (oyuncu UUID UTF, reportId int, kaynak sunucu UTF — boşsa dönüş yok).
+     * Kaynak alanı sona eklendi: eski Spigot fazla baytı okumaz (geriye uyumlu).
+     */
+    private byte[] buildStartReplay(ProxiedPlayer player, int reportId, String origin) {
+        ByteArrayDataOutput out = ByteStreams.newDataOutput();
+        out.writeUTF("StartReplay");
+        out.writeUTF(player.getUniqueId().toString());
+        out.writeInt(reportId);
+        out.writeUTF(origin != null ? origin : "");
+        return out.toByteArray();
     }
 
     private void sendReportNotifications(int reportId, String reporterName, String targetName,
@@ -236,6 +446,7 @@ public class BungeePluginMessageListener implements Listener {
     }
 
     private void handleGlobalPunishment(Server connection, ByteArrayDataInput in) {
+        // Alanlar Netty thread'inde okunur; ceza işi (DB, sağlayıcı) async yapılır
         String requestId = in.readUTF();
         String playerName = in.readUTF();
         String type = in.readUTF();
@@ -246,27 +457,37 @@ public class BungeePluginMessageListener implements Listener {
 
         plugin.getLogger().info("[PUNISHMENT] " + type + " request for " + playerName + " from " + serverOrigin);
 
-        boolean success = false;
+        // Yanit SUNUCUYA (ServerInfo) gider: oyuncunun Server baglantisi bu arada kapanmis/degismis olabilir
+        ServerInfo origin = connection.getInfo();
+        ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
+            boolean success = false;
+            try {
+                switch (type) {
+                    case "ban":
+                        success = plugin.getPunishmentManager().globalBan(playerName, reason, punisher, duration, serverOrigin);
+                        break;
+                    case "mute":
+                        success = plugin.getPunishmentManager().globalMute(playerName, reason, punisher, duration, serverOrigin);
+                        break;
+                    case "kick":
+                        success = plugin.getPunishmentManager().globalKick(playerName, reason, punisher, serverOrigin);
+                        break;
+                    case "warn":
+                        success = plugin.getPunishmentManager().globalWarn(playerName, reason, punisher, serverOrigin);
+                        break;
+                }
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE, "[PUNISHMENT] " + type + " işlenemedi: " + playerName, e);
+            }
 
-        switch (type) {
-            case "ban":
-                success = plugin.getPunishmentManager().globalBan(playerName, reason, punisher, duration, serverOrigin);
-                break;
-            case "mute":
-                success = plugin.getPunishmentManager().globalMute(playerName, reason, punisher, duration, serverOrigin);
-                break;
-            case "kick":
-                success = plugin.getPunishmentManager().globalKick(playerName, reason, punisher, serverOrigin);
-                break;
-        }
+            // Sonucu geri gönder
+            ByteArrayDataOutput response = ByteStreams.newDataOutput();
+            response.writeUTF("PunishmentResult");
+            response.writeUTF(requestId);
+            response.writeBoolean(success);
 
-        // Sonucu geri gönder
-        ByteArrayDataOutput response = ByteStreams.newDataOutput();
-        response.writeUTF("PunishmentResult");
-        response.writeUTF(requestId);
-        response.writeBoolean(success);
-
-        connection.sendData("reportsystem:channel", response.toByteArray());
+            plugin.sendSigned(origin, "reportsystem:channel", response.toByteArray());
+        });
     }
 
     private void handleGlobalUnpunishment(Server connection, ByteArrayDataInput in) {
@@ -274,23 +495,30 @@ public class BungeePluginMessageListener implements Listener {
         String playerName = in.readUTF();
         String type = in.readUTF();
 
-        boolean success = false;
+        // Yanit SUNUCUYA (ServerInfo) gider: oyuncunun Server baglantisi bu arada kapanmis/degismis olabilir
+        ServerInfo origin = connection.getInfo();
+        ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
+            boolean success = false;
+            try {
+                switch (type) {
+                    case "unban":
+                        success = plugin.getPunishmentManager().removePunishment(playerName, "ban");
+                        break;
+                    case "unmute":
+                        success = plugin.getPunishmentManager().removePunishment(playerName, "mute");
+                        break;
+                }
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE, "[PUNISHMENT] " + type + " işlenemedi: " + playerName, e);
+            }
 
-        switch (type) {
-            case "unban":
-                success = plugin.getPunishmentManager().removePunishment(playerName, "ban");
-                break;
-            case "unmute":
-                success = plugin.getPunishmentManager().removePunishment(playerName, "mute");
-                break;
-        }
+            ByteArrayDataOutput response = ByteStreams.newDataOutput();
+            response.writeUTF("UnpunishmentResult");
+            response.writeUTF(requestId);
+            response.writeBoolean(success);
 
-        ByteArrayDataOutput response = ByteStreams.newDataOutput();
-        response.writeUTF("UnpunishmentResult");
-        response.writeUTF(requestId);
-        response.writeBoolean(success);
-
-        connection.sendData("reportsystem:channel", response.toByteArray());
+            plugin.sendSigned(origin, "reportsystem:channel", response.toByteArray());
+        });
     }
 
     private void handleCheckPunishment(Server connection, ByteArrayDataInput in) {
@@ -298,13 +526,41 @@ public class BungeePluginMessageListener implements Listener {
         String playerName = in.readUTF();
         String type = in.readUTF();
 
-        boolean result = plugin.getPunishmentManager().isActivePunishment(playerName, type);
+        // Yanit SUNUCUYA (ServerInfo) gider: oyuncunun Server baglantisi bu arada kapanmis/degismis olabilir
+        ServerInfo origin = connection.getInfo();
+        ProxyServer.getInstance().getScheduler().runAsync(plugin, () -> {
+            boolean result = false;
+            try {
+                result = plugin.getPunishmentManager().isActivePunishment(playerName, type);
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE, "[PUNISHMENT] Ceza kontrolü başarısız: " + playerName, e);
+            }
 
-        ByteArrayDataOutput response = ByteStreams.newDataOutput();
-        response.writeUTF("CheckPunishmentResult");
-        response.writeUTF(requestId);
-        response.writeBoolean(result);
+            ByteArrayDataOutput response = ByteStreams.newDataOutput();
+            response.writeUTF("CheckPunishmentResult");
+            response.writeUTF(requestId);
+            response.writeBoolean(result);
 
-        connection.sendData("reportsystem:channel", response.toByteArray());
+            plugin.sendSigned(origin, "reportsystem:channel", response.toByteArray());
+        });
+    }
+
+    /**
+     * Imza/kaynak uyarilarini anahtar basina 60 sn'de bire sinirlar (H-19: log taşkını).
+     */
+    private boolean shouldWarn(String key) {
+        long now = System.currentTimeMillis();
+        boolean[] warn = {false};
+        lastSigWarn.compute(key, (k, prev) -> {
+            if (prev == null || now - prev >= SIG_WARN_INTERVAL_MS) {
+                warn[0] = true;
+                return now;
+            }
+            return prev;
+        });
+        if (warn[0] && lastSigWarn.size() > 256) {
+            lastSigWarn.values().removeIf(t -> now - t >= SIG_WARN_INTERVAL_MS);
+        }
+        return warn[0];
     }
 }

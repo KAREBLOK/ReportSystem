@@ -5,8 +5,10 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -49,6 +51,56 @@ public class VelocityConfig {
         } catch (IOException e) {
             logger.error("Config dosyasi yuklenemedi!", e);
         }
+    }
+
+    /**
+     * Ust duzey "message-secret" degerini yazar (yorumlari bozmadan metin olarak):
+     * satir varsa degistirir, yoksa dosyanin basina ekler. Bellekteki veriyi de gunceller.
+     */
+    public void saveMessageSecret(String secret) {
+        Path configFile = dataDirectory.resolve("config.yml");
+        try {
+            String text = Files.exists(configFile)
+                    ? new String(Files.readAllBytes(configFile), java.nio.charset.StandardCharsets.UTF_8)
+                    : "";
+            String line = "message-secret: \"" + secret + "\"";
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?m)^message-secret:.*$");
+            if (p.matcher(text).find()) {
+                text = p.matcher(text).replaceFirst(java.util.regex.Matcher.quoteReplacement(line));
+            } else {
+                text = line + System.lineSeparator() + text;
+            }
+            // Yarim yazilmis config kalmasin: once gecici dosya, sonra atomik tasima
+            Path tmp = configFile.resolveSibling("config.yml.tmp");
+            Files.write(tmp, text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try {
+                Files.move(tmp, configFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, configFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+            data.put("message-secret", secret);
+        } catch (IOException e) {
+            logger.error("message-secret config'e kaydedilemedi!", e);
+        }
+    }
+
+    /**
+     * Ust duzey "message-secret" degerini okur. YAML tirnaksiz sayisal/bool degeri cevirir
+     * (ornek 1e5 -> 100000.0); bu durumda uyari loglanir ve Spigot/Bungee ile ayni deger uretilsin diye
+     * String.valueOf (toString) kullanilir. Yoksa bos string doner.
+     */
+    public String getMessageSecret() {
+        Object value = data.get("message-secret");
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        logger.warn("[GUVENLIK] message-secret tirnak icinde yazilmali (ornek: message-secret: \"...\"); "
+                + "tirnaksiz deger YAML tarafindan {} olarak cevrildi ve \"{}\" olarak kullaniliyor.",
+                value.getClass().getSimpleName(), String.valueOf(value));
+        return String.valueOf(value);
     }
 
     @SuppressWarnings("unchecked")

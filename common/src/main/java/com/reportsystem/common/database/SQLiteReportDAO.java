@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class SQLiteReportDAO implements ReportDAO {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger("ReportSystem");
 
     private final SQLiteDatabaseManager dbManager;
 
@@ -28,7 +29,9 @@ public class SQLiteReportDAO implements ReportDAO {
                 status TEXT DEFAULT 'PENDING',
                 server_name TEXT DEFAULT NULL,
                 punished INTEGER DEFAULT 0,
-                punishment_type TEXT
+                punishment_type TEXT,
+                resolved_by TEXT DEFAULT NULL,
+                resolved_at INTEGER DEFAULT 0
             )
         """;
 
@@ -60,6 +63,19 @@ public class SQLiteReportDAO implements ReportDAO {
             } catch (SQLException e) {
                 // Kolon zaten varsa ignore
             }
+
+            // H-14a: çözen yetkili + çözülme zamanı kalıcı
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN resolved_by TEXT DEFAULT NULL");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
+
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN resolved_at INTEGER DEFAULT 0");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
         }
     }
 
@@ -84,7 +100,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.createReport failed (reportedPlayerName=" + reportedPlayerName + ", reporterName=" + reporterName + ", reporterUUID=" + reporterUUID + ")", e);
         }
         return null;
     }
@@ -102,7 +118,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReport failed (id=" + id + ")", e);
         }
         return null;
     }
@@ -122,7 +138,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReports failed (page=" + page + ", perPage=" + perPage + ")", e);
         }
         return reports;
     }
@@ -139,7 +155,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 reports.add(extractReportFromResultSet(rs));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getAllReports failed", e);
         }
         return reports;
     }
@@ -158,7 +174,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportsByPlayer failed (playerName=" + playerName + ")", e);
         }
         return reports;
     }
@@ -177,7 +193,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportsByReporter failed (reporterName=" + reporterName + ")", e);
         }
         return reports;
     }
@@ -193,7 +209,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 return rs.getInt(1);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportCount failed", e);
         }
         return 0;
     }
@@ -208,9 +224,23 @@ public class SQLiteReportDAO implements ReportDAO {
 
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.updateReportStatus failed (id=" + id + ", status=" + status + ")", e);
         }
         return false;
+    }
+
+    @Override
+    public int transitionStatus(int id, String expectedStatus, String newStatus) throws SQLException {
+        // Atomik koşullu geçiş: rapor başka bir yetkili tarafından işlendiyse 0 satır etkilenir.
+        String sql = "UPDATE reports SET status = ? WHERE id = ? AND status = ?";
+
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, newStatus);
+            stmt.setInt(2, id);
+            stmt.setString(3, expectedStatus);
+
+            return stmt.executeUpdate();
+        }
     }
 
     @Override
@@ -223,7 +253,7 @@ public class SQLiteReportDAO implements ReportDAO {
 
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.updateReportServer failed (id=" + id + ", serverName=" + serverName + ")", e);
         }
         return false;
     }
@@ -239,6 +269,17 @@ public class SQLiteReportDAO implements ReportDAO {
     }
 
     @Override
+    public boolean setResolution(int id, String resolvedBy, long resolvedAt) throws SQLException {
+        String sql = "UPDATE reports SET resolved_by = ?, resolved_at = ? WHERE id = ?";
+        try (PreparedStatement stmt = dbManager.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, resolvedBy);
+            stmt.setLong(2, resolvedAt);
+            stmt.setInt(3, id);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    @Override
     public boolean deleteReport(int id) {
         String sql = "DELETE FROM reports WHERE id = ?";
 
@@ -246,7 +287,7 @@ public class SQLiteReportDAO implements ReportDAO {
             stmt.setInt(1, id);
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.deleteReport failed (id=" + id + ")", e);
         }
         return false;
     }
@@ -263,7 +304,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 System.out.println(deleted + " eski rapor silindi.");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.deleteOldReports failed (days=" + days + ")", e);
         }
     }
 
@@ -298,7 +339,29 @@ public class SQLiteReportDAO implements ReportDAO {
             // Eski tablolarda bu kolon olmayabilir
         }
 
+        // Çözen yetkili / zaman (H-14a) — migrasyondan önce okunursa (ör. proxy) çökmesin
+        report.setResolvedBy(optString(rs, "resolved_by"));
+        report.setResolvedAt(optLong(rs, "resolved_at"));
+
         return report;
+    }
+
+    /** Kolon yoksa (eski şema) null döner. */
+    private static String optString(ResultSet rs, String column) {
+        try {
+            return rs.getString(column);
+        } catch (SQLException e) {
+            return null;
+        }
+    }
+
+    /** Kolon yoksa (eski şema) 0 döner. */
+    private static long optLong(ResultSet rs, String column) {
+        try {
+            return rs.getLong(column);
+        } catch (SQLException e) {
+            return 0L;
+        }
     }
 
     @Override
@@ -380,7 +443,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportsByStatus failed (status=" + status + ")", e);
         }
         return reports;
     }
@@ -398,7 +461,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportsByServer failed (serverName=" + serverName + ")", e);
         }
         return reports;
     }
@@ -417,7 +480,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getReportsByDateRange failed (startTime=" + startTime + ", endTime=" + endTime + ")", e);
         }
         return reports;
     }
@@ -437,7 +500,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.countReportsByReporterAndReported failed (reporterName=" + reporterName + ", reportedName=" + reportedName + ")", e);
         }
         return 0;
     }
@@ -455,7 +518,7 @@ public class SQLiteReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] SQLiteReportDAO.getTotalReportsForPlayer failed (playerName=" + playerName + ")", e);
         }
         return 0;
     }

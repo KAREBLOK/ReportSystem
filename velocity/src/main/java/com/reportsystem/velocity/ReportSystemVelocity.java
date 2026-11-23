@@ -16,7 +16,10 @@ import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.reportsystem.common.messaging.MessageSigner;
+import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -25,7 +28,7 @@ import java.sql.*;
 @Plugin(
         id = "reportsystem",
         name = "ReportSystem-Velocity",
-        version = "2.1.5",
+        version = "2.2.0", // pom.xml sürümüyle aynı tutulmalı (REL-01)
         authors = {"KAREBLOK"},
         description = "Cross-server report system for Velocity"
 )
@@ -42,6 +45,7 @@ public class ReportSystemVelocity {
     private ReportDAO reportDAO;
     private ReportService reportService;
     private ReportNotificationListener reportNotificationListener;
+    private MessageSigner messageSigner;
 
     public static final MinecraftChannelIdentifier CHANNEL =
             MinecraftChannelIdentifier.from("reportsystem:channel");
@@ -60,6 +64,7 @@ public class ReportSystemVelocity {
     public void onProxyInitialize(ProxyInitializeEvent event) {
         config = new VelocityConfig(dataDirectory, logger);
         config.load();
+        initMessageSigner();
 
         if (!setupDatabase()) {
             logger.error("Veritabani baslatilamadi! Eklenti devre disi birakiliyor.");
@@ -94,6 +99,33 @@ public class ReportSystemVelocity {
         logger.info("ReportSystem-Velocity kapatildi!");
     }
 
+    /**
+     * Plugin message HMAC anahtarini yukler; bossa rastgele uretip config'e kaydeder.
+     */
+    private void initMessageSigner() {
+        // Tirnaksiz sayisal deger (1e5 -> 100000.0): getMessageSecret uyari verir, Spigot/Bungee ile ayni toString degerini dondurur
+        String secret = config.getMessageSecret();
+        if (secret == null || secret.trim().isEmpty()) {
+            secret = MessageSigner.generateSecret();
+            config.saveMessageSecret(secret);
+            logger.warn("============================================================");
+            logger.warn("[GUVENLIK] message-secret bos oldugu icin rastgele uretildi.");
+            logger.warn("Ayni degeri TUM Spigot backend'lerin config.yml'indeki 'bungeecord.message-secret'");
+            logger.warn("alanina kopyalayin; aksi halde mesajlar reddedilir.");
+            logger.warn("============================================================");
+        }
+        this.messageSigner = new MessageSigner(secret.trim());
+    }
+
+    public MessageSigner getMessageSigner() {
+        return messageSigner;
+    }
+
+    /** Backend'e imzali mesaj gonderir (HMAC-SHA256 zarfi, bkz. MessageSigner). */
+    public void sendSigned(RegisteredServer target, ChannelIdentifier channel, byte[] payload) {
+        target.sendPluginMessage(channel, messageSigner.sign(channel.getId(), payload));
+    }
+
     private boolean setupDatabase() {
         try {
             DatabaseConfig dbConfig = new DatabaseConfig(
@@ -103,6 +135,14 @@ public class ReportSystemVelocity {
                     config.getString("database.mysql.username", "root"),
                     config.getString("database.mysql.password", "")
             );
+            // Havuz + SSL (eski config'te anahtar yoksa varsayilan: havuz 10, timeout 5000 ms, SSL kapali)
+            dbConfig.withPool(
+                    config.getInt("database.mysql.pool.maximum-pool-size", 10),
+                    2,
+                    config.getInt("database.mysql.pool.connection-timeout", 5000),
+                    600000L,
+                    1800000L
+            ).withSslMode(config.getString("database.mysql.ssl-mode", "DISABLED"));
 
             createDatabaseIfNotExists(dbConfig);
             this.database = new MySQLDatabase(dbConfig);
@@ -129,8 +169,8 @@ public class ReportSystemVelocity {
             return;
         }
 
-        String url = String.format("jdbc:mysql://%s:%d/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-                dbConfig.getHost(), dbConfig.getPort());
+        String url = String.format("jdbc:mysql://%s:%d/?sslMode=%s&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+                dbConfig.getHost(), dbConfig.getPort(), dbConfig.getSslMode());
         try (Connection conn = DriverManager.getConnection(url, dbConfig.getUsername(), dbConfig.getPassword());
              Statement stmt = conn.createStatement()) {
             stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS " + dbConfig.getDatabase() +

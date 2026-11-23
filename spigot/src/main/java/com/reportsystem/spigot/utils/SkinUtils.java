@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.utils;
 
+import java.util.Locale;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -29,7 +30,7 @@ public class SkinUtils {
      * Callback receives (texture, signature) on main thread. Null on failure.
      */
     public static void fetchSkin(String playerName, JavaPlugin plugin, BiConsumer<String, String> callback) {
-        String key = playerName.toLowerCase();
+        String key = playerName.toLowerCase(Locale.ROOT);
 
         CachedSkin cached = cache.get(key);
         if (cached != null && !cached.isExpired()) {

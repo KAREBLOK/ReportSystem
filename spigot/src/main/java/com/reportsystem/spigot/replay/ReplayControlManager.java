@@ -63,16 +63,34 @@ public class ReplayControlManager {
     public void giveControlItems(Player player, ReplayPlayer replayPlayer) {
         UUID playerUUID = player.getUniqueId();
 
-        // Mevcut durumu kaydet
-        savedInventories.put(playerUUID, player.getInventory().getContents().clone());
-        savedGameModes.put(playerUUID, player.getGameMode());
-        savedHealth.put(playerUUID, player.getHealth());
-        savedFoodLevels.put(playerUUID, player.getFoodLevel());
-        savedSaturation.put(playerUUID, player.getSaturation());
-        savedAllowFlight.put(playerUUID, player.getAllowFlight());
-        savedFlying.put(playerUUID, player.isFlying());
-        savedFireTicks.put(playerUUID, player.getFireTicks());
+        // Mevcut durumu kaydet — IDEMPOTENT (putIfAbsent): ikinci cagrida (ör. "Tekrar Izle",
+        // stopReplayUI sonrasi yeniden baslatma) envanter zaten temizlenmis/kontrol esyali olur;
+        // put ilk GERCEK kopyayi ezerdi, ardindan clear(OWNER_REPLAY) PDC yedegini de silerdi.
+        // Kopyalar restorePlayerState / clearSavedState / cleanup'ta remove edilir.
+        savedInventories.putIfAbsent(playerUUID, player.getInventory().getContents().clone());
+        savedGameModes.putIfAbsent(playerUUID, player.getGameMode());
+        savedHealth.putIfAbsent(playerUUID, player.getHealth());
+        savedFoodLevels.putIfAbsent(playerUUID, player.getFoodLevel());
+        savedSaturation.putIfAbsent(playerUUID, player.getSaturation());
+        savedAllowFlight.putIfAbsent(playerUUID, player.getAllowFlight());
+        savedFlying.putIfAbsent(playerUUID, player.isFlying());
+        savedFireTicks.putIfAbsent(playerUUID, player.getFireTicks());
         plugin.debug("[REPLAY-CONTROL] Saved player state for " + player.getName());
+
+        // TEK TUTARLI AN: envanter asagida bu tick'te temizleniyor; butun anlik goruntuler
+        // (ControlManager RAM kopyasi, Overwatch RAM kopyasi, PDC yedegi) burada alinir.
+        // 1) Bekleyen Overwatch incelemesi varsa gercek envanteri SIMDI yakala
+        //    (PDC'ye OWNER_OVERWATCH + inceleme baslangic konumu yazilir).
+        if (plugin.getOverwatchReplayListener() != null) {
+            plugin.getOverwatchReplayListener().captureIfPending(player);
+        }
+        // 2) Cokmeye dayanikli PDC yedegi. Overwatch yedegi varsa dokunulmaz (saveIfAbsent).
+        //    Konum: replay'in kaydettigi orijinal konum (dunya degistiren replay'de oyuncu
+        //    su an zaten replay dunyasinda olabilir).
+        if (plugin.getViewerBackup() != null) {
+            plugin.getViewerBackup().saveIfAbsent(player, ViewerBackup.OWNER_REPLAY,
+                    replayManager != null ? replayManager.getOriginalLocation(playerUUID) : null);
+        }
 
         // Replay izleme moduna gec
         player.getInventory().clear();
@@ -395,19 +413,47 @@ public class ReplayControlManager {
             // geri yuklemeyi 1 tick ertelemek bos envanterin diske yazilmasina yol acar
             // (Bukkit quit sonrasi veriyi kaydeder) -> tum esyalar kaybolur. Bu durumlarda
             // SENKRON geri yukle; sadece normal (online + aktif plugin + !sync) akista ertele.
+            // PDC yedegi yalniz envanter GERCEKTEN geri yazildiktan sonra, ayni blokta silinir.
+            // Yalniz kendi (OWNER_REPLAY) kaydini siler; Overwatch'in yedegi Overwatch'ta kalir.
             if (!sync && plugin.isEnabled() && player.isOnline()) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    // Oyuncu bu tick'te ciktiysa yazma/temizleme yok: PDC yedegi kalir ve
+                    // sonraki giriste ViewerBackup geri yukler.
+                    if (!player.isOnline()) return;
                     player.getInventory().setContents(savedInventory);
                     player.updateInventory();
+                    if (plugin.getViewerBackup() != null) {
+                        plugin.getViewerBackup().clear(player, ViewerBackup.OWNER_REPLAY);
+                    }
+                    notifyOverwatchRestored(player);
                 }, 1L);
             } else {
                 player.getInventory().setContents(savedInventory);
                 player.updateInventory();
+                if (plugin.getViewerBackup() != null) {
+                    plugin.getViewerBackup().clear(player, ViewerBackup.OWNER_REPLAY);
+                }
+                notifyOverwatchRestored(player);
             }
         }
         // IDEMPOTENT: kayıtlı envanter YOKSA envantere DOKUNMA. Eskiden buradaki 'else'
         // dalı envanteri clear ediyordu → shutdown/stopAll sırasında bu metod ikinci kez
         // çağrılınca (savedInventory zaten alınmış) oyuncunun GERÇEK envanteri siliniyordu.
+    }
+
+    /**
+     * Envanter bizim kopyamizdan geri yazildi: Overwatch'in bekleyen (henuz baslamamis) bir
+     * incelemesinin yakalamasi bu replay tarafindan yapildiysa artik bayattir, sifirlansin.
+     */
+    private void notifyOverwatchRestored(Player player) {
+        if (plugin.getOverwatchReplayListener() != null) {
+            plugin.getOverwatchReplayListener().onReplayInventoryRestored(player);
+        }
+    }
+
+    /** Bu oyuncu icin replay basinda alinmis (henuz geri yuklenmemis) envanter kopyasi var mi. */
+    public boolean hasSavedState(UUID playerUUID) {
+        return playerUUID != null && savedInventories.containsKey(playerUUID);
     }
 
     private String formatTime(long seconds) {

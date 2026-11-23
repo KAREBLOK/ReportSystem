@@ -1,5 +1,7 @@
 package com.reportsystem.velocity.punishment.providers;
 
+import com.reportsystem.common.punishment.DurationFormat;
+import com.reportsystem.common.punishment.PunishmentCommandSanitizer;
 import com.reportsystem.velocity.ReportSystemVelocity;
 import com.reportsystem.velocity.punishment.VelocityPunishmentManager.PunishmentProvider;
 
@@ -11,86 +13,85 @@ public class LiteBansVelocityProvider implements PunishmentProvider {
         this.plugin = plugin;
     }
 
-    private String sanitizeInput(String input) {
-        if (input == null) return "";
-        return input.replaceAll("[^a-zA-Z0-9\u00e7\u00c7\u011f\u011e\u0131\u0130\u00f6\u00d6\u015f\u015e\u00fc\u00dc .,_\\-]", "").trim();
-    }
-
     private void dispatchCommand(String command) {
         plugin.getServer().getCommandManager().executeAsync(
                 plugin.getServer().getConsoleCommandSource(), command
         );
     }
 
+    /** Geçersiz oyuncu adı: komut ÇALIŞTIRILMAZ (ad silinip başka oyuncuya dönüşmesin) [CRA-02]. */
+    private boolean rejectName(String playerName) {
+        plugin.getLogger().warn("[LiteBans] Invalid player name rejected, command not sent: {}", PunishmentCommandSanitizer.logSafe(playerName));
+        return false;
+    }
+
     @Override
     public boolean ban(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         if (duration > 0) {
-            dispatchCommand(String.format("litebans:tempban %s %s %s -s", safePlayer, convertDuration(duration), safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("litebans:tempban", safePlayer, DurationFormat.toLiteBans(duration), safeReason, "-s"));
         } else {
-            dispatchCommand(String.format("litebans:ban %s %s -s", safePlayer, safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("litebans:ban", safePlayer, safeReason, "-s"));
         }
         return true;
     }
 
     @Override
     public boolean mute(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         if (duration > 0) {
-            dispatchCommand(String.format("litebans:tempmute %s %s %s -s", safePlayer, convertDuration(duration), safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("litebans:tempmute", safePlayer, DurationFormat.toLiteBans(duration), safeReason, "-s"));
         } else {
-            dispatchCommand(String.format("litebans:mute %s %s -s", safePlayer, safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("litebans:mute", safePlayer, safeReason, "-s"));
         }
         return true;
     }
 
     @Override
     public boolean kick(String playerName, String reason, String punisher) {
-        dispatchCommand(String.format("litebans:kick %s %s", sanitizeInput(playerName), sanitizeInput(reason)));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("litebans:kick", safePlayer, PunishmentCommandSanitizer.reason(reason)));
         return true;
     }
 
     @Override
     public boolean warn(String playerName, String reason, String punisher) {
-        dispatchCommand(String.format("litebans:warn %s %s", sanitizeInput(playerName), sanitizeInput(reason)));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("litebans:warn", safePlayer, PunishmentCommandSanitizer.reason(reason)));
         return true;
     }
 
     @Override
     public boolean unban(String playerName) {
-        dispatchCommand("litebans:unban " + sanitizeInput(playerName));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("litebans:unban", safePlayer));
         return true;
     }
 
     @Override
     public boolean unmute(String playerName) {
-        dispatchCommand("litebans:unmute " + sanitizeInput(playerName));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("litebans:unmute", safePlayer));
         return true;
     }
 
     @Override
     public boolean isBanned(String playerName) {
-        // LiteBans API entegrasyonu eklenebilir
+        // LiteBans cezayı kendisi uygular; API bağımlılığı bilinçli olarak eklenmedi (H-12)
         return false;
     }
 
     @Override
     public boolean isMuted(String playerName) {
-        // LiteBans API entegrasyonu eklenebilir
+        // LiteBans cezayı kendisi uygular; API bağımlılığı bilinçli olarak eklenmedi (H-12)
         return false;
-    }
-
-    private String convertDuration(long millis) {
-        long seconds = millis / 1000;
-        long minutes = seconds / 60;
-        long hours = minutes / 60;
-        long days = hours / 24;
-
-        if (days > 0) return days + "d";
-        if (hours > 0) return hours + "h";
-        if (minutes > 0) return minutes + "m";
-        return seconds + "s";
     }
 }

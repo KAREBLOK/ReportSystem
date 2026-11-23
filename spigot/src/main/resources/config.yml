@@ -35,11 +35,19 @@ database:
     username: "root"
     password: "CHANGE_THIS_PASSWORD"
 
-    # Connection pool settings
+    # SSL mode (MySQL Connector/J 'sslMode'):
+    # DISABLED | PREFERRED | REQUIRED | VERIFY_CA | VERIFY_IDENTITY
+    # DISABLED = old behaviour (useSSL=false). Unknown values fall back to DISABLED.
+    ssl-mode: "DISABLED"
+
+    # Connection pool settings (HikariCP)
+    # maximum-pool-size: 1-50 | minimum-idle: 0..maximum-pool-size
     pool:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 30000
+      # Milliseconds (min 1000). If the database goes down, a thread waits at most
+      # this long for a connection (DB duserse ana thread en fazla bu kadar bekler).
+      connection-timeout: 5000
       idle-timeout: 600000
       max-lifetime: 1800000
 
@@ -53,6 +61,12 @@ bungeecord:
   # Server display name (for GUIs)
   # Leave empty to use actual server name
   display-name: ""
+
+  # Plugin message imza anahtari (HMAC-SHA256). Proxy ile TUM sunucularda AYNI olmali.
+  # Bos birakilirsa ilk acilista rastgele uretilir ve buraya kaydedilir; uretilen degeri
+  # proxy config'indeki (bungeecord/velocity) message-secret ve diger tum backend'lere kopyalayin.
+  # Gizli tutun: bu anahtari bilen herkes sahte mesaj gonderebilir.
+  message-secret: ""
 
 # ======================
 # Report Settings
@@ -163,11 +177,68 @@ replay:
   # Maximum replay file size (MB)
   # Set to -1 to disable (unlimited size)
   # 5 MB = more than enough for a 45-second recording
+  # MySQL 5.7 / MariaDB default max_allowed_packet is 4 MB - raise it on the database
+  # server if you allow 5 MB replays (MySQL 5.7/MariaDB'de max_allowed_packet 4 MB
+  # varsayilan — 5 MB replay icin sunucuda artirin).
   max-file-size: 5
 
   # Auto-delete replays after X days
   # Set to -1 to disable
   auto-delete-days: 7
+
+  # Recording limits (protection against packet spam / memory abuse)
+  # When a limit is hit, new actions are dropped but the recording is kept.
+  # If the saved replay exceeds max-file-size it is trimmed from the end instead of discarded.
+  limits:
+    # Maximum actions per recording (0 or -1 = unlimited)
+    max-actions: 150000
+    # Maximum actions of the same type per second (0 or -1 = unlimited)
+    max-actions-per-type-per-second: 400
+
+  # Crash recovery: active recordings are periodically checkpointed to
+  # plugins/ReportSystem-Spigot/recording-journal/ and saved to the database on next startup
+  # if the server crashed or was killed before the recording finished.
+  crash-recovery:
+    enabled: true
+    # Checkpoint interval (seconds, minimum 2). At most this much recording can be lost on a crash.
+    interval-seconds: 10
+
+  # Commands that can be used while watching a replay or during the Overwatch post-replay
+  # stage; every other command is blocked - staff included (Replay/Overwatch izlerken
+  # calisabilecek komutlar; gerisi engellenir, yetkililer dahil).
+  # Label only, without "/" or arguments. Namespaced commands are matched by their label
+  # ("/essentials:msg" -> "msg"). Applied instantly after /rs reload.
+  viewer-allowed-commands:
+    # ReportSystem commands (plugin.yml names + aliases)
+    - report
+    - rapor
+    - reportplayer
+    - raporla
+    - reports
+    - raporlar
+    - reportlist
+    - raporlistesi
+    - reportsystem
+    - rs
+    - rsystem
+    - raporsistem
+    - overwatch
+    - ow
+    - overwatchsystem
+    # Private messages / staff help
+    - msg
+    - tell
+    - w
+    - whisper
+    - m
+    - r
+    - reply
+    - helpop
+
+  # Maximum distance (blocks) a replay viewer can move away from the replayed player (NPC).
+  # Moving back towards the NPC is always allowed. Players with reportsystem.view.all are exempt.
+  # 0 = disabled
+  viewer-max-distance: 48
 
   # Replay quality settings
   quality:

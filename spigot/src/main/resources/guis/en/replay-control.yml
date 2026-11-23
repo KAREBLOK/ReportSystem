@@ -1,0 +1,84 @@
+# Replay Control GUI
+title: "&8&nReplay Controls"
+size: 27
+
+# Background
+background:
+  enabled: false
+
+# Controls
+controls:
+  play-pause:
+    slot: 11
+    play:
+      material: LIME_DYE
+      name: "&a▶ Play"
+      lore:
+        - ''
+        - '&7Resume the replay.'
+        - ''
+        - '&e► Click'
+    pause:
+      material: GRAY_DYE
+      name: "&e⏸ Pause"
+      lore:
+        - ''
+        - '&7Pause the replay.'
+        - ''
+        - '&e► Click'
+
+  stop:
+    slot: 12
+    material: RED_DYE
+    name: "&c⏹ Stop"
+    lore:
+      - ''
+      - '&7Stop the replay and exit.'
+      - ''
+      - '&e► Click'
+
+  speed:
+    slot: 14
+    material: FEATHER
+    name: "&bSpeed: &f%speed%x"
+    lore:
+      - ''
+      - ' &8▪ &7Current: &a%speed%x'
+      - ''
+      - '&e► Left click &7to speed up'
+      - '&e► Right click &7to slow down'
+
+  info:
+    slot: 4
+    material: PAPER
+    name: "&6📊 Replay Info"
+    lore:
+      - ''
+      - ' &8▪ &7Player: &a%player%'
+      - ' &8▪ &7Duration: &a%duration%'
+      - ' &8▪ &7Progress: &a%progress%'
+      - ' &8▪ &7Action: &a%current%/%total%'
+      - ''
+
+# Time controls
+time-controls:
+  rewind-10s:
+    slot: 20
+    material: ARROW
+    name: "&e⏪ 10s Back"
+    lore:
+      - '&7Rewind 10 seconds'
+
+  forward-10s:
+    slot: 24
+    material: ARROW
+    name: "&a⏩ 10s Forward"
+    lore:
+      - '&7Fast forward 10 seconds'
+
+  teleport:
+    slot: 22
+    material: ENDER_PEARL
+    name: "&d🌀 Teleport"
+    lore:
+      - '&7Teleport to players'

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.commands;
 
+import java.util.Locale;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.punishment.PunishmentManager;
 import com.reportsystem.spigot.utils.AdvancementNotification;
@@ -35,7 +36,7 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        switch (args[0].toLowerCase(Locale.ROOT)) {
             case "reload":
                 plugin.getConfigManager().reload();
                 plugin.getMessageManager().reload();
@@ -349,6 +350,11 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
         String punisher = sender.getName();
         boolean success;
 
+        if (plugin.getPunishmentManager().isUnknownBanTarget(playerName)) {
+            plugin.getMessageManager().sendMessage(sender, "punishments.ban.unknown-player", "%player%", playerName);
+            return;
+        }
+
         if (durationMillis > 0) {
             success = plugin.getPunishmentManager().getProvider().tempBan(playerName, reason, punisher, durationMillis);
             if (success) {
@@ -364,8 +370,7 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
         }
 
         if (!success) {
-            sender.sendMessage(plugin.getMessageManager().colorize(
-                    "&cBan işlemi başarısız oldu!"));
+            plugin.getMessageManager().sendMessage(sender, "punishments.failed");
         }
     }
 
@@ -396,7 +401,7 @@ public class ReportSystemCommand implements CommandExecutor, TabCompleter {
                 args[0].equalsIgnoreCase("unmute") || args[0].equalsIgnoreCase("ban"))) {
             List<String> players = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
-                if (p.getName().toLowerCase().startsWith(args[1].toLowerCase())) {
+                if (p.getName().toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))) {
                     players.add(p.getName());
                 }
             }

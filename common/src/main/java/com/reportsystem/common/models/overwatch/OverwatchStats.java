@@ -1,5 +1,7 @@
 package com.reportsystem.common.models.overwatch;
 
+import java.util.Locale;
+
 public class OverwatchStats {
     private final String reviewerUUID;
     private String reviewerName;
@@ -54,7 +56,7 @@ public class OverwatchStats {
             this.firstReviewAt = System.currentTimeMillis();
         }
 
-        switch (verdict.toUpperCase()) {
+        switch (verdict.toUpperCase(Locale.ROOT)) {
             case "GUILTY":
                 this.guiltyVerdicts++;
                 break;

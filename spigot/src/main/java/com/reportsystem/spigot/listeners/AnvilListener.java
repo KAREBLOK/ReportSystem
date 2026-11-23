@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.listeners;
 
+import java.util.Locale;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.common.replay.actions.AnvilAction;
 import com.reportsystem.spigot.recording.RecordingManager;
@@ -64,7 +65,7 @@ public class AnvilListener implements Listener {
                 );
                 session.addAction(action);
 
-                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Anvil " + actionType.name().toLowerCase() +
+                ReportSystemSpigot.getInstance().debug("[RECORDING-DEBUG] Anvil " + actionType.name().toLowerCase(Locale.ROOT) +
                         ": " + result.getType().name() + " (cost: " + repairCost + ")");
             }
         }

@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.utils;
 
+import java.util.Locale;
 import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -8,9 +9,6 @@ import org.bukkit.advancement.Advancement;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.UUID;
 
@@ -90,10 +88,10 @@ public class AdvancementNotification {
             display.addProperty("description", description);
 
             JsonObject iconObj = new JsonObject();
-            iconObj.addProperty("id", "minecraft:" + icon.name().toLowerCase());
+            iconObj.addProperty("id", "minecraft:" + icon.name().toLowerCase(Locale.ROOT));
             display.add("icon", iconObj);
 
-            display.addProperty("frame", frameType.name().toLowerCase());
+            display.addProperty("frame", frameType.name().toLowerCase(Locale.ROOT));
             display.addProperty("show_toast", true);
             display.addProperty("announce_to_chat", false);
             display.addProperty("hidden", true);
@@ -107,14 +105,6 @@ public class AdvancementNotification {
             criteria.add("impossible", impossible);
             advancement.add("criteria", criteria);
 
-            // Save to file
-            File advancementFile = new File(plugin.getDataFolder(), "temp_advancements/" + key.getKey() + ".json");
-            advancementFile.getParentFile().mkdirs();
-
-            try (FileWriter writer = new FileWriter(advancementFile)) {
-                writer.write(advancement.toString());
-            }
-
             // Load advancement
             Bukkit.getUnsafe().loadAdvancement(key, advancement.toString());
 
@@ -126,12 +116,6 @@ public class AdvancementNotification {
     private void removeAdvancement(NamespacedKey key) {
         try {
             Bukkit.getUnsafe().removeAdvancement(key);
-
-            // Delete temp file
-            File advancementFile = new File(plugin.getDataFolder(), "temp_advancements/" + key.getKey() + ".json");
-            if (advancementFile.exists()) {
-                advancementFile.delete();
-            }
         } catch (Exception e) {
             // Ignore
         }

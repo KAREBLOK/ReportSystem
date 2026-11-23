@@ -24,11 +24,12 @@ public class MySQLDatabase implements Database {
         hikariConfig.setJdbcUrl(config.getJdbcUrl());
         hikariConfig.setUsername(config.getUsername());
         hikariConfig.setPassword(config.getPassword());
-        hikariConfig.setMaximumPoolSize(10);
-        hikariConfig.setMinimumIdle(2);
-        hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setIdleTimeout(600000);
-        hikariConfig.setMaxLifetime(1800000);
+        // Değerler config'ten (database.mysql.pool.*) — DatabaseConfig.withPool sınırlara kırpar
+        hikariConfig.setMaximumPoolSize(config.getMaxPoolSize());
+        hikariConfig.setMinimumIdle(config.getMinIdle());
+        hikariConfig.setConnectionTimeout(config.getConnectionTimeoutMs());
+        hikariConfig.setIdleTimeout(config.getIdleTimeoutMs());
+        hikariConfig.setMaxLifetime(config.getMaxLifetimeMs());
 
         this.dataSource = new HikariDataSource(hikariConfig);
 

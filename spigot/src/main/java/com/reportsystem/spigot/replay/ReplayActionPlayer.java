@@ -14,6 +14,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.*;
 
 import com.reportsystem.common.replay.actions.*;
 import com.reportsystem.spigot.utils.ItemSerializer;
+import com.reportsystem.spigot.utils.SoundUtil;
 import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 
 import org.bukkit.Location;
@@ -49,6 +50,10 @@ public class ReplayActionPlayer {
 
     // Civar oyuncuların fishing bobber entity ID'leri (ownerUUID -> bobberEntityId)
     private final Map<UUID, Integer> nearbyFishingBobbers = new HashMap<>();
+
+    // Paket tabanlı sahte düşen item'lar: entityId -> spawn paketini alan izleyiciler (yalnız ana thread).
+    // Yok etme paketi, sonradan replay'den ayrılmış olsa bile spawn'ı görmüş herkese gider.
+    private final Map<Integer, Set<UUID>> fakeItemRecipients = new HashMap<>();
 
     // Spawn edilen entity'leri takip etmek için (replay bitince silinecek)
     private final List<Entity> spawnedEntities = new ArrayList<>();
@@ -577,8 +582,7 @@ public class ReplayActionPlayer {
                                 item.getType().name() + " x" + item.getAmount());
                     }
                 } catch (Exception e) {
-                    plugin.getLogger().severe("[REPLAY-DEBUG] Error creating packet item: " + e.getMessage());
-                    e.printStackTrace();
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "[REPLAY-DEBUG] Error creating packet item", e);
                     packetItem = null;
                 }
             }
@@ -767,8 +771,7 @@ public class ReplayActionPlayer {
                             playBlockPlaceSound(blockLoc, material);
                         }
                     } catch (Exception e) {
-                        ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Invalid block type: " + action.getBlockType());
-                        e.printStackTrace();
+                        plugin.getLogger().log(java.util.logging.Level.WARNING, "[REPLAY] Invalid block type: " + action.getBlockType(), e);
                     }
                 }
                 break;
@@ -1327,8 +1330,7 @@ public class ReplayActionPlayer {
                                     action.getVehicleType() + " at " + vehicleLoc);
                         }
                     } catch (Exception e) {
-                        plugin.getLogger().severe("[REPLAY-DEBUG] Error placing vehicle: " + e.getMessage());
-                        e.printStackTrace();
+                        plugin.getLogger().log(java.util.logging.Level.SEVERE, "[REPLAY-DEBUG] Error placing vehicle", e);
                     }
                 }
             });
@@ -1370,14 +1372,15 @@ public class ReplayActionPlayer {
                         }
 
                         if (vehicle != null) {
+                            // Damga + izleyici dışındakilerden gizleme + nötrleme (AI/hasar kapalı)
+                            hideFromNonViewers(vehicle);
                             int vehicleEntityId = vehicle.getEntityId();
                             mountedEntities.put(vehicleEntityId, vehicle);
                             replayPlayer.getNpcManager().sendMountPacket(vehicleEntityId);
                             replayPlayer.getNpcManager().teleportNPC(vehicleLoc, mountedEntities);
                         }
                     } catch (Exception e) {
-                        plugin.getLogger().severe("[REPLAY-DEBUG] Error spawning vehicle: " + e.getMessage());
-                        e.printStackTrace();
+                        plugin.getLogger().log(java.util.logging.Level.SEVERE, "[REPLAY-DEBUG] Error spawning vehicle", e);
                     }
                 }
             });
@@ -1559,6 +1562,68 @@ public class ReplayActionPlayer {
     }
 
     /**
+     * Düşen eşyayı yalnız izleyicilerin istemcisinde gösterir (paket tabanlı sahte Item entity).
+     * Sunucuda entity oluşmadığı için huni/toplayıcı/portal/3. taraf yığınlayıcılar alamaz (dupe yok).
+     * İstemci item fiziğini kendisi simüle eder; 100 tick sonra yok edilir. Ana thread'den çağrılmalı.
+     */
+    private void spawnFakeDroppedItem(Location spawn, ItemStack item, Vector velocity) {
+        if (spawn == null || item == null) return;
+        Set<Player> viewers = replayPlayer.getViewers();
+        if (viewers.isEmpty()) return;
+
+        int id = ReplayNPCManager.generateEntityId();
+        Vector3d vel = new Vector3d(velocity.getX(), velocity.getY(), velocity.getZ());
+
+        WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                id,
+                Optional.of(UUID.randomUUID()),
+                EntityTypes.ITEM,
+                new Vector3d(spawn.getX(), spawn.getY(), spawn.getZ()),
+                0f,
+                0f,
+                0f,
+                0,
+                Optional.of(vel)
+        );
+
+        // Item entity metadata: index 8 = taşınan ItemStack (1.17+)
+        List<EntityData<?>> metadata = new ArrayList<>();
+        metadata.add(new EntityData<>(8, EntityDataTypes.ITEMSTACK, SpigotConversionUtil.fromBukkitItemStack(item)));
+        WrapperPlayServerEntityMetadata metaPacket = new WrapperPlayServerEntityMetadata(id, metadata);
+
+        WrapperPlayServerEntityVelocity velPacket = new WrapperPlayServerEntityVelocity(id, vel);
+
+        Set<UUID> recipients = new HashSet<>();
+        for (Player viewer : viewers) {
+            if (viewer == null || !viewer.isOnline()) continue;
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawnPacket);
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metaPacket);
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, velPacket);
+            recipients.add(viewer.getUniqueId());
+        }
+        if (recipients.isEmpty()) return;
+        fakeItemRecipients.put(id, recipients);
+
+        // 5 saniye sonra kaldır
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> despawnFakeItem(id), 100L);
+    }
+
+    /**
+     * Sahte düşen item'ı, spawn paketini almış (hâlâ çevrimiçi) herkesten kaldırır. İkinci çağrı etkisizdir.
+     */
+    private void despawnFakeItem(int id) {
+        Set<UUID> recipients = fakeItemRecipients.remove(id);
+        if (recipients == null) return;
+        WrapperPlayServerDestroyEntities destroy = new WrapperPlayServerDestroyEntities(id);
+        for (UUID uuid : recipients) {
+            Player viewer = plugin.getServer().getPlayer(uuid);
+            if (viewer != null && viewer.isOnline()) {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroy);
+            }
+        }
+    }
+
+    /**
      * InteractEntity action'ını oynatır
      */
     private void playInteractEntity(InteractEntityAction action) {
@@ -1579,6 +1644,10 @@ public class ReplayActionPlayer {
                     // GERÇEK OYUNCULARI ASLA ETKİLEME! Sadece hayvanlar ve mob'lar
                     if (nearbyEntity instanceof Player) {
                         continue; // Gerçek oyuncuları atla
+                    }
+                    // Yalnız replay'in spawn ettiği (damgalı) entity çekilir; gerçek mob'a dokunulmaz
+                    if (!ReplayEntityMarker.isMarked(nearbyEntity)) {
+                        continue;
                     }
 
                     if (nearbyEntity.getType().name().equals(entityTypeName)) {
@@ -1619,8 +1688,11 @@ public class ReplayActionPlayer {
                         // Leash efekti
                         spawnParticleForViewers(Particle.HAPPY_VILLAGER, nearbyEntity.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
 
+                        // 1.21.6+'da leash_knot.place sabiti kalktı (-> item.lead.tied); sabite
+                        // doğrudan erişim NoSuchFieldError verir, anahtar adla çözülür.
+                        String tiedKey = SoundUtil.firstExisting("minecraft:item.lead.tied", "minecraft:entity.leash_knot.place");
                         for (Player viewer : replayPlayer.getViewers()) {
-                            viewer.playSound(loc, Sound.ENTITY_LEASH_KNOT_PLACE, 1.0f, 1.0f);
+                            viewer.playSound(loc, tiedKey, 1.0f, 1.0f);
                         }
                         break;
                     }
@@ -1630,8 +1702,10 @@ public class ReplayActionPlayer {
 
             // Unleash kontrolü
             if (action.getTargetEntityType().endsWith("_UNLEASHED")) {
+                // 1.21.6+'da leash_knot.break sabiti kalktı (-> item.lead.untied)
+                String untiedKey = SoundUtil.firstExisting("minecraft:item.lead.untied", "minecraft:entity.leash_knot.break");
                 for (Player viewer : replayPlayer.getViewers()) {
-                    viewer.playSound(loc, Sound.ENTITY_LEASH_KNOT_BREAK, 1.0f, 1.0f);
+                    viewer.playSound(loc, untiedKey, 1.0f, 1.0f);
                 }
                 return;
             }
@@ -1985,19 +2059,20 @@ public class ReplayActionPlayer {
         ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Playing sound: " + action.getSoundName());
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
+            Location lastLoc = replayPlayer.getLastLocation();
+            if (lastLoc == null || lastLoc.getWorld() == null) return;
             Location soundLoc = new Location(
-                    replayPlayer.getLastLocation().getWorld(),
+                    lastLoc.getWorld(),
                     action.getX(), action.getY(), action.getZ()
             );
 
-            try {
-                Sound sound = Sound.valueOf(action.getSoundName());
-
-                for (Player viewer : replayPlayer.getViewers()) {
-                    viewer.playSound(soundLoc, sound, action.getVolume(), action.getPitch());
-                }
-            } catch (IllegalArgumentException e) {
-                ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Unknown sound: " + action.getSoundName());
+            // Kayıt "minecraft:entity.player.hurt" biçiminde; key string'i 1.21.x ve 26.x'te
+            // enum/registry farkından bağımsız çalışır ve istisna fırlatmaz.
+            // Eski enum adları (ENTITY_PLAYER_HURT) SoundUtil'de registry haritasıyla çözülür.
+            String soundKey = SoundUtil.resolveKey(action.getSoundName());
+            if (soundKey == null) return;
+            for (Player viewer : replayPlayer.getViewers()) {
+                viewer.playSound(soundLoc, soundKey, action.getVolume(), action.getPitch());
             }
         });
     }
@@ -2183,16 +2258,26 @@ public class ReplayActionPlayer {
 
             try {
                 EntityType entityType = EntityType.valueOf(action.getEntityType());
-                Entity spawnedEntity = loc.getWorld().spawnEntity(loc, entityType);
+                // Damga + nötrleme entity dünyaya eklenmeden basılır (L-1/L-2)
+                Entity spawnedEntity = spawnReplayEntity(loc, entityType);
+                if (spawnedEntity == null) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Entity type not spawnable: " +
+                            action.getEntityType());
+                    return;
+                }
 
-                // Özellikleri uygula
-                applyEntityProperties(spawnedEntity, action.getProperties());
-
-                // Entity'yi track et - replay bitince silinecek
-                spawnedEntity.setSilent(true);
+                // Entity'yi track et - replay bitince silinecek (özellik adımından ÖNCE: hata olsa da izli kalır)
                 spawnedEntities.add(spawnedEntity);
-                hideFromNonViewers(spawnedEntity);
                 spawnedEntitiesMap.put(action.getEntityUuid(), spawnedEntity);
+                hideFromNonViewers(spawnedEntity);
+
+                // Özellikleri uygula (bozuk/eski kayıt değeri entity'yi izsiz bırakmasın)
+                try {
+                    applyEntityProperties(spawnedEntity, action.getProperties());
+                } catch (Exception | LinkageError propertyError) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to apply entity properties: " +
+                            action.getEntityType() + " - " + propertyError);
+                }
 
                 // Spawn efektleri
                 spawnParticleForViewers(Particle.CLOUD, loc, 10, 0.3, 0.3, 0.3, 0.05);
@@ -2240,9 +2325,8 @@ public class ReplayActionPlayer {
                     living.setCustomNameVisible(Boolean.parseBoolean(properties.get("customNameVisible")));
                 }
             }
-            if (properties.containsKey("ai")) {
-                living.setAI(Boolean.parseBoolean(properties.get("ai")));
-            }
+            // "ai" özelliği bilerek uygulanmaz: replay mob'u gerçek oyunculara saldırmasın,
+            // AI hideFromNonViewers -> neutralize ile her zaman kapalıdır (H-45).
         }
 
         // Koyun
@@ -2468,7 +2552,8 @@ public class ReplayActionPlayer {
                     ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Sheep dyed to: " + newColor.name());
                 }
             } else {
-                // Entity bulunamadıysa, yakınlardaki gerçek entity'yi bul (fallback)
+                // Entity bulunamadıysa, yakınlardaki replay koyununu bul (fallback).
+                // Yalnız damgalı (replay'in spawn ettiği) koyun boyanır; gerçek koyuna dokunulmaz.
                 Location loc = new Location(
                         replayPlayer.getLastLocation().getWorld(),
                         action.getX(),
@@ -2477,7 +2562,7 @@ public class ReplayActionPlayer {
                 );
 
                 for (Entity nearbyEntity : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
-                    if (nearbyEntity instanceof Sheep) {
+                    if (nearbyEntity instanceof Sheep && ReplayEntityMarker.isMarked(nearbyEntity)) {
                         Sheep sheep = (Sheep) nearbyEntity;
                         org.bukkit.DyeColor newColor = org.bukkit.DyeColor.valueOf(action.getDyeColor());
                         sheep.setColor(newColor);
@@ -2507,8 +2592,6 @@ public class ReplayActionPlayer {
                     action.getZ()
             );
 
-            org.bukkit.World world = itemLoc.getWorld();
-
             try {
                 ItemStack item = ItemSerializer.deserializeItemStack(action.getItemData());
                 if (item == null || item.getType() == Material.AIR) return;
@@ -2527,32 +2610,19 @@ public class ReplayActionPlayer {
 
                         playSoundToViewers(dropSpawn, Sound.ENTITY_ITEM_PICKUP, 0.5f, 0.8f);
 
-                        org.bukkit.entity.Item droppedItem = world.dropItem(dropSpawn, item);
-
                         // Velocity: yeni kayıtlarda gerçek velocity, eski kayıtlarda fallback
                         boolean isVelData = Math.abs(action.getX()) < 5 &&
                                             Math.abs(action.getY()) < 5 &&
                                             Math.abs(action.getZ()) < 5;
 
-                        if (isVelData) {
-                            // Yeni kayıt: gerçek drop velocity
-                            droppedItem.setVelocity(new Vector(action.getX(), action.getY(), action.getZ()));
-                        } else {
-                            // Eski kayıt: NPC'nin baktığı yöne doğru at
-                            droppedItem.setVelocity(playerLoc.getDirection().multiply(0.3));
-                        }
+                        Vector dropVel = isVelData
+                                // Yeni kayıt: gerçek drop velocity
+                                ? new Vector(action.getX(), action.getY(), action.getZ())
+                                // Eski kayıt: NPC'nin baktığı yöne doğru at
+                                : playerLoc.getDirection().multiply(0.3);
 
-                        droppedItem.setPickupDelay(Integer.MAX_VALUE);
-                        droppedItem.setSilent(true);
-                        spawnedEntities.add(droppedItem);
-                        hideFromNonViewers(droppedItem);
-
-                        // 5 saniye sonra kaldır
-                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                            if (droppedItem.isValid()) {
-                                droppedItem.remove();
-                            }
-                        }, 100L);
+                        // Sunucuda gerçek Item yok: yalnız izleyicilere paket tabanlı sahte item (dupe yüzeyi sıfır)
+                        spawnFakeDroppedItem(dropSpawn, item, dropVel);
                         break;
 
                     case PICKUP:
@@ -2605,6 +2675,11 @@ public class ReplayActionPlayer {
             // Civar oyuncuların fishing bobber'larını temizle
             for (UUID uuid : new HashSet<>(nearbyFishingBobbers.keySet())) {
                 despawnNearbyFishingBobber(uuid);
+            }
+
+            // Paket tabanlı sahte düşen item'ları temizle
+            for (Integer id : new ArrayList<>(fakeItemRecipients.keySet())) {
+                despawnFakeItem(id);
             }
 
             // FishHook'ları temizle
@@ -2713,7 +2788,7 @@ public class ReplayActionPlayer {
             } else {
                 // BREAK - Yakındaki hanging'i bul ve kaldır
                 for (Entity entity : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
-                    if (entity instanceof Hanging) {
+                    if (entity instanceof Hanging && ReplayEntityMarker.isMarked(entity)) { // gerçek (damgasız) çerçeve/tabloya asla dokunma
                         entity.remove();
                         ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Hanging removed");
                         break;
@@ -2739,9 +2814,13 @@ public class ReplayActionPlayer {
                 Material material = Material.valueOf(action.getBlockType());
                 FallingBlock fallingBlock = loc.getWorld().spawnFallingBlock(loc, material.createBlockData());
                 fallingBlock.setSilent(true);
+                // Gerçek dünyaya etki etmesin: eşya düşürmez, entity'ye hasar vermez.
+                // Yere değince blok koymayı ReplayEntityMarker (EntityChangeBlockEvent iptali) engeller.
+                fallingBlock.setDropItem(false);
+                fallingBlock.setHurtEntities(false);
 
                 spawnedEntities.add(fallingBlock);
-                hideFromNonViewers(fallingBlock);
+                hideFromNonViewers(fallingBlock); // PDC damgası burada basılır (aynı tick, yere değmeden önce)
 
                 ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Falling block spawned: " + material);
             } catch (Exception e) {
@@ -2764,16 +2843,25 @@ public class ReplayActionPlayer {
 
             try {
                 EntityType entityType = EntityType.valueOf(action.getBabyEntityType());
-                Entity baby = loc.getWorld().spawnEntity(loc, entityType);
-                baby.setSilent(true);
-
-                // Baby olarak ayarla
-                if (baby instanceof Ageable) {
-                    ((Ageable) baby).setBaby();
+                // Damga + nötrleme entity dünyaya eklenmeden basılır (L-1/L-2)
+                Entity baby = spawnReplayEntity(loc, entityType);
+                if (baby == null) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Baby entity type not spawnable: " +
+                            action.getBabyEntityType());
+                    return;
                 }
 
                 spawnedEntities.add(baby);
                 hideFromNonViewers(baby);
+
+                // Baby olarak ayarla (izlemeye alındıktan sonra: hata entity'yi izsiz bırakmasın)
+                try {
+                    if (baby instanceof Ageable) {
+                        ((Ageable) baby).setBaby();
+                    }
+                } catch (Exception | LinkageError propertyError) {
+                    ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Failed to set baby: " + propertyError);
+                }
 
                 // Kalp parçacıkları
                 spawnParticleForViewers(Particle.HEART, loc.clone().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0);
@@ -3679,30 +3767,17 @@ public class ReplayActionPlayer {
 
                         playSoundToViewers(nearbyDropSpawn, Sound.ENTITY_ITEM_PICKUP, 0.5f, 0.8f);
 
-                        Item droppedItem = nearbyDropSpawn.getWorld().dropItem(nearbyDropSpawn, itemStack);
-
                         // Velocity: yeni kayıtlarda gerçek velocity, eski kayıtlarda fallback
                         boolean isNearbyVelData = Math.abs(action.getX()) < 5 &&
                                                   Math.abs(action.getY()) < 5 &&
                                                   Math.abs(action.getZ()) < 5;
 
-                        if (isNearbyVelData) {
-                            droppedItem.setVelocity(new Vector(action.getX(), action.getY(), action.getZ()));
-                        } else {
-                            droppedItem.setVelocity(loc.getDirection().multiply(0.3));
-                        }
+                        Vector nearbyDropVel = isNearbyVelData
+                                ? new Vector(action.getX(), action.getY(), action.getZ())
+                                : loc.getDirection().multiply(0.3);
 
-                        droppedItem.setPickupDelay(Integer.MAX_VALUE);
-                        droppedItem.setSilent(true);
-                        spawnedEntities.add(droppedItem);
-                        hideFromNonViewers(droppedItem);
-
-                        // 5 saniye sonra kaldır
-                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                            if (droppedItem.isValid()) {
-                                droppedItem.remove();
-                            }
-                        }, 100L);
+                        // Sunucuda gerçek Item yok: yalnız izleyicilere paket tabanlı sahte item (dupe yüzeyi sıfır)
+                        spawnFakeDroppedItem(nearbyDropSpawn, itemStack, nearbyDropVel);
 
                         ReportSystemSpigot.getInstance().debug("[REPLAY-DEBUG] Nearby item drop: " +
                                 itemStack.getType() + " | realVel=" + isNearbyVelData);
@@ -4254,7 +4329,7 @@ public class ReplayActionPlayer {
             } else {
                 // BREAK - yakındaki hanging'i bul ve kaldır
                 for (Entity entity : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
-                    if (entity instanceof Hanging) {
+                    if (entity instanceof Hanging && ReplayEntityMarker.isMarked(entity)) { // gerçek (damgasız) çerçeve/tabloya asla dokunma
                         entity.remove();
                         break;
                     }
@@ -4513,14 +4588,63 @@ public class ReplayActionPlayer {
     }
 
     /**
+     * Replay entity'sini spawn eder; PDC damgası + persistent=false + nötrleme, entity dünyaya
+     * eklenmeden (CreatureSpawnEvent'ten ve diğer eklentilerin görmesinden önce) consumer içinde basılır.
+     * Böylece sonraki adımlar istisna atsa bile entity damgasız/AI açık kalmaz (L-1/L-2).
+     *
+     * @return spawn edilen entity; dünya yoksa veya tip spawn edilemiyorsa null
+     */
+    private Entity spawnReplayEntity(Location loc, EntityType entityType) {
+        if (loc == null || loc.getWorld() == null || entityType == null) return null;
+        Class<? extends Entity> entityClass = entityType.getEntityClass();
+        if (entityClass == null || !entityType.isSpawnable()) return null;
+        return loc.getWorld().spawn(loc, entityClass, created -> {
+            ReplayEntityMarker.mark(created);
+            neutralize(created);
+        });
+    }
+
+    /**
      * Spawn edilen entity'yi sadece replay viewer'lara gosterir, diger oyunculardan gizler
      */
     private void hideFromNonViewers(Entity entity) {
+        // Replay entity'si: persistent=false + PDC damgası (hayalet entity temizliği için)
+        ReplayEntityMarker.mark(entity);
+        neutralize(entity);
         Set<Player> viewers = new HashSet<>(replayPlayer.getViewers());
         for (Player online : plugin.getServer().getOnlinePlayers()) {
             if (!viewers.contains(online)) {
                 online.hideEntity(plugin, entity);
             }
+        }
+    }
+
+    /**
+     * Replay entity'sini canlı dünyaya zararsız hale getirir (H-45): mob AI'sı kapalı (saldırmaz,
+     * yürümez, patlamaz), hasar almaz, itilmez, sessiz. Konum güncellemeleri teleportla gelir.
+     * Kalan yollar (hedefleme/patlama/hasar olayları) ReplayEntityMarker dinleyicilerinde iptal edilir.
+     */
+    private void neutralize(Entity entity) {
+        if (entity == null) return;
+        try {
+            if (entity instanceof Mob) {
+                Mob mob = (Mob) entity;
+                mob.setAI(false);
+                mob.setTarget(null);
+            }
+            if (entity instanceof LivingEntity) {
+                LivingEntity living = (LivingEntity) entity;
+                living.setInvulnerable(true);
+                living.setCollidable(false);
+                living.setRemoveWhenFarAway(false);
+            }
+            if (entity instanceof AbstractArrow) {
+                // Replay oku/mızrağı hiçbir oyuncu tarafından yerden alınamasın
+                ((AbstractArrow) entity).setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+            }
+            entity.setSilent(true);
+        } catch (Exception ignored) {
+            // Entity zaten geçersizse sessizce geç
         }
     }
 

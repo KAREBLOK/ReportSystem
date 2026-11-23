@@ -105,14 +105,14 @@ reports:
         icon: "MAP"
         frame: "TASK"
 
-  # Raporcu geri bildirimi (Hypixel tarzı - sadece kabul edilen raporlar için)
-  reporter-feedback:
-    accepted: "%prefix_success% &aRaporunuz incelendi ve işleme alındı! &7(Rapor #%id% - %player%)"
-
     # Yetkili giriş bildirimi (bekleyen raporlar)
     staff-join-title: "&6&l⚠ BEKLEYEN RAPORLAR"
     staff-join-message: "&eSunucuda &c%count% &eadet bekleyen rapor var!"
     staff-join-action: "&eKontrol etmek için: &b/reports"
+
+  # Raporcu geri bildirimi (Hypixel tarzı - sadece kabul edilen raporlar için)
+  reporter-feedback:
+    accepted: "%prefix_success% &aRaporunuz incelendi ve işleme alındı! &7(Rapor #%id% - %player%)"
 
   # Liste mesajları
   list:
@@ -186,7 +186,8 @@ replay:
   server-connect-error: "%prefix_error% &cSunucuya bağlanırken bir hata oluştu!"
   world-change: "%prefix_info% &e✦ Replay: &b%world% &edünyasına geçiliyor..."
   command-blocked: "%prefix_error% &cReplay izlerken bu komutu kullanamazsınız!"
-  command-blocked-tip: "&eÖnce replay'i durdurun: &f/replay stop"
+  command-blocked-tip: "&eÖnce replay'i durdurun (hotbar'daki Durdur eşyası)."
+  teleport-blocked: "&cReplay/inceleme sırasında ışınlanamazsınız."
 
   # Nametag prefixes
   nametag-recorded-player: "&c&l[İZLENEN] "
@@ -242,6 +243,7 @@ punishments:
     already-banned: "%prefix_error% &cOyuncu zaten yasaklı!"
     not-banned: "%prefix_error% &cOyuncu yasaklı değil!"
     unbanned: "%prefix_success% &e%player% &aadlı oyuncunun yasağı kaldırıldı!"
+    unknown-player: "%prefix_error% &c%player% &7sunucuda daha önce görülmemiş; oyuncu çevrimiçi olmadan ban uygulanamaz (Mojang sorgusu ana thread'de yapılmaz)."
     offline: "%prefix_error% &c%player% &7çevrimiçi değil! Animasyonlu ban için oyuncunun online olması gerekiyor."
     enter-reason: "&6Ban sebebini girin (varsayılan: %default%)"
     animated-started: "&a⚡ &lANIMATED BAN BAŞLATILDI!"
@@ -290,6 +292,11 @@ punishments:
     time-permanent: " (Kalıcı)"
     # Susturma kaldırıldığında oyuncuya
     unmuted-player: "&a✓ Artık konuşabilirsiniz!"
+
+  # Proxy (global) ceza isteği sonuçları / Proxy punishment request results
+  proxy:
+    failed: "%prefix_error% &c%player% için proxy %type% isteği başarısız oldu!"
+    timeout: "%prefix_error% &c%player% için proxy %type% isteğine zamanında cevap gelmedi (işlem uygulanmamış olabilir)!"
 
   kick:
     success: "%prefix_success% &e%player% &7sunucudan atıldı!"
@@ -466,6 +473,7 @@ overwatch:
     try-later: "&7Daha sonra tekrar deneyin."
     completed: "%overwatch_prefix% &aİnceleme tamamlandı! &e+%xp% XP &8| %rank% &7Seviye %level%"
     verdict-submitted: "%overwatch_prefix% &7Replay tamamlandı! Lütfen kararını ver."
+    own-report-rejected: "%overwatch_prefix% &cBu raporda raporlayan veya raporlanan taraf olduğun için oy kullanamazsın!"
 
   # Karar Mesajları
   verdict:
@@ -478,6 +486,7 @@ overwatch:
     thank-you: "&a&lTeşekkürler! İnceleme kaydedildi."
     footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     cancelled: "%overwatch_prefix% &eİnceleme iptal edildi. Rapor tekrar kuyruğa eklendi."
+    error: "%overwatch_prefix% &cKararın kaydedilemedi, lütfen tekrar dene."
 
     # Verdict types (for display)
     types:

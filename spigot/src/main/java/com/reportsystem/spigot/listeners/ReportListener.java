@@ -70,7 +70,34 @@ public class ReportListener implements Listener {
             Integer pendingReplayId = plugin.getPendingReplay(player.getUniqueId());
             if (pendingReplayId != null) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    plugin.getReplayManager().startReplay(pendingReplayId, player);
+                    com.reportsystem.spigot.replay.ReplayManager replayManager = plugin.getReplayManager();
+                    if (replayManager == null) {
+                        return;
+                    }
+                    java.util.UUID uuid = player.getUniqueId();
+                    // Cikis yaptiysa donus kaydini ReplayManager'in quit temizligi siler
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    // Savunma derinligi: bekleyen replay yalnizca yetkiliye acilir (H-20: donus kaydi kalmasin)
+                    if (!player.hasPermission("reportsystem.view.all")) {
+                        replayManager.forgetOriginServer(uuid);
+                        return;
+                    }
+                    // M-6: Overwatch incelemesindeki oyuncu normal replay baslatamaz (GUIListener.watchReplay
+                    // ve ReportPluginMessageListener.handleStartReplay ile ayni kontrol)
+                    com.reportsystem.spigot.overwatch.listeners.OverwatchReplayListener owl = plugin.getOverwatchReplayListener();
+                    if (owl != null && owl.isReviewing(uuid)) {
+                        plugin.getMessageManager().sendMessage(player, "replay.already-watching");
+                        replayManager.forgetOriginServer(uuid);
+                        return;
+                    }
+                    replayManager.startReplay(pendingReplayId, player).thenAccept(started -> {
+                        // K-3: replay baslamadiysa donus kaydi kalmasin; aktif replay'in kaydina dokunma
+                        if (!Boolean.TRUE.equals(started) && !replayManager.isWatchingReplay(uuid)) {
+                            replayManager.forgetOriginServer(uuid);
+                        }
+                    });
                 }, 40L);
             }
         }

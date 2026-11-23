@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.overwatch.commands;
 
+import java.util.Locale;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.overwatch.NPCManager;
 import com.reportsystem.spigot.overwatch.gui.OverwatchLeaderboardGUI;
@@ -45,7 +46,7 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        switch (args[0].toLowerCase(Locale.ROOT)) {
             case "stats":
                 handleStats(player, args);
                 break;
@@ -73,7 +74,7 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             new OverwatchStatsGUI(plugin, player, player.getUniqueId()).open();
         } else {
-            Player target = Bukkit.getPlayer(args[1]);
+            Player target = Bukkit.getPlayerExact(args[1]);
             if (target != null) {
                 new OverwatchStatsGUI(plugin, player, target.getUniqueId()).open();
             } else {
@@ -93,7 +94,7 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        switch (args[1].toLowerCase()) {
+        switch (args[1].toLowerCase(Locale.ROOT)) {
             case "create":
                 handleNPCCreate(player, args);
                 break;
@@ -403,7 +404,7 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 3) {
             if (args[0].equalsIgnoreCase("npc")) {
-                String sub = args[1].toLowerCase();
+                String sub = args[1].toLowerCase(Locale.ROOT);
                 if (Arrays.asList("delete", "skin", "look", "move", "name", "select").contains(sub)) {
                     // Suggest NPC display names
                     for (var entry : plugin.getNPCManager().getActiveNPCs().values()) {
@@ -423,8 +424,8 @@ public class OverwatchCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        String input = args[args.length - 1].toLowerCase();
-        completions.removeIf(s -> !s.toLowerCase().startsWith(input));
+        String input = args[args.length - 1].toLowerCase(Locale.ROOT);
+        completions.removeIf(s -> !s.toLowerCase(Locale.ROOT).startsWith(input));
         return completions;
     }
 }

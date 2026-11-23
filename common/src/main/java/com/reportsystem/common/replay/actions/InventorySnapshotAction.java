@@ -1,6 +1,7 @@
 package com.reportsystem.common.replay.actions;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +47,9 @@ public class InventorySnapshotAction extends ReplayAction {
             this.amount = amount;
             this.durability = durability;
             this.displayName = displayName;
-            this.lore = lore;
-            this.enchantments = enchantments != null ? enchantments : new HashMap<>();
+            // Savunmacı kopya: yalnız ArrayList/HashMap serileştirilsin (H-22)
+            this.lore = lore == null ? null : new ArrayList<>(lore);
+            this.enchantments = enchantments != null ? new HashMap<>(enchantments) : new HashMap<>();
             this.itemStackData = itemStackData;
             this.customModelData = customModelData;
             this.unbreakable = unbreakable;

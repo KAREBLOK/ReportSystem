@@ -1,0 +1,108 @@
+# Report List GUI
+title: "&8&nReports &7(%page%/%max_page%)"
+size: 54
+
+# Report item
+report-item:
+  materials:
+    PENDING: PAPER
+    ACCEPTED: LIME_DYE
+    REJECTED: RED_DYE
+
+  enchant-new: true
+
+  status-colors:
+    PENDING: "&e"
+    ACCEPTED: "&a"
+    REJECTED: "&c"
+    CLOSED: "&7"
+
+  name: "&e#%id% &8- &f%reported%"
+  labels:
+    reporter: "Reporter:"
+    reason: "Reason:"
+    server: "Server:"
+    date: "Date:"
+    status: "Status:"
+    total-reports: "Total Reports:"
+    overwatch: "Overwatch:"
+    click: "&e► Click for details"
+
+# Loading error
+loading-error: "&cAn error occurred while loading reports!"
+
+# Empty list
+empty-list:
+  material: BARRIER
+  slot: 22
+  name: "&c&lNo Reports Found"
+  lore:
+    - ''
+    - '&7No reports match'
+    - '&7your filter.'
+    - ''
+
+# Navigation
+navigation:
+  previous:
+    slot: 48
+    material: ARROW
+    name: "&e« Previous Page"
+    lore:
+      - "&7Go to page %prev_page%"
+
+  page-info:
+    slot: 49
+    material: BOOK
+    name: "&fPage &e%page%&f/&e%max_page%"
+    lore:
+      - ''
+      - ' &8▪ &7Total reports: &a%total%'
+      - ' &8▪ &7Showing: &a%showing%'
+      - ''
+
+  next:
+    slot: 50
+    material: ARROW
+    name: "&aNext Page »"
+    lore:
+      - "&7Go to page %next_page%"
+
+# Sorting
+sort:
+  slot: 16
+  material: COMPARATOR
+
+# Actions
+actions:
+  refresh:
+    slot: 45
+    material: SUNFLOWER
+    name: "&a↻ Refresh"
+    lore:
+      - "&7Refresh the report list"
+
+  search:
+    slot: 46
+    material: COMPASS
+
+  stats:
+    slot: 52
+    material: EMERALD
+
+  settings:
+    slot: 53
+    material: REDSTONE
+
+# Background
+background:
+  border:
+    enabled: false
+    material: GRAY_STAINED_GLASS_PANE
+    name: " "
+    slots: [0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,45,46,47,48,49,50,51,52,53]
+
+  top-row:
+    material: BLACK_STAINED_GLASS_PANE
+    name: " "
+    slots: [0,1,2,3,4,5,6,7,8]

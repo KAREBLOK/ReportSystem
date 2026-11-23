@@ -3,9 +3,7 @@ package com.reportsystem.spigot.listeners;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 public class PlayerListener implements Listener {
@@ -23,27 +21,13 @@ public class PlayerListener implements Listener {
         // Aktif replay'leri temizle
         plugin.getReplayManager().handlePlayerQuit(player);
 
-        // Aktif kayıtları kontrol et
+        // Aktif kayıtları kontrol et (genelde handlePlayerQuit zaten durdurmuştur; kayıt
+        // haritadan atomik alındığı için bildirim yalnız bir kez gider) — F-Ö3: çıkışta bildirim gönder
         if (plugin.getRecordingManager().isRecording(player.getUniqueId())) {
-            plugin.getRecordingManager().stopRecording(player.getUniqueId());
+            plugin.getRecordingManager().stopRecording(player.getUniqueId(), true);
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onCommand(PlayerCommandPreprocessEvent event) {
-        Player player = event.getPlayer();
-        String command = event.getMessage().toLowerCase();
-
-        // Replay izlerken belirli komutları engelle
-        if (plugin.getReplayManager().isWatchingReplay(player)) {
-            if (command.startsWith("/tp") || command.startsWith("/teleport") ||
-                    command.startsWith("/warp") || command.startsWith("/home") ||
-                    command.startsWith("/spawn") || command.startsWith("/tpa")) {
-
-                event.setCancelled(true);
-                plugin.getMessageManager().sendMessage(player, "replay.command-blocked");
-                plugin.getMessageManager().sendMessage(player, "replay.command-blocked-tip");
-            }
-        }
-    }
+    // H-47: replay/Overwatch izleyicisinin komut filtresi ReplayProtectionListener.onCommand'a
+    // tasindi (izin listesi + Overwatch post-replay kapsami + ad alanli komut soyma).
 }

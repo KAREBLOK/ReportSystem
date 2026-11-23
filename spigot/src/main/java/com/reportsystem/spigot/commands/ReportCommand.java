@@ -10,13 +10,12 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class ReportCommand implements CommandExecutor, TabCompleter {
 
     private final ReportSystemSpigot plugin;
-    private static final Map<UUID, Integer> pendingReportIds = new ConcurrentHashMap<>();
+    // Yalnız ana thread'den (komut) erişilir
     private final Map<UUID, List<Long>> reportTimestamps = new HashMap<>();
 
     public ReportCommand(ReportSystemSpigot plugin) {
@@ -95,11 +94,15 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
             long currentTime = System.currentTimeMillis();
             long oneMinuteAgo = currentTime - 60000; // 1 dakika önce
 
-            // Oyuncunun son report zamanlarını al
-            List<Long> timestamps = reportTimestamps.getOrDefault(playerUUID, new ArrayList<>());
+            // 1 dakikadan eski kayıtları temizle; listesi boşalan oyuncuyu haritadan at
+            // (D5: aksi halde bir kez rapor eden her oyuncu sonsuza dek haritada kalıyordu)
+            reportTimestamps.entrySet().removeIf(entry -> {
+                entry.getValue().removeIf(time -> time < oneMinuteAgo);
+                return entry.getValue().isEmpty();
+            });
 
-            // 1 dakikadan eski kayıtları temizle
-            timestamps.removeIf(time -> time < oneMinuteAgo);
+            // Oyuncunun son report zamanlarını al
+            List<Long> timestamps = reportTimestamps.computeIfAbsent(playerUUID, k -> new ArrayList<>());
 
             // Limit kontrolü
             if (timestamps.size() >= globalRateLimit) {
@@ -109,7 +112,6 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
 
             // Yeni zamanı ekle
             timestamps.add(currentTime);
-            reportTimestamps.put(playerUUID, timestamps);
         }
 
         // GUI aç (kayıt GUI'den sebep seçildikten sonra başlayacak)
@@ -118,43 +120,20 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private void startRecording(Player reporter, Player target) {
-        // Zaten kayıt ediliyor mu kontrol et
-        if (plugin.getRecordingManager().isRecording(target.getUniqueId())) {
-            return;
-        }
-
-        // Geçici ID ile kayıt başlat
-        int tempReportId = -999;
-        int duration = plugin.getConfigManager().getRecordingDuration();
-
-        // Reason henüz bilinmiyor, GUI'den seçilecek
-        plugin.getRecordingManager().startRecording(target, tempReportId, duration, reporter.getName(), "Bekleniyor");
-        plugin.getMessageManager().sendRecordingStarted(reporter);
-
-        plugin.getLogger().info("[RECORDING] Started recording for " + target.getName() +
-                " (requested by " + reporter.getName() + ") with temp ID: " + tempReportId);
-    }
-
+    /**
+     * Açık kayda yeni raporu bağlar (H-40: birincil rapor EZİLMEZ, ek rapor olarak eklenir).
+     * Bu yolu kullananlar (ChatListener) bildirimi zaten anında gönderdiği için
+     * kayıt sonu bildirimi istenmez.
+     */
     public static void updateRecordingWithReportId(UUID targetUUID, int reportId) {
         ReportSystemSpigot plugin = ReportSystemSpigot.getInstance();
 
-        // Pending ID olarak sakla
-        pendingReportIds.put(targetUUID, reportId);
-
-        // Recording manager'a bildir
         if (plugin.getRecordingManager().isRecording(targetUUID)) {
-            plugin.getRecordingManager().updateReportId(targetUUID, reportId);
-            plugin.getLogger().info("[RECORDING] Updated recording for " + targetUUID +
-                    " with actual report ID: " + reportId);
+            plugin.getRecordingManager().attachReport(targetUUID, reportId, false);
         } else {
             plugin.getLogger().warning("[RECORDING] No active recording found for " + targetUUID +
-                    " when trying to update report ID: " + reportId);
+                    " when trying to attach report ID: " + reportId);
         }
-    }
-
-    public static Integer getPendingReportId(UUID playerUUID) {
-        return pendingReportIds.remove(playerUUID);
     }
 
     public void notifyStaff(String reporterName, String targetName, String reason, int reportId) {
@@ -173,7 +152,7 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
-                    .filter(name -> name.toLowerCase().startsWith(args[0].toLowerCase()))
+                    .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(args[0].toLowerCase(Locale.ROOT)))
                     .collect(Collectors.toList());
         }
         return new ArrayList<>();

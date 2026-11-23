@@ -1,0 +1,29 @@
+# Replay Teleport GUI
+title: "&8&nTeleport"
+size: 27
+
+# Background
+background:
+  enabled: false
+
+# Items
+items:
+  player:
+    name: "&e%player%"
+    lore:
+      - ''
+      - ' &8▪ &7Location: &a%location%'
+      - ''
+      - '&e► Click to teleport'
+  suspect:
+    name: "&c%player% &7(Suspect)"
+    lore:
+      - ''
+      - ' &8▪ &7Location: &a%location%'
+      - ''
+      - '&e► Click to teleport'
+  location-unknown: "&cUnknown"
+  close:
+    name: "&8←"
+    lore:
+      - "&7Close"

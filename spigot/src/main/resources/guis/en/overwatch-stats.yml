@@ -1,0 +1,77 @@
+# Overwatch Stats GUI
+title: "&8&n%player%"
+
+# No stats
+no-stats-name: "&c&lNo Stats"
+no-stats-lore1: "&7This player hasn't"
+no-stats-lore2: "&7reviewed anything yet!"
+back: "&8←"
+
+# Player header (slot 4)
+player-name: "&b&l%player%"
+rank-lore: " &8▪ &7Rank: %rank_color%&l%rank%"
+level-lore: " &8▪ &7Level: &a%level%"
+xp-lore: " &8▪ &7XP: &a%xp% &8/ &a%next_xp%"
+
+# Total reviews (slot 20)
+total-name: "&6&lTotal Reviews"
+total-desc1: "&7Total number of reports"
+total-desc2: "&7you have reviewed"
+total-count: " &8▪ &a%count% &7reports"
+
+# Guilty verdicts (slot 21)
+guilty-name: "&c&lGuilty Verdicts"
+guilty-desc1: "&7Number of players"
+guilty-desc2: "&7you found guilty"
+guilty-count: " &8▪ &c%count% &7guilty"
+guilty-percent: " &8▪ &8(&c%percent%%&8)"
+
+# Innocent verdicts (slot 22)
+innocent-name: "&a&lInnocent Verdicts"
+innocent-desc1: "&7Number of players"
+innocent-desc2: "&7you found clean"
+innocent-count: " &8▪ &a%count% &7innocent"
+innocent-percent: " &8▪ &8(&a%percent%%&8)"
+
+# Skipped verdicts (slot 23)
+skip-name: "&e&lSkipped Verdicts"
+skip-desc: "&7Number of reports you skipped"
+skip-count: " &8▪ &e%count% &7skipped"
+skip-percent: " &8▪ &8(&e%percent%%&8)"
+
+# Accuracy (slot 24)
+accuracy-name: "&6&lAccuracy Rate"
+accuracy-desc1: "&7How often you agree"
+accuracy-desc2: "&7with other reviewers"
+accuracy-value: " &8▪ &6%accuracy%% &7accuracy"
+accuracy-weight: " &8▪ &7Vote Weight: &a%weight%x"
+accuracy-hidden: " &8▪ &8Visible after %remaining% more reviews"
+
+# Review time (slot 30)
+time-name: "&b&lReview Time"
+time-desc: "&7Total time spent reviewing"
+time-total: " &8▪ &a%hours%h %minutes%m %seconds%s"
+time-average: " &8▪ &7Average: &a%avg_seconds% seconds"
+
+# Dates (slot 31)
+dates-name: "&d&lDates"
+dates-first: " &8▪ &7First review:"
+dates-first-value: "     &a%date%"
+dates-last: " &8▪ &7Last review:"
+dates-last-value: "     &a%date%"
+
+# XP system (slot 32)
+xp-name: "&a&lXP System"
+xp-desc: "&7How to earn XP:"
+xp-guilty: " &8▪ &aGuilty/Innocent: &e+15 XP"
+xp-skip: " &8▪ &eSkip: &e+5 XP"
+xp-next: "&7Next level:"
+xp-needed: " &8▪ &6%xp% XP &7needed"
+
+# Rank info (slot 33)
+ranks-name: "&b&lRanks"
+ranks-system: "&7Rank System:"
+ranks-diamond: "&bDIAMOND &8- &72500+ XP"
+ranks-gold: "&6GOLD &8- &71000+ XP"
+ranks-silver: "&7SILVER &8- &7500+ XP"
+ranks-bronze: "&cBRONZE &8- &70+ XP"

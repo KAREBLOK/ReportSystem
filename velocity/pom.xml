@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.reportsystem</groupId>
         <artifactId>reportsystem-parent</artifactId>
-        <version>2.1.5</version>
+        <version>2.2.0</version>
     </parent>
 
     <artifactId>velocity</artifactId>
@@ -33,15 +33,7 @@
         <dependency>
             <groupId>com.velocitypowered</groupId>
             <artifactId>velocity-api</artifactId>
-            <version>3.3.0-SNAPSHOT</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- Adventure Legacy Serializer (Velocity runtime'da mevcut) -->
-        <dependency>
-            <groupId>net.kyori</groupId>
-            <artifactId>adventure-text-serializer-legacy</artifactId>
-            <version>4.17.0</version>
+            <version>3.5.1</version>
             <scope>provided</scope>
         </dependency>
 
@@ -62,13 +54,13 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <!-- velocity-api 3.5.x sinif sürümü 65 (Java 21) -> yalniz bu modul 21 -->
+                    <release>21</release>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>com.velocitypowered</groupId>
                             <artifactId>velocity-api</artifactId>
-                            <version>3.3.0-SNAPSHOT</version>
+                            <version>3.5.1</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
@@ -76,7 +68,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>3.6.2</version>
                 <configuration>
                     <createDependencyReducedPom>false</createDependencyReducedPom>
                     <minimizeJar>true</minimizeJar>
@@ -90,6 +82,11 @@
                         <relocation>
                             <pattern>com.mysql</pattern>
                             <shadedPattern>com.reportsystem.velocity.libs.mysql</shadedPattern>
+                        </relocation>
+                        <!-- Protobuf (mysql-connector-j geçişli bağımlılığı) - sunucudaki protobuf 3 ile çakışmasın -->
+                        <relocation>
+                            <pattern>com.google.protobuf</pattern>
+                            <shadedPattern>com.reportsystem.velocity.libs.protobuf</shadedPattern>
                         </relocation>
                         <!-- SnakeYAML -->
                         <relocation>
@@ -111,6 +108,13 @@
                             <includes>
                                 <include>**</include>
                             </includes>
+                        </filter>
+                        <!-- Velocity slf4j'i kendisi saglar -->
+                        <filter>
+                            <artifact>org.slf4j:*</artifact>
+                            <excludes>
+                                <exclude>**</exclude>
+                            </excludes>
                         </filter>
                         <filter>
                             <artifact>*:*</artifact>

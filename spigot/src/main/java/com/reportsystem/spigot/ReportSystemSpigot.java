@@ -1,8 +1,6 @@
 package com.reportsystem.spigot;
 
 import com.github.retrooper.packetevents.PacketEvents;
-import com.google.common.io.ByteArrayDataOutput;
-import com.google.common.io.ByteStreams;
 import com.reportsystem.common.database.Database;
 import com.reportsystem.common.database.DatabaseConfig;
 import com.reportsystem.common.database.DatabaseFactory;
@@ -71,11 +69,15 @@ public class ReportSystemSpigot extends JavaPlugin {
     private com.reportsystem.spigot.hooks.grim.GrimHook grimHook;
     private com.reportsystem.spigot.hooks.AntiCheatBypassManager antiCheatBypassManager;
 
+    // Replay/Overwatch izleyicisinin cokmeye dayanikli PDC yedegi
+    private com.reportsystem.spigot.replay.ViewerBackup viewerBackup;
+
     // Commands
     private ReportCommand reportCommand;
 
     // Plugin messaging
     private final String CHANNEL = "reportsystem:channel";
+    private com.reportsystem.common.messaging.MessageSigner messageSigner;
 
     // Pending replays (for cross-server teleportation)
     private final Map<UUID, Integer> pendingReplays = new ConcurrentHashMap<>();
@@ -203,30 +205,72 @@ public class ReportSystemSpigot extends JavaPlugin {
             recordingManager.stopAllRecordings();
         }
 
+        // Geri yukleme/temizlik adimlari AYRI try/catch: biri patlarsa digerleri (envanter iadesi,
+        // anti-cheat bypass izinlerinin kaldirilmasi) yine calismali.
+
         // Stop all replays
         if (replayManager != null) {
-            replayManager.stopAllReplays();
+            try {
+                replayManager.stopAllReplays();
+            } catch (Throwable t) {
+                getLogger().log(Level.SEVERE, "Shutdown: stopAllReplays failed", t);
+            }
         }
 
         // Cleanup Overwatch reviews (restore all reviewer inventories)
         if (overwatchReplayListener != null) {
-            overwatchReplayListener.cleanup();
+            try {
+                overwatchReplayListener.cleanup();
+            } catch (Throwable t) {
+                getLogger().log(Level.SEVERE, "Shutdown: Overwatch review cleanup failed", t);
+            }
         }
 
         // Cleanup Anti-Cheat hooks
-        if (polarHook != null) polarHook.disconnect();
-        if (vulcanHook != null) vulcanHook.disconnect();
-        if (grimHook != null) grimHook.disconnect();
-        if (antiCheatBypassManager != null) antiCheatBypassManager.shutdown();
+        if (polarHook != null) {
+            try { polarHook.disconnect(); } catch (Throwable t) { getLogger().log(Level.WARNING, "Shutdown: Polar disconnect failed", t); }
+        }
+        if (vulcanHook != null) {
+            try { vulcanHook.disconnect(); } catch (Throwable t) { getLogger().log(Level.WARNING, "Shutdown: Vulcan disconnect failed", t); }
+        }
+        if (grimHook != null) {
+            try { grimHook.disconnect(); } catch (Throwable t) { getLogger().log(Level.WARNING, "Shutdown: Grim disconnect failed", t); }
+        }
+        if (antiCheatBypassManager != null) {
+            try {
+                antiCheatBypassManager.shutdown();
+            } catch (Throwable t) {
+                getLogger().log(Level.SEVERE, "Shutdown: anti-cheat bypass cleanup failed", t);
+            }
+        }
 
         // Cleanup Overwatch NPCs
         if (npcManager != null) {
-            npcManager.shutdown();
+            try {
+                npcManager.shutdown();
+            } catch (Throwable t) {
+                getLogger().log(Level.WARNING, "Shutdown: NPC manager shutdown failed", t);
+            }
         }
 
-        // Cleanup AnimatedBanManager (freeze task iptal, frozen oyuncuları serbest bırak)
+        // Cleanup AnimatedBanManager (freeze task iptal, frozen oyuncuları serbest bırak).
+        // Ceza deposundan ÖNCE: bekleyen animasyonlu ban'lar uygulanırken store hâlâ açık olmalı.
         if (animatedBanManager != null) {
-            animatedBanManager.shutdown();
+            try {
+                animatedBanManager.shutdown();
+            } catch (Throwable t) {
+                getLogger().log(Level.SEVERE, "Shutdown: AnimatedBanManager shutdown failed", t);
+            }
+        }
+
+        // Kalıcı mute/uyarı yazmalarını bitir (punishmentManager hiç kurulmamış olabilir)
+        if (punishmentManager != null
+                && punishmentManager.getProvider() instanceof com.reportsystem.spigot.punishment.providers.InternalPunishmentProvider internalProvider) {
+            try {
+                internalProvider.shutdown();
+            } catch (Exception e) {
+                getLogger().warning("Punishment store shutdown error: " + e.getMessage());
+            }
         }
 
         // Close database
@@ -287,6 +331,18 @@ public class ReportSystemSpigot extends JavaPlugin {
         updateYamlFile("guis/overwatch-verdict.yml");
         updateYamlFile("guis/overwatch-stats.yml");
         updateYamlFile("guis/overwatch-leaderboard.yml");
+
+        // GUI configs (English) - H-49: language != tr iken guis/en/ kullanılır
+        // (replay-info ölü dosya, EN kopyası yok)
+        String[] englishGuis = {
+                "report-create", "report-list", "report-detail", "replay-control",
+                "replay-teleport", "punishment", "punishment-selection", "animated-ban",
+                "replay-settings", "replay-hotbar", "overwatch-menu", "overwatch-verdict",
+                "overwatch-stats", "overwatch-leaderboard"
+        };
+        for (String gui : englishGuis) {
+            updateYamlFile("guis/en/" + gui + ".yml");
+        }
     }
 
     /**
@@ -400,7 +456,7 @@ public class ReportSystemSpigot extends JavaPlugin {
                     currentConfig.save(file);
                     getLogger().info("§a[Config] " + resourcePath + " güncellendi! Yeni ayarlar eklendi.");
                 } else {
-                    getLogger().info("§7[Config] " + resourcePath + " zaten güncel.");
+                    debug("[Config] " + resourcePath + " zaten güncel."); // O-2: her açılışta INFO kalabalığı yapmasın
                 }
             }
 
@@ -438,10 +494,15 @@ public class ReportSystemSpigot extends JavaPlugin {
                         configManager.getMySQLDatabase(),
                         configManager.getMySQLUsername(),
                         configManager.getMySQLPassword()
-                );
+                ).withPool(
+                        configManager.getMySQLPoolMaximumSize(),
+                        configManager.getMySQLPoolMinimumIdle(),
+                        configManager.getMySQLPoolConnectionTimeout(),
+                        configManager.getMySQLPoolIdleTimeout(),
+                        configManager.getMySQLPoolMaxLifetime()
+                ).withSslMode(configManager.getMySQLSslMode());
                 this.database = new MySQLDatabase(dbConfig); // DatabaseFactory kullanımı yerine doğrudan
             } else {
-                DatabaseConfig dbConfig = new DatabaseConfig(getDataFolder());
                 this.database = new SQLiteDatabase(getDataFolder()); // DatabaseFactory kullanımı yerine doğrudan
             }
             database.connect();
@@ -469,6 +530,15 @@ public class ReportSystemSpigot extends JavaPlugin {
 
             // Nearby Player Move Listener (opsiyonel - config'den açılabilir)
             this.nearbyPlayerMoveListener = new com.reportsystem.spigot.recording.NearbyPlayerMoveListener(this, recordingManager);
+
+            // Viewer Backup — replay izlerken cokmede envanter kaybina karsi PDC yedegi.
+            // ReplayManager'dan ONCE kurulur; join dinleyicisi cokmus oturumun yedegini geri yukler.
+            this.viewerBackup = new com.reportsystem.spigot.replay.ViewerBackup(this);
+            getServer().getPluginManager().registerEvents(viewerBackup, this);
+            // Reload/PlugMan sonrasi cevrimici kalmis oyuncularda yarim kalmis yedek varsa geri yukle
+            for (Player online : getServer().getOnlinePlayers()) {
+                viewerBackup.restoreIfPresent(online);
+            }
 
             // Replay Manager
             this.replayManager = new ReplayManager(this, replayDAO, recordingManager);
@@ -572,6 +642,14 @@ public class ReportSystemSpigot extends JavaPlugin {
         // Punishment listener
         getServer().getPluginManager().registerEvents(new PunishmentListener(this), this);
 
+        // Replay protection listener (komut filtresi, hasar/eşya/blok koruması) — M-1: replay.enabled'dan
+        // BAĞIMSIZ kaydedilir; ReplayManager koşulsuz kurulduğu için kayıt kapalıyken eski bir replay
+        // izlenebilir ve izleyici korumasız kalmamalı.
+        getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.replay.ReplayProtectionListener(this), this);
+        // K-f: replay kontrol listener'ı da replay.enabled'dan BAĞIMSIZ (tek kayıt) — kayıt kapalıyken
+        // eski replay izleyen oyuncunun kontrol eşyaları/kilitleri çalışmalı.
+        getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.ReplayControlListener(this), this);
+
         // Recording listeners
         if (configManager.isReplayEnabled()) {
             getServer().getPluginManager().registerEvents(new RecordingListener(this), this);
@@ -598,9 +676,6 @@ public class ReportSystemSpigot extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.EntitySpawnListener(recordingManager, this), this);
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.LeashListener(recordingManager, this), this);
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.ChatRecordingListener(recordingManager, this), this);
-            getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.ReplayControlListener(this), this);
-            // Replay protection listener (prevent viewers from picking up items, breaking blocks, etc.)
-            getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.replay.ReplayProtectionListener(this), this);
             // Nearby player tracker - records actions of players near the recorded player
             getServer().getPluginManager().registerEvents(new com.reportsystem.spigot.listeners.NearbyPlayerTrackerListener(this), this);
             // Nearby Player Move Listener - instant move tracking (opsiyonel)
@@ -655,6 +730,8 @@ public class ReportSystemSpigot extends JavaPlugin {
      */
     private void registerChannels() {
         if (configManager.isBungeeCordEnabled()) {
+            initMessageSigner();
+
             // BungeeCord channel
             getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
 
@@ -670,6 +747,36 @@ public class ReportSystemSpigot extends JavaPlugin {
 
             getLogger().info("Registered plugin messaging channels (including notifications)");
         }
+    }
+
+    /**
+     * Plugin message HMAC anahtarini yukler; bossa rastgele uretip config'e kaydeder.
+     */
+    private void initMessageSigner() {
+        String secret = getConfig().getString("bungeecord.message-secret", "");
+        if (secret == null || secret.trim().isEmpty()) {
+            secret = com.reportsystem.common.messaging.MessageSigner.generateSecret();
+            getConfig().set("bungeecord.message-secret", secret);
+            saveConfig();
+            getLogger().warning("============================================================");
+            getLogger().warning("[GUVENLIK] bungeecord.message-secret bos oldugu icin rastgele uretildi.");
+            getLogger().warning("Ayni degeri proxy (bungeecord/velocity) config.yml'indeki 'message-secret'");
+            getLogger().warning("ve diger TUM backend sunucularin config.yml'ine kopyalayin; aksi halde mesajlar reddedilir.");
+            getLogger().warning("============================================================");
+        }
+        this.messageSigner = new com.reportsystem.common.messaging.MessageSigner(secret.trim());
+    }
+
+    public com.reportsystem.common.messaging.MessageSigner getMessageSigner() {
+        return messageSigner;
+    }
+
+    /** Kanal mesajini imzalayip oyuncu uzerinden proxy'ye yollar. */
+    public void sendSigned(Player carrier, String channel, byte[] payload) {
+        if (messageSigner == null) {
+            return;
+        }
+        carrier.sendPluginMessage(this, channel, messageSigner.sign(channel, payload));
     }
 
     /**
@@ -728,32 +835,14 @@ public class ReportSystemSpigot extends JavaPlugin {
      */
     private void cleanupCache() {
         long now = System.currentTimeMillis();
-        int cacheExpiry = configManager.getCacheExpiry() * 60 * 1000; // Convert to millis
+        long cacheExpiry = configManager.getCacheExpiry() * 60L * 1000L; // Convert to millis
+        // H-14b: aynı map rapor cooldown'unu da tutuyor — cooldown'dan kısa sürede silersek
+        // cooldown erken biter. Saklama süresi en az cooldown kadar olmalı.
+        long keep = Math.max(cacheExpiry, configManager.getReportCooldown() * 1000L);
 
         cooldowns.entrySet().removeIf(entry ->
-                now - entry.getValue() > cacheExpiry
+                now - entry.getValue() > keep
         );
-    }
-
-    /**
-     * Create cross-server report
-     */
-    public void createCrossServerReport(Player reporter, String targetName, String reason) {
-        if (!configManager.isBungeeCordEnabled()) {
-            getLogger().warning("Tried to create cross-server report but BungeeCord is disabled!");
-            return;
-        }
-
-        ByteArrayDataOutput out = ByteStreams.newDataOutput();
-        out.writeUTF("CreateReport");
-        out.writeUTF(reporter.getName());
-        out.writeUTF(reporter.getUniqueId().toString());
-        out.writeUTF(targetName);
-        out.writeUTF(reason);
-
-        reporter.sendPluginMessage(this, CHANNEL, out.toByteArray());
-
-        debug("[DEBUG] Sent cross-server report: " + reporter.getName() + " -> " + targetName);
     }
 
     /**
@@ -762,9 +851,12 @@ public class ReportSystemSpigot extends JavaPlugin {
     public void storePendingReplay(UUID playerUUID, int reportId) {
         pendingReplays.put(playerUUID, reportId);
 
-        // Remove after 30 seconds
+        // 30 sn sonra yalniz AYNI istek hala bekliyorsa dusur (D4: sonradan gelen yeni istegi
+        // silme); dusen bekleyen replay'in donus sunucusu kaydi da temizlenir (H-20).
         getServer().getScheduler().runTaskLater(this, () -> {
-            pendingReplays.remove(playerUUID);
+            if (pendingReplays.remove(playerUUID, reportId) && replayManager != null) {
+                replayManager.forgetOriginServer(playerUUID);
+            }
         }, 20L * 30);
     }
 
@@ -868,8 +960,8 @@ public class ReportSystemSpigot extends JavaPlugin {
     }
 
     /**
-     * PacketEvents surumunu kontrol eder. Yeni Minecraft surumleri (26.2+) icin
-     * PacketEvents 2.13.0+ gerekir; eski surumde replay/NPC paketleri bozulabilir.
+     * PacketEvents surumunu kontrol eder. Minecraft 26.3 icin PacketEvents 2.14.0+
+     * gerekir; eski surumde replay/NPC paketleri bozulabilir.
      */
     private void checkPacketEventsVersion() {
         try {
@@ -880,10 +972,10 @@ public class ReportSystemSpigot extends JavaPlugin {
             if (m.find()) {
                 int major = Integer.parseInt(m.group(1));
                 int minor = Integer.parseInt(m.group(2));
-                if (major < 2 || (major == 2 && minor < 13)) {
+                if (major < 2 || (major == 2 && minor < 14)) {
                     getLogger().warning("PacketEvents " + peVersion + " surumu eski olabilir. "
-                            + "Yeni Minecraft surumleri (26.2+) icin PacketEvents 2.13.0+ kurmaniz onerilir; "
-                            + "aksi halde replay/NPC paketleri bozulabilir.");
+                            + "Minecraft 26.3 icin PacketEvents 2.14.0+ gerekir; "
+                            + "eski surumde replay/NPC paketleri bozulabilir.");
                 }
             }
         } catch (Throwable ignored) {
@@ -893,8 +985,8 @@ public class ReportSystemSpigot extends JavaPlugin {
 
     private void printBanner() {
         String version = getDescription().getVersion();
-        String dbType = configManager.getDatabaseType().toUpperCase();
-        String lang = configManager.getLanguage().toUpperCase();
+        String dbType = configManager.getDatabaseType().toUpperCase(java.util.Locale.ROOT);
+        String lang = configManager.getLanguage().toUpperCase(java.util.Locale.ROOT);
         String mode = configManager.isBungeeCordEnabled() ? "Network" : "Standalone";
         boolean papi = getServer().getPluginManager().getPlugin("PlaceholderAPI") != null;
 
@@ -947,6 +1039,10 @@ public class ReportSystemSpigot extends JavaPlugin {
 
     public com.reportsystem.spigot.hooks.AntiCheatBypassManager getAntiCheatBypassManager() {
         return antiCheatBypassManager;
+    }
+
+    public com.reportsystem.spigot.replay.ViewerBackup getViewerBackup() {
+        return viewerBackup;
     }
 
     public PunishmentManager getPunishmentManager() {

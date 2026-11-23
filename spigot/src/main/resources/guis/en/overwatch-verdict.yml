@@ -1,0 +1,67 @@
+# Overwatch Verdict GUI
+title: "&8&nOverwatch - Verdict"
+
+# Report info (slot 4)
+report-info:
+  name: "&6&lReport &8#%id%"
+  lore-reported: " &8▪ &7Reported: &c%reported%"
+  lore-reporter: " &8▪ &7Reporter: &e%reporter%"
+  lore-reason: " &8▪ &7Reason: &f%reason%"
+  lore-server: " &8▪ &7Server: &b%server%"
+
+# Guilty button (slot 20)
+guilty:
+  name: "&c&l✘ GUILTY"
+  lore-desc1: "&7This player is cheating."
+  lore-desc2: "&cClearly using cheats"
+  lore-desc3: "&cand should be punished."
+  lore-click: "&e► Click to choose a category"
+
+# Innocent button (slot 22)
+innocent:
+  name: "&a&l✔ INNOCENT"
+  lore-desc1: "&7This player is clean."
+  lore-desc2: "&aNot using cheats."
+  lore-desc3: "&aFalse report or nothing suspicious."
+  lore-click: "&e► Click to confirm"
+
+# Skip button (slot 24)
+skip:
+  name: "&e&l⊗ SKIP"
+  lore-desc1: "&7I'm not sure."
+  lore-desc2: "&eNot enough evidence"
+  lore-desc3: "&eor I can't decide."
+  lore-note: "&8Note: Skipping gives less XP"
+  lore-click: "&e► Click to skip"
+
+# Back button (slot 49)
+back:
+  name: "&8←"
+  lore: "&7Back to main menu"
+
+# Category selection title (slot 4)
+category-title: "&c&lSelect Category"
+
+# Categories
+category-combat:
+  name: "&c&lCombat Hacks"
+  lore-desc1: "&7KillAura, Velocity, AutoClicker,"
+  lore-desc2: "&7Reach, Criticals, etc."
+
+category-movement:
+  name: "&e&lMovement Hacks"
+  lore-desc1: "&7Fly, Speed, Jesus, Glide,"
+  lore-desc2: "&7NoFall, Spider, etc."
+
+category-visual:
+  name: "&b&lVisual Hacks"
+  lore-desc1: "&7XRay, ESP, Tracers, Wallhack,"
+  lore-desc2: "&7ChestESP, Freecam, etc."
+
+category-other:
+  name: "&7&lOther"
+  lore-desc1: "&7Other cheat types or"
+  lore-desc2: "&7cheats that fit no category."
+
+category-back:
+  name: "&8←"

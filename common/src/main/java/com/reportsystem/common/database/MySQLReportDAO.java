@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class MySQLReportDAO implements ReportDAO {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger("ReportSystem");
 
     private final HikariDataSource dataSource;
 
@@ -30,6 +31,8 @@ public class MySQLReportDAO implements ReportDAO {
                 server_name VARCHAR(50) DEFAULT NULL,
                 punished BOOLEAN DEFAULT FALSE,
                 punishment_type VARCHAR(20),
+                resolved_by VARCHAR(32) DEFAULT NULL,
+                resolved_at BIGINT DEFAULT 0,
                 INDEX idx_reported (reported_player_name),
                 INDEX idx_reporter (reporter_name),
                 INDEX idx_status (status),
@@ -66,8 +69,21 @@ public class MySQLReportDAO implements ReportDAO {
             } catch (SQLException e) {
                 // Kolon zaten varsa ignore
             }
+
+            // H-14a: çözen yetkili + çözülme zamanı kalıcı
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN resolved_by VARCHAR(32) DEFAULT NULL");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
+
+            try {
+                stmt.execute("ALTER TABLE reports ADD COLUMN resolved_at BIGINT DEFAULT 0");
+            } catch (SQLException e) {
+                // Kolon zaten varsa ignore
+            }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.createTables failed", e);
         }
     }
 
@@ -94,7 +110,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.createReport failed (reportedPlayerName=" + reportedPlayerName + ", reporterName=" + reporterName + ", reporterUUID=" + reporterUUID + ")", e);
         }
         return null;
     }
@@ -113,7 +129,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReport failed (id=" + id + ")", e);
         }
         return null;
     }
@@ -135,7 +151,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReports failed (page=" + page + ", perPage=" + perPage + ")", e);
         }
         return reports;
     }
@@ -153,7 +169,7 @@ public class MySQLReportDAO implements ReportDAO {
                 reports.add(extractReportFromResultSet(rs));
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getAllReports failed", e);
         }
         return reports;
     }
@@ -173,7 +189,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportsByPlayer failed (playerName=" + playerName + ")", e);
         }
         return reports;
     }
@@ -193,7 +209,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportsByReporter failed (reporterName=" + reporterName + ")", e);
         }
         return reports;
     }
@@ -210,7 +226,7 @@ public class MySQLReportDAO implements ReportDAO {
                 return rs.getInt(1);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportCount failed", e);
         }
         return 0;
     }
@@ -227,9 +243,25 @@ public class MySQLReportDAO implements ReportDAO {
 
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.updateReportStatus failed (id=" + id + ", status=" + status + ")", e);
         }
         return false;
+    }
+
+    @Override
+    public int transitionStatus(int id, String expectedStatus, String newStatus) throws SQLException {
+        // Atomik koşullu geçiş: rapor başka bir yetkili tarafından işlendiyse 0 satır etkilenir.
+        String sql = "UPDATE reports SET status = ? WHERE id = ? AND status = ?";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, newStatus);
+            stmt.setInt(2, id);
+            stmt.setString(3, expectedStatus);
+
+            return stmt.executeUpdate();
+        }
     }
 
     @Override
@@ -244,7 +276,7 @@ public class MySQLReportDAO implements ReportDAO {
 
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.updateReportServer failed (id=" + id + ", serverName=" + serverName + ")", e);
         }
         return false;
     }
@@ -262,6 +294,19 @@ public class MySQLReportDAO implements ReportDAO {
     }
 
     @Override
+    public boolean setResolution(int id, String resolvedBy, long resolvedAt) throws SQLException {
+        String sql = "UPDATE reports SET resolved_by = ?, resolved_at = ? WHERE id = ?";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, resolvedBy);
+            stmt.setLong(2, resolvedAt);
+            stmt.setInt(3, id);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    @Override
     public boolean deleteReport(int id) {
         String sql = "DELETE FROM reports WHERE id = ?";
 
@@ -271,7 +316,7 @@ public class MySQLReportDAO implements ReportDAO {
             stmt.setInt(1, id);
             return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.deleteReport failed (id=" + id + ")", e);
         }
         return false;
     }
@@ -290,7 +335,7 @@ public class MySQLReportDAO implements ReportDAO {
                 System.out.println(deleted + " eski rapor silindi.");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.deleteOldReports failed (days=" + days + ")", e);
         }
     }
 
@@ -396,7 +441,29 @@ public class MySQLReportDAO implements ReportDAO {
             // Eski tablolarda bu kolon olmayabilir
         }
 
+        // Çözen yetkili / zaman (H-14a) — migrasyondan önce okunursa (ör. proxy) çökmesin
+        report.setResolvedBy(optString(rs, "resolved_by"));
+        report.setResolvedAt(optLong(rs, "resolved_at"));
+
         return report;
+    }
+
+    /** Kolon yoksa (eski şema) null döner. */
+    private static String optString(ResultSet rs, String column) {
+        try {
+            return rs.getString(column);
+        } catch (SQLException e) {
+            return null;
+        }
+    }
+
+    /** Kolon yoksa (eski şema) 0 döner. */
+    private static long optLong(ResultSet rs, String column) {
+        try {
+            return rs.getLong(column);
+        } catch (SQLException e) {
+            return 0L;
+        }
     }
 
     @Override
@@ -414,7 +481,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportsByStatus failed (status=" + status + ")", e);
         }
         return reports;
     }
@@ -434,7 +501,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportsByServer failed (serverName=" + serverName + ")", e);
         }
         return reports;
     }
@@ -455,7 +522,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getReportsByDateRange failed (startTime=" + startTime + ", endTime=" + endTime + ")", e);
         }
         return reports;
     }
@@ -477,7 +544,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.countReportsByReporterAndReported failed (reporterName=" + reporterName + ", reportedName=" + reportedName + ")", e);
         }
         return 0;
     }
@@ -497,7 +564,7 @@ public class MySQLReportDAO implements ReportDAO {
                 }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.log(java.util.logging.Level.SEVERE, "[DB] MySQLReportDAO.getTotalReportsForPlayer failed (playerName=" + playerName + ")", e);
         }
         return 0;
     }

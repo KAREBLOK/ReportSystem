@@ -31,7 +31,8 @@ public class ReplaySerializer {
     }
 
     /**
-     * Byte array'den replay action'larını geri yükler
+     * Byte array'den replay action'larını geri yükler.
+     * Okuma, izin listeli {@link ReplayObjectFilters#replay()} filtresiyle yapılır (H-22).
      */
     @SuppressWarnings("unchecked")
     public static List<ReplayAction> deserialize(byte[] data, boolean compressed) throws IOException, ClassNotFoundException {
@@ -40,10 +41,12 @@ public class ReplaySerializer {
         if (compressed) {
             try (GZIPInputStream gzipIn = new GZIPInputStream(bais);
                  ObjectInputStream ois = new ObjectInputStream(gzipIn)) {
+                ois.setObjectInputFilter(ReplayObjectFilters.replay());
                 return (List<ReplayAction>) ois.readObject();
             }
         } else {
             try (ObjectInputStream ois = new ObjectInputStream(bais)) {
+                ois.setObjectInputFilter(ReplayObjectFilters.replay());
                 return (List<ReplayAction>) ois.readObject();
             }
         }

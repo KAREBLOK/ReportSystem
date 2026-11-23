@@ -1,5 +1,6 @@
 package com.reportsystem.velocity.punishment.providers;
 
+import com.reportsystem.common.punishment.PunishmentCommandSanitizer;
 import com.reportsystem.velocity.ReportSystemVelocity;
 import com.reportsystem.velocity.punishment.VelocityPunishmentManager.PunishmentProvider;
 
@@ -11,62 +12,73 @@ public class AdvancedBanVelocityProvider implements PunishmentProvider {
         this.plugin = plugin;
     }
 
-    private String sanitizeInput(String input) {
-        if (input == null) return "";
-        return input.replaceAll("[^a-zA-Z0-9\u00e7\u00c7\u011f\u011e\u0131\u0130\u00f6\u00d6\u015f\u015e\u00fc\u00dc .,_\\-]", "").trim();
-    }
-
     private void dispatchCommand(String command) {
         plugin.getServer().getCommandManager().executeAsync(
                 plugin.getServer().getConsoleCommandSource(), command
         );
     }
 
+    /** Geçersiz oyuncu adı: komut ÇALIŞTIRILMAZ (ad silinip başka oyuncuya dönüşmesin) [CRA-02]. */
+    private boolean rejectName(String playerName) {
+        plugin.getLogger().warn("[AdvancedBan] Invalid player name rejected, command not sent: {}", PunishmentCommandSanitizer.logSafe(playerName));
+        return false;
+    }
+
     @Override
     public boolean ban(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         if (duration > 0) {
-            dispatchCommand(String.format("aban tempban %s %s %s", safePlayer, convertDuration(duration), safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("aban tempban", safePlayer, convertDuration(duration), safeReason));
         } else {
-            dispatchCommand(String.format("aban ban %s %s", safePlayer, safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("aban ban", safePlayer, safeReason));
         }
         return true;
     }
 
     @Override
     public boolean mute(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         if (duration > 0) {
-            dispatchCommand(String.format("aban tempmute %s %s %s", safePlayer, convertDuration(duration), safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("aban tempmute", safePlayer, convertDuration(duration), safeReason));
         } else {
-            dispatchCommand(String.format("aban mute %s %s", safePlayer, safeReason));
+            dispatchCommand(PunishmentCommandSanitizer.command("aban mute", safePlayer, safeReason));
         }
         return true;
     }
 
     @Override
     public boolean kick(String playerName, String reason, String punisher) {
-        dispatchCommand(String.format("aban kick %s %s", sanitizeInput(playerName), sanitizeInput(reason)));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("aban kick", safePlayer, PunishmentCommandSanitizer.reason(reason)));
         return true;
     }
 
     @Override
     public boolean warn(String playerName, String reason, String punisher) {
-        dispatchCommand(String.format("aban warn %s %s", sanitizeInput(playerName), sanitizeInput(reason)));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("aban warn", safePlayer, PunishmentCommandSanitizer.reason(reason)));
         return true;
     }
 
     @Override
     public boolean unban(String playerName) {
-        dispatchCommand("aban unban " + sanitizeInput(playerName));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("aban unban", safePlayer));
         return true;
     }
 
     @Override
     public boolean unmute(String playerName) {
-        dispatchCommand("aban unmute " + sanitizeInput(playerName));
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        dispatchCommand(PunishmentCommandSanitizer.command("aban unmute", safePlayer));
         return true;
     }
 

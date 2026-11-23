@@ -413,7 +413,7 @@ public class PolarDetectionListener {
         StringBuilder sb = new StringBuilder();
         for (String part : parts) {
             if (sb.length() > 0) sb.append(" ");
-            sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase());
+            sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase(Locale.ROOT));
         }
         return sb.toString();
     }

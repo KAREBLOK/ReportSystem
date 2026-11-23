@@ -15,6 +15,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -34,6 +35,11 @@ public class OverwatchReplayListener implements Listener {
     private final Map<UUID, PlayerState> savedStates = new HashMap<>();
     private final Set<UUID> postReplayPlayers = new HashSet<>();
 
+    // savePlayerState ile konumu alinmis ama envanteri/durumu HENUZ yakalanmamis oyuncular.
+    // Envanter, replay'in envanteri gercekten temizledigi tick'te (giveControlItems) yakalanir;
+    // bu kume doluyken savedStates'teki envanter kopyasi GECERSIZDIR ve geri yazilmaz.
+    private final Set<UUID> pendingCapture = new HashSet<>();
+
     public OverwatchReplayListener(ReportSystemSpigot plugin) {
         this.plugin = plugin;
         startReplayCheckTask();
@@ -42,21 +48,92 @@ public class OverwatchReplayListener implements Listener {
     // ─── Public API ───
 
     /**
-     * Oyuncu state'ini replay baslamadan ONCE kaydet.
-     * OverwatchMenuGUI'den startReplay'den once cagrilir.
+     * Inceleme baslatilirken (OverwatchMenuGUI, startReplay'den ONCE) cagrilir.
+     * Yalniz BASLANGIC KONUMU kesinlesir; envanter/durum "bekliyor" isaretlenir ve
+     * {@link #captureIfPending(Player)} ile envanterin gercekten temizlendigi tick'te
+     * (ReplayControlManager.giveControlItems) yakalanir. Arada gecen sure (20 tick + async
+     * yukleme + dunya degisimi) korumasiz oldugu icin anlik goruntu burada ALINMAZ:
+     * alinsaydi oyuncu o pencerede esyalari sandiga koyup sonunda geri alabilirdi (dupe).
+     * PDC yedegi de burada yazilmaz (envanter henuz degismedi).
      */
     public void savePlayerState(Player player) {
-        // IDEMPOTENT: "Tekrar Izle" akisi startReplay'i yeniden cagirir; o sirada
-        // envanter ZATEN temizlenmis olur. putIfAbsent olmasaydi ilk kaydedilen
-        // GERCEK envanterin uzerine BOS envanter yazilir ve esyalar kalici olarak
-        // kaybolurdu. Ilk kayit inceleme bitene kadar korunur.
-        savedStates.putIfAbsent(player.getUniqueId(), new PlayerState(player));
-        plugin.debug("[OVERWATCH-REPLAY] Saved original state for " + player.getName());
+        // IDEMPOTENT: inceleme suruyorsa ilk kayit korunur ("Tekrar Izle" bunu cagirmaz).
+        UUID uuid = player.getUniqueId();
+        if (savedStates.putIfAbsent(uuid, new PlayerState(player)) == null) {
+            pendingCapture.add(uuid);
+        }
+        plugin.debug("[OVERWATCH-REPLAY] Saved original location for " + player.getName() + " (inventory pending)");
+    }
+
+    /**
+     * ReplayControlManager.giveControlItems icinden, envanter temizlenmeden HEMEN once
+     * cagrilir. Bekleyen bir Overwatch kaydi varsa envanter/durum O ANKI degerlerle yakalanir
+     * (konum savePlayerState anindaki baslangic noktasi kalir) ve PDC yedegi OWNER_OVERWATCH
+     * ile yazilir. Bekleyen kayit yoksa ("Tekrar Izle", normal replay) hicbir sey yapmaz.
+     *
+     * @return yakalama yapildiysa true
+     */
+    public boolean captureIfPending(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (!pendingCapture.remove(uuid)) return false;
+        PlayerState old = savedStates.get(uuid);
+        if (old == null) return false;
+        savedStates.put(uuid, new PlayerState(player, old.location));
+        if (plugin.getViewerBackup() != null) {
+            plugin.getViewerBackup().saveIfAbsent(player,
+                    com.reportsystem.spigot.replay.ViewerBackup.OWNER_OVERWATCH, old.location);
+        }
+        plugin.debug("[OVERWATCH-REPLAY] Captured real inventory for " + player.getName() + " at clear time");
+        return true;
+    }
+
+    /**
+     * savedStates'ten kaydi alir. Envanteri hic yakalanmamis (bekleyen) kayit icin null doner:
+     * o kopya gecersizdir, geri yazilirsa pencerede baska yere konan esyalar cogalir.
+     */
+    private PlayerState takeCapturedState(UUID uuid) {
+        PlayerState state = savedStates.remove(uuid);
+        return pendingCapture.remove(uuid) ? null : state;
+    }
+
+    /**
+     * ReplayControlManager kendi kopyasindan envanteri geri yazdiktan HEMEN sonra cagrilir.
+     * Overwatch kaydi var ama inceleme henuz baslamadiysa, yakalamayi o arada baslayip biten
+     * BASKA bir replay yapmis demektir: o kopya artik bayat. Bekleyen duruma geri al ve PDC'deki
+     * OWNER_OVERWATCH yedegini sil (envanter az once gercek haliyle geri yazildi); Overwatch'in
+     * kendi replay'i baslarken yeniden yakalanir.
+     */
+    public void onReplayInventoryRestored(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (!savedStates.containsKey(uuid) || activeReviews.containsKey(uuid) || pendingCapture.contains(uuid)) {
+            return;
+        }
+        pendingCapture.add(uuid);
+        if (plugin.getViewerBackup() != null) {
+            plugin.getViewerBackup().clear(player, com.reportsystem.spigot.replay.ViewerBackup.OWNER_OVERWATCH);
+        }
+        plugin.debug("[OVERWATCH-REPLAY] Foreign replay restored inventory of " + player.getName() +
+                " before review start; capture reset to pending");
     }
 
     /** Replay hic baslamadiysa kaydi restore etmeden birak (envantere dokunma). */
     public void dropSavedState(UUID playerUUID) {
         savedStates.remove(playerUUID);
+        pendingCapture.remove(playerUUID);
+        Player p = Bukkit.getPlayer(playerUUID);
+        if (p != null && plugin.getViewerBackup() != null) {
+            if (plugin.getReplayManager() != null
+                    && plugin.getReplayManager().getControlManager().hasSavedState(playerUUID)) {
+                // Arada baska bir replay (ör. normal replay) envanteri temizledi ve gercek
+                // kopyayi RAM'de tutuyor: tek PDC yedegini SILME, sahipligini o replay'e devret.
+                // ControlManager bitiste clear(OWNER_REPLAY) ile temizler.
+                plugin.getViewerBackup().retag(p,
+                        com.reportsystem.spigot.replay.ViewerBackup.OWNER_OVERWATCH,
+                        com.reportsystem.spigot.replay.ViewerBackup.OWNER_REPLAY);
+            } else {
+                plugin.getViewerBackup().clear(p, com.reportsystem.spigot.replay.ViewerBackup.OWNER_OVERWATCH);
+            }
+        }
     }
 
     public void startReview(Player player, int reportId) {
@@ -97,7 +174,15 @@ public class OverwatchReplayListener implements Listener {
      */
     public void restoreAndReturn(Player player) {
         UUID uuid = player.getUniqueId();
-        PlayerState state = savedStates.remove(uuid);
+
+        // TEK MERKEZ: Overwatch incelemesinin tum bitisleri (karar, Cik, zaman asimi)
+        // buradan gecer → anti-cheat muafiyeti burada kalkar.
+        if (plugin.getAntiCheatBypassManager() != null) {
+            plugin.getAntiCheatBypassManager().unexempt(player);
+        }
+
+        // Envanteri hic yakalanmamis (bekleyen) kayit null doner → envanter geri YAZILMAZ
+        PlayerState state = takeCapturedState(uuid);
         activeReviews.remove(uuid);
         postReplayPlayers.remove(uuid);
 
@@ -142,6 +227,7 @@ public class OverwatchReplayListener implements Listener {
                 if (player == null || !player.isOnline()) {
                     activeReviews.remove(playerUUID);
                     savedStates.remove(playerUUID);
+                    pendingCapture.remove(playerUUID);
                     postReplayPlayers.remove(playerUUID);
                     continue;
                 }
@@ -164,21 +250,10 @@ public class OverwatchReplayListener implements Listener {
                     player.sendMessage(plugin.getMessageManager().colorize(
                             "&c&l[OVERWATCH] &cInceleme zaman asimina ugradi (10 dakika)."));
 
-                    activeReviews.remove(playerUUID);
-                    postReplayPlayers.remove(playerUUID);
-
-                    // State'i geri yukle. state null olsa BILE envanter iade edilmeli:
-                    // eskiden null durumunda hicbir sey yapilmiyor, oyuncu zaman asimindan
-                    // sonra bos envanterle kaliyordu.
-                    PlayerState state = savedStates.remove(playerUUID);
-                    plugin.getReplayManager().clearOriginalLocation(playerUUID);
-                    if (state != null) {
-                        plugin.getReplayManager().getControlManager().clearSavedState(playerUUID);
-                        state.restore(player, plugin);
-                    } else {
-                        plugin.getReplayManager().getControlManager().removeControlItems(player);
-                    }
-                    showPlayerToAll(player);
+                    // Tek merkez: state geri yukleme (state null ise ControlManager kopyasi),
+                    // gorunurluk, NPC'leri yeniden gosterme ve anti-cheat muafiyetinin
+                    // kaldirilmasi restoreAndReturn'de.
+                    restoreAndReturn(player);
                     continue;
                 }
 
@@ -208,6 +283,12 @@ public class OverwatchReplayListener implements Listener {
     // ─── Post-Replay Items ───
 
     private void givePostReplayItems(Player player, OverwatchReviewData data) {
+        // H-47: post-replay konum capasi. Yalniz yoksa alinir: karar GUI'si kapatilip geri
+        // donuldugunde (returnToPostReplay) arada kayan konum capayi tasimasin.
+        // "Tekrar Izle" capayi sifirlar → yeni replay bitince yeni konumda capalanir.
+        if (data.postAnchor == null) {
+            data.postAnchor = player.getLocation().clone();
+        }
         postReplayPlayers.add(player.getUniqueId());
 
         // Adventure mod ve ucus (finish'ten sonra hala oyle olmali ama emin ol)
@@ -283,11 +364,35 @@ public class OverwatchReplayListener implements Listener {
         }
     }
 
+    /**
+     * H-47: post-replay asamasinda (ADVENTURE + ucus + gizli, 10 dk'ya kadar) oyuncu capadan
+     * 1.5 bloktan fazla uzaklasamaz; farkli dunyaya gecmisse de capaya geri cekilir.
+     * Bakis acisi serbest. Ucus acik kalir (konum sabit; dusup gezinme yok).
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onMove(PlayerMoveEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        if (!postReplayPlayers.contains(uuid)) return;
+        OverwatchReviewData data = activeReviews.get(uuid);
+        if (data == null || data.postAnchor == null || data.postAnchor.getWorld() == null) return;
+        Location to = event.getTo();
+        if (to == null) return;
+
+        Location anchor = data.postAnchor;
+        if (!Objects.equals(anchor.getWorld(), to.getWorld()) || to.distanceSquared(anchor) > 2.25) {
+            Location b = anchor.clone();
+            b.setYaw(to.getYaw());
+            b.setPitch(to.getPitch());
+            event.setTo(b);
+        }
+    }
+
     // ─── Actions ───
 
     private void rewatchReplay(Player player, OverwatchReviewData data) {
         postReplayPlayers.remove(player.getUniqueId());
         data.state = ReviewState.WAITING;
+        data.postAnchor = null;
 
         player.getInventory().clear();
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.0f);
@@ -366,7 +471,8 @@ public class OverwatchReplayListener implements Listener {
         // Yoksa /reload veya sunucu kapanisinda esyalar kaybolur.
         for (UUID uuid : new HashSet<>(savedStates.keySet())) {
             Player player = Bukkit.getPlayer(uuid);
-            PlayerState state = savedStates.remove(uuid);
+            // Bekleyen (envanteri yakalanmamis) kayit geri yazilmaz: envanter hic degismedi
+            PlayerState state = takeCapturedState(uuid);
             if (player != null && state != null) {
                 try {
                     state.restore(player, plugin, true);
@@ -377,11 +483,17 @@ public class OverwatchReplayListener implements Listener {
         }
         activeReviews.clear();
         postReplayPlayers.clear();
+        pendingCapture.clear();
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID playerUUID = event.getPlayer().getUniqueId();
+
+        // Tutarlilik: muafiyeti burada da kaldir (idempotent; asil temizlik ReplayManager.handlePlayerQuit)
+        if (plugin.getAntiCheatBypassManager() != null) {
+            plugin.getAntiCheatBypassManager().unexempt(playerUUID);
+        }
 
         if (activeReviews.containsKey(playerUUID)) {
             OverwatchReviewData data = activeReviews.remove(playerUUID);
@@ -397,7 +509,8 @@ public class OverwatchReplayListener implements Listener {
         // oyuncunun O ANKI envanterini (replay kontrol esyalari ya da bos) diske
         // yaziyor; gercek esyalar kalici olarak yok oluyordu. Oyuncu cikarken
         // envanteri SENKRON geri yukleniyor ki diske dogru hali yazilsin.
-        PlayerState state = savedStates.remove(playerUUID);
+        // Bekleyen (envanteri yakalanmamis) kayit null doner → bayat kopya geri yazilmaz
+        PlayerState state = takeCapturedState(playerUUID);
         postReplayPlayers.remove(playerUUID);
 
         if (state != null) {
@@ -437,6 +550,8 @@ public class OverwatchReplayListener implements Listener {
         private final int reportId;
         private final long startTime;
         private ReviewState state = ReviewState.WAITING;
+        // H-47: post-replay konum capasi (givePostReplayItems'ta alinir, rewatch'ta sifirlanir)
+        private Location postAnchor;
 
         public OverwatchReviewData(int reportId, long startTime) {
             this.reportId = reportId;
@@ -459,7 +574,12 @@ public class OverwatchReplayListener implements Listener {
         final int fireTicks;
 
         PlayerState(Player player) {
-            this.location = player.getLocation().clone();
+            this(player, player.getLocation());
+        }
+
+        /** Envanter/durum o anki degerlerle; konum verilen (baslangic) konum. */
+        PlayerState(Player player, Location originalLocation) {
+            this.location = originalLocation.clone();
             this.inventory = player.getInventory().getContents().clone();
             this.gameMode = player.getGameMode();
             this.health = player.getHealth();
@@ -491,11 +611,17 @@ public class OverwatchReplayListener implements Listener {
             // gorev hic kosmaz, Bukkit bos envanteri diske yazar ve esyalar gider.
             // Bu iki durumda senkron yaz; sadece normal akista ertele (teleport
             // ve envanterin ayni tikta catismamasi icin).
+            // PDC yedegi (ViewerBackup) yalniz envanter GERCEKTEN geri yazildiktan sonra,
+            // ayni blokta silinir. Ertelenmis gorevde oyuncu cevrimdisiysa yedek kalir →
+            // sonraki giriste geri yuklenir.
             if (!sync && plugin.isEnabled() && player.isOnline()) {
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
                     if (player.isOnline()) {
                         player.getInventory().setContents(inventory);
                         player.updateInventory();
+                        if (plugin.getViewerBackup() != null) {
+                            plugin.getViewerBackup().clearAny(player);
+                        }
                         player.teleport(location);
                         player.setFallDistance(0f);
                     }
@@ -503,6 +629,9 @@ public class OverwatchReplayListener implements Listener {
             } else {
                 player.getInventory().setContents(inventory);
                 player.updateInventory();
+                if (plugin.getViewerBackup() != null) {
+                    plugin.getViewerBackup().clearAny(player);
+                }
                 player.teleport(location);
                 player.setFallDistance(0f);
             }

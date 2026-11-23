@@ -27,8 +27,17 @@ public class ReportNotificationListener implements Listener {
      */
     public void broadcastReportNotification(int reportId, String reporterName, String reportedName,
                                            String reason, String serverName) {
+        broadcastReportNotification(reportId, reporterName, reportedName, reason, serverName, null);
+    }
+
+    /** excludeServer: bu sunucuya gönderme (kaynak sunucu zaten yerel bildirim yaptı); null = hepsi. */
+    public void broadcastReportNotification(int reportId, String reporterName, String reportedName,
+                                           String reason, String serverName, String excludeServer) {
         // Tüm sunuculara plugin message gönder
         for (ServerInfo server : ProxyServer.getInstance().getServers().values()) {
+            if (excludeServer != null && server.getName().equalsIgnoreCase(excludeServer)) {
+                continue;
+            }
             try {
                 ByteArrayDataOutput out = ByteStreams.newDataOutput();
                 out.writeUTF("NewReport");
@@ -38,7 +47,7 @@ public class ReportNotificationListener implements Listener {
                 out.writeUTF(reason);
                 out.writeUTF(serverName);
 
-                server.sendData("reportsystem:notification", out.toByteArray());
+                plugin.sendSigned(server, "reportsystem:notification", out.toByteArray());
 
                 plugin.getLogger().info("[NOTIFICATION] Sent report #" + reportId +
                         " notification to server: " + server.getName());

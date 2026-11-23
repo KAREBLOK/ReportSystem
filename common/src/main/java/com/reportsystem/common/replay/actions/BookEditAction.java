@@ -1,5 +1,6 @@
 package com.reportsystem.common.replay.actions;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -17,7 +18,8 @@ public class BookEditAction extends ReplayAction {
         super();
         this.title = title;
         this.author = author;
-        this.pages = pages;
+        // Savunmacı kopya: Paper getPages() Guava ImmutableList dönebilir; yalnız ArrayList serileştirilsin (H-22)
+        this.pages = pages == null ? null : new ArrayList<>(pages);
         this.signed = signed;
     }
 

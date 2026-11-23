@@ -1,5 +1,12 @@
 # ReportSystem BungeeCord Configuration
 
+# Plugin message imza anahtari (HMAC-SHA256). TUM Spigot backend'lerdeki
+# config.yml -> bungeecord.message-secret ile AYNI olmali.
+# Bos birakilirsa ilk acilista rastgele uretilir ve buraya kaydedilir.
+# Gizli tutun: bu anahtari bilen herkes sahte mesaj gonderebilir.
+# Degeri tirnak icinde yazin (or. message-secret: "abc123").
+message-secret: ""
+
 # ======================
 # Database Settings
 # ======================
@@ -11,10 +18,15 @@ database:
     username: "root"
     password: "CHANGE_THIS_PASSWORD"
 
+    # MySQL SSL modu (Connector/J sslMode): DISABLED | PREFERRED | REQUIRED | VERIFY_CA | VERIFY_IDENTITY
+    # DISABLED = eski davranis (SSL kapali). Gecersiz deger DISABLED sayilir.
+    ssl-mode: "DISABLED"
+
     # Connection pool
     pool:
       maximum-pool-size: 10
-      connection-timeout: 30000
+      # Baglanti bekleme suresi (ms). DB duserse giris kontrolu ve ceza islemleri en fazla bu kadar bekler.
+      connection-timeout: 5000
 
 # ======================
 # Network Settings
@@ -118,6 +130,7 @@ messages:
     reason-line: "&7Sebep: &f%reason%"
     staff-line: "&7Yetkili: &f%staff%"
   report:
+    replay-connect-failed: "&cReplay başlatılamadı: &f%server% &csunucusuna bağlanılamadı. &7(Could not connect to the target server.)"
     notification: "&8[&6Rapor&8] &7(&e%server%&7) &f%reporter% &7➜ &c%reported%\n&7Sebep: &f%reason% &8(#%id%)"
     created: "&a✓ Rapor başarıyla oluşturuldu! (ID: #%id%)"
     limit-reached: "&c✗ %player% adlı oyuncuyu daha fazla rapor edemezsiniz! &7(Limit: %limit%)"

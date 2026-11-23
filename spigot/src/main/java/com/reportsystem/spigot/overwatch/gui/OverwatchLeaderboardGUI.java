@@ -42,32 +42,15 @@ public class OverwatchLeaderboardGUI implements InventoryHolder {
         this.inventory = Bukkit.createInventory(this, 54, plugin.getMessageManager().colorize(title));
 
         setupItems();
+        loadAsync();
     }
 
+    /** Ana thread: yalnız DB gerektirmeyen öğeler; sıralama {@link #loadAsync()} ile dolar [THR-01]. */
     private void setupItems() {
         // Black glass separator (row 2: slots 10-16)
         ItemStack blackGlass = createItem(Material.BLACK_STAINED_GLASS_PANE, "&7", null);
         for (int i = 10; i <= 16; i++) {
             inventory.setItem(i, blackGlass);
-        }
-
-        List<OverwatchStats> topReviewers = plugin.getOverwatchManager().getTopReviewers(10);
-
-        if (topReviewers.isEmpty()) {
-            List<String> emptyLore = new ArrayList<>();
-            emptyLore.add("");
-            emptyLore.add(plugin.getMessageManager().colorize(cfg.getString("empty-lore", "")));
-            emptyLore.add("");
-
-            inventory.setItem(22, createItem(Material.BARRIER,
-                    plugin.getMessageManager().colorize(cfg.getString("empty-name", "")), emptyLore));
-        } else {
-            // Row 3: slots 19-25 (top 7), Row 4: slots 29-31 (remaining 3)
-            int[] slots = {19, 20, 21, 22, 23, 24, 25, 29, 30, 31};
-
-            for (int i = 0; i < Math.min(topReviewers.size(), 10); i++) {
-                inventory.setItem(slots[i], createLeaderboardItem(i + 1, topReviewers.get(i)));
-            }
         }
 
         // Info Item (Slot 40)
@@ -85,6 +68,43 @@ public class OverwatchLeaderboardGUI implements InventoryHolder {
         // Back Button (Slot 49)
         inventory.setItem(49, createItem(Material.ARROW,
                 plugin.getMessageManager().colorize(cfg.getString("back", "&8←")), null));
+    }
+
+    /** İlk 10 incelemeciyi async okur, ana thread'de doldurur [THR-01][THR-17]. */
+    private void loadAsync() {
+        if (!plugin.isEnabled()) return;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            List<OverwatchStats> topReviewers;
+            try {
+                topReviewers = plugin.getOverwatchManager().getTopReviewers(10);
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "[OVERWATCH] Failed to load leaderboard", t);
+                topReviewers = List.of();
+            }
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            final List<OverwatchStats> finalTop = topReviewers;
+            Bukkit.getScheduler().runTask(plugin, () -> fill(finalTop));
+        });
+    }
+
+    /** Ana thread: sıralama öğelerini yerleştirir. */
+    private void fill(List<OverwatchStats> topReviewers) {
+        if (topReviewers.isEmpty()) {
+            List<String> emptyLore = new ArrayList<>();
+            emptyLore.add("");
+            emptyLore.add(plugin.getMessageManager().colorize(cfg.getString("empty-lore", "")));
+            emptyLore.add("");
+
+            inventory.setItem(22, createItem(Material.BARRIER,
+                    plugin.getMessageManager().colorize(cfg.getString("empty-name", "")), emptyLore));
+        } else {
+            // Row 3: slots 19-25 (top 7), Row 4: slots 29-31 (remaining 3)
+            int[] slots = {19, 20, 21, 22, 23, 24, 25, 29, 30, 31};
+
+            for (int i = 0; i < Math.min(topReviewers.size(), 10); i++) {
+                inventory.setItem(slots[i], createLeaderboardItem(i + 1, topReviewers.get(i)));
+            }
+        }
     }
 
     private ItemStack createLeaderboardItem(int rank, OverwatchStats stats) {
@@ -149,7 +169,7 @@ public class OverwatchLeaderboardGUI implements InventoryHolder {
     }
 
     private String getRankColor(String rank) {
-        switch (rank.toUpperCase()) {
+        switch (rank.toUpperCase(java.util.Locale.ROOT)) {
             case "DIAMOND": return "§b";
             case "GOLD": return "§6";
             case "SILVER": return "§7";

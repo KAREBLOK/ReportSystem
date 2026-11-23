@@ -3,6 +3,7 @@ package com.reportsystem.spigot.gui;
 import com.reportsystem.common.database.ReplayDAO;
 import com.reportsystem.common.models.Report;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.trust.TrustLevelManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -28,27 +29,79 @@ public class ReportDetailGUI implements InventoryHolder {
     private boolean hasReplay = false;
     private int totalReports = 0;
 
-    public ReportDetailGUI(Player viewer, Report report, ReplayDAO replayDAO) {
-        this.plugin = (ReportSystemSpigot) Bukkit.getPluginManager().getPlugin("ReportSystem-Spigot");
+    private String votingStats = null;
+    /** Async aşamada hesaplanan ihlal puanı (trust kapalıysa ya da hata olduysa null). */
+    private final Double trustPoints;
+
+    /**
+     * DB verisini ASYNC yükler, ardından envanteri ana thread'de oluşturup açar.
+     * Tıklama işleyicilerinden güvenle çağrılabilir (ana thread'i bloklamaz).
+     */
+    public static void openAsync(ReportSystemSpigot plugin, Player viewer, Report report) {
+        ReplayDAO dao = plugin.getReplayDAO();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean replayExists = false;
+            try {
+                replayExists = dao.getReplayByReportId(report.getId()).isPresent();
+            } catch (SQLException e) {
+                plugin.getLogger().warning("Replay kontrolü sırasında hata: " + e.getMessage());
+            }
+            int total = 0;
+            try {
+                total = plugin.getReportService().getReportCount(report.getReportedPlayerName());
+            } catch (Exception e) {
+                plugin.getLogger().warning("Rapor sayısı alınamadı: " + e.getMessage());
+            }
+            String stats = null;
+            if (plugin.getOverwatchManager() != null) {
+                try {
+                    stats = plugin.getOverwatchManager().getVotingStats(report.getId());
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Oylama özeti alınamadı: " + e.getMessage());
+                }
+            }
+            // Hesap durumu puanı: getOfflinePlayer(String) ağ/disk sorgusu yapabilir + trust DB'si →
+            // yalnız async aşamada. Seviye adı (mesaj çözümleme) ana thread'de kalır [THR-01].
+            Double trustPoints = null;
+            TrustLevelManager tlm = plugin.getTrustLevelManager();
+            if (tlm != null) {
+                try {
+                    String reportedName = report.getReportedPlayerName();
+                    org.bukkit.OfflinePlayer target = Bukkit.getOfflinePlayer(reportedName);
+                    trustPoints = tlm.getViolationPoints(target.getUniqueId(), reportedName);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Hesap durumu alınamadı: " + e.getMessage());
+                }
+            }
+            final boolean fReplay = replayExists;
+            final int fTotal = total;
+            final String fStats = stats;
+            final Double fTrustPoints = trustPoints;
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                // Async aşamada oyuncu çıkmış olabilir
+                if (!viewer.isOnline()) return;
+                new ReportDetailGUI(plugin, viewer, report, dao, fReplay, fTotal, fStats, fTrustPoints).open();
+            });
+        });
+    }
+
+    private ReportDetailGUI(ReportSystemSpigot plugin, Player viewer, Report report, ReplayDAO replayDAO,
+                            boolean hasReplay, int totalReports, String votingStats, Double trustPoints) {
+        this.plugin = plugin;
         this.viewer = viewer;
         this.report = report;
         this.replayDAO = replayDAO;
         this.guiConfig = new GUIConfig(plugin, "report-detail");
+        this.hasReplay = hasReplay;
+        this.totalReports = totalReports;
+        this.votingStats = votingStats;
+        this.trustPoints = trustPoints;
 
         // Create inventory with title from GUI config
         String title = guiConfig.getTitle("%id%", String.valueOf(report.getId()));
         int size = guiConfig.getSize();
         this.inventory = Bukkit.createInventory(this, size, title);
-
-        // Check if replay exists
-        try {
-            hasReplay = replayDAO.getReplayByReportId(report.getId()).isPresent();
-        } catch (SQLException e) {
-            plugin.getLogger().warning("Replay kontrolü sırasında hata: " + e.getMessage());
-        }
-
-        // Cache total reports count
-        this.totalReports = plugin.getReportService().getReportCount(report.getReportedPlayerName());
 
         setupInventory();
     }
@@ -122,10 +175,12 @@ public class ReportDetailGUI implements InventoryHolder {
 
             // Trust level
             String trustLine = "";
-            if (plugin.getTrustLevelManager() != null) {
+            TrustLevelManager tlm = plugin.getTrustLevelManager();
+            if (tlm != null && trustPoints != null) {
                 String labelTrust = guiConfig.getConfig().getString("player-head.labels.trust-level", "Hesap Durumu:");
-                org.bukkit.OfflinePlayer target = org.bukkit.Bukkit.getOfflinePlayer(report.getReportedPlayerName());
-                String trustFormatted = plugin.getTrustLevelManager().getFormattedTrustLevel(target.getUniqueId(), report.getReportedPlayerName());
+                // DB/getOfflinePlayer yok: puan async aşamadan geldi, yalnız seviye + yerelleştirilmiş ad burada
+                TrustLevelManager.TrustLevel level = tlm.getTrustLevelFromPoints(trustPoints);
+                String trustFormatted = level.getColor() + tlm.getLocalizedLevelName(level);
                 trustLine = ChatColor.GRAY + labelTrust + " " + plugin.getMessageManager().colorize(trustFormatted);
             }
 
@@ -146,11 +201,8 @@ public class ReportDetailGUI implements InventoryHolder {
             }
 
             // Overwatch voting statistics
-            if (plugin.getOverwatchManager() != null) {
-                String votingStats = plugin.getOverwatchManager().getVotingStats(report.getId());
-                if (votingStats != null) {
-                    lore.add(ChatColor.GRAY + "Overwatch: " + ChatColor.YELLOW + votingStats);
-                }
+            if (votingStats != null) {
+                lore.add(ChatColor.GRAY + "Overwatch: " + ChatColor.YELLOW + votingStats);
             }
 
             meta.setLore(lore);
@@ -250,7 +302,7 @@ public class ReportDetailGUI implements InventoryHolder {
     }
 
     private String getStatusColorCode(String status) {
-        switch (status.toUpperCase()) {
+        switch (status.toUpperCase(java.util.Locale.ROOT)) {
             case "PENDING":
                 return "&e";
             case "ACCEPTED":

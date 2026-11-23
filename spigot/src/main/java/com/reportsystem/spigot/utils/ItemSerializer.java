@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.utils;
 
+import com.reportsystem.common.replay.ReplayObjectFilters;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.io.BukkitObjectInputStream;
 import org.bukkit.util.io.BukkitObjectOutputStream;
@@ -50,38 +51,29 @@ public class ItemSerializer {
     }
 
     /**
-     * Base64 string'den ItemStack oluşturur
+     * Base64 string'den ItemStack oluşturur (izin listeli filtreyle, H-22)
      */
     public static ItemStack itemStackFromBase64(String data) {
         if (data == null) return null;
 
-        try {
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(Base64.getDecoder().decode(data));
-            BukkitObjectInputStream dataInput = new BukkitObjectInputStream(inputStream);
-
-            ItemStack item = (ItemStack) dataInput.readObject();
-            dataInput.close();
-
-            return item;
+        try (BukkitObjectInputStream dataInput =
+                     new BukkitObjectInputStream(new ByteArrayInputStream(Base64.getDecoder().decode(data)))) {
+            dataInput.setObjectInputFilter(ReplayObjectFilters.bukkitItem());
+            return (ItemStack) dataInput.readObject();
         } catch (Exception e) {
             return null;
         }
     }
 
     /**
-     * Byte array'den ItemStack oluşturur
+     * Byte array'den ItemStack oluşturur (izin listeli filtreyle, H-22)
      */
     public static ItemStack itemStackFromBytes(byte[] data) {
         if (data == null) return null;
 
-        try {
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
-            BukkitObjectInputStream dataInput = new BukkitObjectInputStream(inputStream);
-
-            ItemStack item = (ItemStack) dataInput.readObject();
-            dataInput.close();
-
-            return item;
+        try (BukkitObjectInputStream dataInput = new BukkitObjectInputStream(new ByteArrayInputStream(data))) {
+            dataInput.setObjectInputFilter(ReplayObjectFilters.bukkitItem());
+            return (ItemStack) dataInput.readObject();
         } catch (Exception e) {
             return null;
         }

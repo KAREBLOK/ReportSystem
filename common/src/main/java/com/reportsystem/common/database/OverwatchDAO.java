@@ -403,16 +403,37 @@ public class OverwatchDAO {
     }
 
     public Optional<OverwatchQueueItem> getNextQueueItem(UUID reviewerUUID) throws SQLException {
+        return getNextQueueItem(reviewerUUID, null);
+    }
+
+    /**
+     * Sıradaki raporu getirir. İnceleyicinin kendi raporladığı veya hakkında rapor açılan
+     * raporlar hariç tutulur (kendi raporunu inceleyip XP kasmayı önler).
+     * Raporlanan oyuncunun UUID'si reports tablosunda yok (SQLite replays'te de yok):
+     * isim verilmişse reports.reported_player_name ve replays.recorded_player ile eşleştirilir.
+     */
+    public Optional<OverwatchQueueItem> getNextQueueItem(UUID reviewerUUID, String reviewerName) throws SQLException {
         // Get next pending or in-review item that this reviewer hasn't reviewed yet
         String sql = "SELECT oq.* FROM overwatch_queue oq " +
                      "LEFT JOIN overwatch_reviews orw ON oq.report_id = orw.report_id AND orw.reviewer_uuid = ? " +
                      "WHERE oq.status IN ('PENDING', 'IN_REVIEW') AND orw.id IS NULL " +
+                     "AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.id = oq.report_id AND (r.reporter_uuid = ? " +
+                     (reviewerName != null ? "OR LOWER(r.reported_player_name) = LOWER(?) " : "") + ")) " +
+                     (reviewerName != null
+                         ? "AND NOT EXISTS (SELECT 1 FROM replays rp WHERE rp.report_id = oq.report_id AND LOWER(rp.recorded_player) = LOWER(?)) "
+                         : "") +
                      "ORDER BY oq.priority DESC, oq.added_at ASC LIMIT 1";
 
         try (Connection conn = database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, reviewerUUID.toString());
+            int idx = 1;
+            stmt.setString(idx++, reviewerUUID.toString());
+            stmt.setString(idx++, reviewerUUID.toString());
+            if (reviewerName != null) {
+                stmt.setString(idx++, reviewerName);
+                stmt.setString(idx, reviewerName);
+            }
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return Optional.of(new OverwatchQueueItem(
@@ -431,6 +452,26 @@ public class OverwatchDAO {
         return Optional.empty();
     }
 
+    /**
+     * İnceleyici bu raporun raporlayanı veya raporlananı mı? (kendi raporunu inceleme koruması)
+     */
+    public boolean isReviewerInvolved(int reportId, UUID reviewerUUID, String reviewerName) throws SQLException {
+        String sql = "SELECT 1 FROM reports r WHERE r.id = ? AND (r.reporter_uuid = ? OR LOWER(r.reported_player_name) = LOWER(?)) " +
+                     "UNION SELECT 1 FROM replays rp WHERE rp.report_id = ? AND LOWER(rp.recorded_player) = LOWER(?)";
+
+        try (Connection conn = database.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, reportId);
+            stmt.setString(2, reviewerUUID.toString());
+            stmt.setString(3, reviewerName);
+            stmt.setInt(4, reportId);
+            stmt.setString(5, reviewerName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
     public boolean assignReportToReviewer(int reportId, UUID reviewerUUID, String serverName) throws SQLException {
         String sql = "UPDATE overwatch_queue SET assigned_to = ?, assigned_at = ?, assigned_server = ?, status = 'IN_REVIEW' " +
                      "WHERE report_id = ? AND status IN ('PENDING', 'IN_REVIEW')";
@@ -447,14 +488,20 @@ public class OverwatchDAO {
         }
     }
 
-    public void completeQueueItem(int reportId) throws SQLException {
-        String sql = "UPDATE overwatch_queue SET status = 'COMPLETED' WHERE report_id = ?";
+    /**
+     * Kuyruk öğesini COMPLETED yapar. Koşullu UPDATE: yalnız henüz tamamlanmamışsa yazar,
+     * böylece aynı rapor için eşzamanlı iki uzlaşma yalnız BİR kez sayılır [DATA-26].
+     *
+     * @return etkilenen satır sayısı (0 = zaten tamamlanmış ya da kuyrukta yok)
+     */
+    public int completeQueueItem(int reportId) throws SQLException {
+        String sql = "UPDATE overwatch_queue SET status = 'COMPLETED' WHERE report_id = ? AND status <> 'COMPLETED'";
 
         try (Connection conn = database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, reportId);
-            stmt.executeUpdate();
+            return stmt.executeUpdate();
         }
     }
 

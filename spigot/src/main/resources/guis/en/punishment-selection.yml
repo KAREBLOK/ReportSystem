@@ -1,0 +1,85 @@
+# Punishment Selection GUI
+title: "&8&nSelect Punishment"
+size: 27
+
+# Background
+background:
+  enabled: false
+
+# Items
+items:
+  # Player info
+  player-info:
+    slot: 4
+    material: PLAYER_HEAD
+    name: "&c%player%"
+    lore:
+      - ''
+      - ' &8▪ &7Reason: &e%reason%'
+      - ''
+      - '&a✓ Report accepted!'
+      - '&7You can now choose a punishment.'
+
+  # Punishment options
+  ban:
+    slot: 10
+    material: IRON_SWORD
+    name: "&4&l⚔ Ban"
+    lore:
+      - ''
+      - '&7Ban the player from the server.'
+      - '&7Temporary or permanent.'
+      - ''
+      - '&e► Click to choose a duration'
+
+  mute:
+    slot: 12
+    material: PAPER
+    name: "&6&l🔇 Mute"
+    lore:
+      - ''
+      - '&7Disable the player''s chat.'
+      - '&7Temporary or permanent.'
+      - ''
+      - '&e► Click to choose a duration'
+
+  kick:
+    slot: 14
+    material: IRON_BOOTS
+    name: "&c&l👢 Kick"
+    lore:
+      - ''
+      - '&7Kick the player from the server.'
+      - '&7They can rejoin.'
+      - ''
+      - '&e► Click to kick'
+
+  warn:
+    slot: 16
+    material: GOLD_NUGGET
+    name: "&e&l⚠ Warn"
+    lore:
+      - ''
+      - '&7Give the player a warning.'
+      - '&7Adds penalty points.'
+      - ''
+      - '&e► Click to warn'
+
+  # Other actions
+  no-punishment:
+    slot: 20
+    material: SUNFLOWER
+    name: "&a&l✔ No Punishment"
+    lore:
+      - ''
+      - '&7Accept the report but'
+      - '&7don''t punish.'
+      - ''
+      - '&e► Click'
+
+  back:
+    slot: 24
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Back to previous menu"

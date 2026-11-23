@@ -1,5 +1,13 @@
 # ReportSystem Velocity Configuration
 
+# Plugin message imza anahtari (HMAC-SHA256). TUM Spigot backend'lerdeki
+# config.yml -> bungeecord.message-secret ile AYNI olmali.
+# Bos birakilirsa ilk acilista rastgele uretilir ve buraya kaydedilir.
+# Gizli tutun: bu anahtari bilen herkes sahte mesaj gonderebilir.
+# Degeri MUTLAKA tirnak icinde yazin (ornek: message-secret: "abc123"); tirnaksiz
+# sayisal deger YAML tarafindan cevrilir (ornek 1e5 -> 100000.0).
+message-secret: ""
+
 # ======================
 # Database Settings
 # ======================
@@ -11,10 +19,15 @@ database:
     username: "root"
     password: "CHANGE_THIS_PASSWORD"
 
+    # MySQL SSL modu (Connector/J sslMode): DISABLED | PREFERRED | REQUIRED | VERIFY_CA | VERIFY_IDENTITY
+    # DISABLED = eski davranis (SSL kapali). Gecersiz deger DISABLED sayilir.
+    ssl-mode: "DISABLED"
+
     # Connection pool
     pool:
       maximum-pool-size: 10
-      connection-timeout: 30000
+      # Baglanti bekleme suresi (ms). DB duserse giris kontrolu ve ceza islemleri en fazla bu kadar bekler.
+      connection-timeout: 5000
 
 # ======================
 # Network Settings

@@ -33,8 +33,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ReplayNPCManager {
 
-    // Global entity ID counter - tüm ReplayNPCManager instance'ları için paylaşımlı
-    private static final AtomicInteger GLOBAL_ENTITY_ID_COUNTER = new AtomicInteger(1000000);
+    // Yedek sahte entity ID sayacı (Paper nextEntityId yoksa): Integer.MAX_VALUE'dan AŞAĞI sayar,
+    // sunucunun yukarı sayan gerçek entity ID'leriyle pratikte çakışmaz. Tüm instance'lar paylaşır.
+    private static final AtomicInteger GLOBAL_ENTITY_ID_COUNTER = new AtomicInteger(Integer.MAX_VALUE);
+    // Paper Bukkit.getUnsafe().nextEntityId() kullanılabilir mi (Spigot'ta yok → ilk hatada kapanır)
+    private static volatile boolean serverEntityIdAvailable = true;
 
     // Scoreboard objective adı - below-name can gösterimi için
     private static final String HEALTH_OBJECTIVE_NAME = "rs_health";
@@ -72,7 +75,7 @@ public class ReplayNPCManager {
         this.plugin = plugin;
         this.replayPlayer = replayPlayer;
         // Global counter'dan benzersiz entity ID al
-        this.entityId = GLOBAL_ENTITY_ID_COUNTER.getAndIncrement();
+        this.entityId = generateEntityId();
         // Çakışma olmaması için farklı UUID oluştur (gerçek oyuncununkinden farklı)
         this.npcUuid = UUID.randomUUID();
         // Gerçek oyuncu ismine §r (reset kodu) ekle - client bunu görünmez olarak işler
@@ -533,7 +536,7 @@ public class ReplayNPCManager {
         }
 
         // Global counter'dan benzersiz entity ID al
-        int nearbyEntityId = GLOBAL_ENTITY_ID_COUNTER.getAndIncrement();
+        int nearbyEntityId = generateEntityId();
         nearbyPlayerEntities.put(action.getPlayerUuid(), nearbyEntityId);
 
         // Çakışma olmaması için gerçek UUID'den farklı bir NPC UUID oluştur
@@ -1025,10 +1028,21 @@ public class ReplayNPCManager {
     }
 
     /**
-     * Global counter'dan benzersiz entity ID üretir (fishing bobber vb. için)
+     * Sahte (paket tabanlı) entity için benzersiz ID üretir (NPC, bobber, sahte item vb.).
+     * Paper'da sunucunun kendi entity sayacından alır (gerçek entity'lerle çakışma imkansız);
+     * yoksa Integer.MAX_VALUE'dan aşağı sayan yedek sayaç kullanılır. Thread-safe.
      */
+    @SuppressWarnings("deprecation")
     public static int generateEntityId() {
-        return GLOBAL_ENTITY_ID_COUNTER.getAndIncrement();
+        if (serverEntityIdAvailable) {
+            try {
+                return org.bukkit.Bukkit.getUnsafe().nextEntityId();
+            } catch (LinkageError | RuntimeException e) {
+                // Spigot vb.: AbstractMethodError / NoSuchMethodError → kalıcı olarak yedeğe geç
+                serverEntityIdAvailable = false;
+            }
+        }
+        return GLOBAL_ENTITY_ID_COUNTER.getAndDecrement();
     }
 
     /**

@@ -1,0 +1,85 @@
+# Punishment GUI (Ban/Mute duration selection)
+title: "&8&nPunish"
+size: 36
+
+# Background
+background:
+  enabled: false
+
+# Player info
+player-info:
+  slot: 4
+  material: PLAYER_HEAD
+  name: "&c⚡ %target%"
+  lore:
+    - ''
+    - ' &8▪ &7Reason: &e%reason%'
+    - ''
+
+# Duration options
+times:
+  30-minutes:
+    slot: 10
+    material: PAPER
+    name: "&e30 Minutes"
+    duration: "30m"
+
+  1-hour:
+    slot: 11
+    material: PAPER
+    name: "&61 Hour"
+    duration: "1h"
+
+  3-hours:
+    slot: 12
+    material: GOLD_NUGGET
+    name: "&63 Hours"
+    duration: "3h"
+
+  1-day:
+    slot: 14
+    material: GOLD_INGOT
+    name: "&c1 Day"
+    duration: "1d"
+
+  7-days:
+    slot: 15
+    material: IRON_INGOT
+    name: "&c7 Days"
+    duration: "7d"
+
+  30-days:
+    slot: 16
+    material: IRON_INGOT
+    name: "&c30 Days"
+    duration: "30d"
+
+  permanent:
+    slot: 22
+    material: BARRIER
+    name: "&4&l⚠ PERMANENT PUNISHMENT"
+    lore:
+      - ''
+      - '&7Permanently punish'
+      - '&7the player.'
+      - ''
+      - '&c&lWARNING: Cannot be undone!'
+      - ''
+      - '&e► Click'
+    duration: "permanent"
+
+# Control buttons
+controls:
+  cancel:
+    slot: 28
+    material: RED_CONCRETE
+    name: "&c✖ Cancel"
+    lore:
+      - "&7Cancel the punishment"
+
+  back:
+    slot: 34
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Back to report details"

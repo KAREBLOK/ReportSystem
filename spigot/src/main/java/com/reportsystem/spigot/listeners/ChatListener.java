@@ -108,7 +108,7 @@ public class ChatListener implements Listener {
         }
 
         // Get target player if online
-        Player targetPlayer = Bukkit.getPlayer(targetName);
+        Player targetPlayer = Bukkit.getPlayerExact(targetName);
         String targetUuid = "";
 
         if (targetPlayer != null) {

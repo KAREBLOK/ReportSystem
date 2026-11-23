@@ -2,7 +2,6 @@ package com.reportsystem.spigot.gui;
 
 import com.reportsystem.common.models.Report;
 import com.reportsystem.spigot.ReportSystemSpigot;
-import com.reportsystem.spigot.commands.ReportCommand;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -12,6 +11,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 
+import java.util.UUID;
+
 
 
 public class ReportCreateGUI extends GUI {
@@ -19,11 +20,13 @@ public class ReportCreateGUI extends GUI {
     private final boolean isTargetOnline;
     private final GUIConfig guiConfig;
     private final String targetWorldName; // Hedefin /report anındaki dünyası
+    private final UUID targetUuid; // Hedefin /report anındaki UUID'si (önek eşleşmesiyle yanlış oyuncu bulunmasın) [CRA-02]
 
     public ReportCreateGUI(ReportSystemSpigot plugin, Player player, String targetName) {
         super(plugin, player);
         this.targetName = targetName;
-        Player target = Bukkit.getPlayer(targetName);
+        Player target = Bukkit.getPlayerExact(targetName);
+        this.targetUuid = (target != null) ? target.getUniqueId() : null;
         this.isTargetOnline = target != null;
         // Hedefin dünyasını ŞİMDİ kaydet - GUI'de sebep seçilene kadar oyuncu ölebilir/dünya değiştirebilir
         this.targetWorldName = (target != null) ? target.getWorld().getName() : null;
@@ -37,8 +40,9 @@ public class ReportCreateGUI extends GUI {
 
         // Play open sound from config
         try {
-            Sound sound = Sound.valueOf(guiConfig.getSound("open"));
-            player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
+            String soundKey = com.reportsystem.spigot.utils.SoundUtil.resolveKey(guiConfig.getSound("open"));
+            if (soundKey == null) throw new IllegalArgumentException("unknown sound");
+            player.playSound(player.getLocation(), soundKey, 1.0f, 1.0f);
         } catch (Exception e) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.0f);
         }
@@ -211,7 +215,7 @@ public class ReportCreateGUI extends GUI {
                 player.getName(),
                 player.getUniqueId().toString(),
                 targetName,
-                "", // targetUuid - bilinmiyor
+                targetUuid != null ? targetUuid.toString() : "", // targetUuid (hedef çevrimdışıysa boş)
                 reason,
                 spigotPlugin.getServerName(),
                 spigotPlugin.getConfigManager().getMaxReportsPerPlayer()
@@ -223,14 +227,16 @@ public class ReportCreateGUI extends GUI {
                     playSound("select-reason");
 
                     // Hedef oyuncu online ise kayıt başlat
-                    Player target = Bukkit.getPlayer(targetName);
+                    Player target = targetUuid != null ? Bukkit.getPlayer(targetUuid) : null;
                     if (target != null && target.isOnline()) {
                         if (!spigotPlugin.getRecordingManager().isRecording(target.getUniqueId())) {
                             int duration = spigotPlugin.getConfigManager().getRecordingDuration();
                             spigotPlugin.getRecordingManager().startRecording(target, reportId, duration, player.getName(), reason, targetWorldName);
                             spigotPlugin.getMessageManager().sendRecordingStarted(player);
                         } else {
-                            ReportCommand.updateRecordingWithReportId(target.getUniqueId(), reportId);
+                            // H-40: açık kayda ek rapor olarak bağla (birincili ezme). Bu yolun
+                            // bildirimi kayıt bitince gönderildiği için notifyOnFinish = true.
+                            spigotPlugin.getRecordingManager().attachReport(target.getUniqueId(), reportId, true);
                         }
                     }
 
@@ -257,8 +263,9 @@ public class ReportCreateGUI extends GUI {
 
     private void playSound(String action) {
         try {
-            Sound sound = Sound.valueOf(guiConfig.getSound(action));
-            player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
+            String soundKey = com.reportsystem.spigot.utils.SoundUtil.resolveKey(guiConfig.getSound(action));
+            if (soundKey == null) throw new IllegalArgumentException("unknown sound");
+            player.playSound(player.getLocation(), soundKey, 1.0f, 1.0f);
         } catch (Exception e) {
             // Fallback sounds
             if (action.equals("error")) {

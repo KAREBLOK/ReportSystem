@@ -8,6 +8,9 @@ import com.reportsystem.common.database.DatabaseConfig;
 import com.reportsystem.common.database.MySQLReportDAO;
 import com.reportsystem.common.database.ReportDAO;
 import com.reportsystem.common.service.ReportService;
+import com.reportsystem.common.messaging.MessageSigner;
+import net.md_5.bungee.api.config.ServerInfo;
+import net.md_5.bungee.api.connection.Server;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.config.Configuration;
 import net.md_5.bungee.config.ConfigurationProvider;
@@ -16,9 +19,15 @@ import net.md_5.bungee.config.YamlConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.*;
 import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ReportSystemBungee extends Plugin {
 
@@ -29,11 +38,13 @@ public class ReportSystemBungee extends Plugin {
     private ReportDAO reportDAO;
     private ReportService reportService;
     private ReportNotificationListener reportNotificationListener;
+    private MessageSigner messageSigner;
 
     @Override
     public void onEnable() {
         instance = this;
         loadConfig();
+        initMessageSigner();
         if (!setupDatabase()) {
             getLogger().severe("Veritabanı başlatılamadı! Eklenti devre dışı bırakılıyor.");
             return;
@@ -79,6 +90,76 @@ public class ReportSystemBungee extends Plugin {
         }
     }
 
+    /**
+     * Plugin message HMAC anahtarini yukler; bossa rastgele uretip config'e kaydeder.
+     */
+    private void initMessageSigner() {
+        // getString String olmayan degerde (or. tirnaksiz sayi) varsayilani dondurur -> mevcut anahtar "bos"
+        // sanilip uzerine yazilirdi. Ham deger String.valueOf ile okunur.
+        Object rawSecret = config.get("message-secret");
+        String secret = rawSecret == null ? "" : String.valueOf(rawSecret);
+        if (rawSecret != null && !(rawSecret instanceof String)) {
+            getLogger().warning("[GUVENLIK] message-secret metin degil (" + rawSecret.getClass().getSimpleName()
+                    + "); deger aynen kullaniliyor. config.yml'de tirnak icinde yazin.");
+        }
+        if (secret.trim().isEmpty()) {
+            secret = MessageSigner.generateSecret();
+            config.set("message-secret", secret);
+            saveMessageSecret(secret);
+            getLogger().warning("============================================================");
+            getLogger().warning("[GUVENLIK] message-secret bos oldugu icin rastgele uretildi.");
+            getLogger().warning("Ayni degeri TUM Spigot backend'lerin config.yml'indeki 'bungeecord.message-secret'");
+            getLogger().warning("alanina kopyalayin; aksi halde mesajlar reddedilir.");
+            getLogger().warning("============================================================");
+        }
+        this.messageSigner = new MessageSigner(secret.trim());
+    }
+
+    /**
+     * Ust duzey "message-secret" degerini config.yml'e METIN olarak yazar (ConfigurationProvider.save
+     * yorumlari sildigi icin kullanilmaz): satir varsa degistirir, yoksa dosyanin basina ekler.
+     * Velocity'deki VelocityConfig.saveMessageSecret ile ayni algoritma.
+     */
+    private void saveMessageSecret(String secret) {
+        Path configFile = new File(getDataFolder(), "config.yml").toPath();
+        try {
+            String text = Files.exists(configFile)
+                    ? new String(Files.readAllBytes(configFile), StandardCharsets.UTF_8)
+                    : "";
+            String line = "message-secret: \"" + secret + "\"";
+            Pattern p = Pattern.compile("(?m)^message-secret:.*$");
+            if (p.matcher(text).find()) {
+                text = p.matcher(text).replaceFirst(Matcher.quoteReplacement(line));
+            } else {
+                text = line + System.lineSeparator() + text;
+            }
+            // Gecici dosyaya yaz + atomik tasi: yazim yarida kalirsa config.yml bozulmaz
+            Path tmp = configFile.resolveSibling("config.yml.tmp");
+            Files.write(tmp, text.getBytes(StandardCharsets.UTF_8));
+            try {
+                Files.move(tmp, configFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, configFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            getLogger().log(Level.SEVERE, "message-secret config'e kaydedilemedi!", e);
+        }
+    }
+
+    /** Backend'e imzali mesaj gonderir (HMAC-SHA256 zarfi, bkz. MessageSigner). */
+    public void sendSigned(Server server, String channel, byte[] payload) {
+        server.sendData(channel, messageSigner.sign(channel, payload));
+    }
+
+    /** Sunucu bilgisi uzerinden (oyuncu gerektirmeyen) imzali gonderim. */
+    public void sendSigned(ServerInfo server, String channel, byte[] payload) {
+        server.sendData(channel, messageSigner.sign(channel, payload));
+    }
+
+    public MessageSigner getMessageSigner() {
+        return messageSigner;
+    }
+
     private boolean setupDatabase() {
         try {
             DatabaseConfig dbConfig = new DatabaseConfig(
@@ -88,6 +169,14 @@ public class ReportSystemBungee extends Plugin {
                     config.getString("database.mysql.username", "root"),
                     config.getString("database.mysql.password", "")
             );
+            // Havuz + SSL (eski config'te anahtar yoksa varsayilan: havuz 10, timeout 5000 ms, SSL kapali)
+            dbConfig.withPool(
+                    config.getInt("database.mysql.pool.maximum-pool-size", 10),
+                    2,
+                    config.getLong("database.mysql.pool.connection-timeout", 5000L),
+                    600000L,
+                    1800000L
+            ).withSslMode(config.getString("database.mysql.ssl-mode", "DISABLED"));
             createDatabaseIfNotExists(dbConfig);
             this.database = new MySQLDatabase(dbConfig);
             createAllTables();
@@ -104,8 +193,8 @@ public class ReportSystemBungee extends Plugin {
     }
 
     private void createDatabaseIfNotExists(DatabaseConfig dbConfig) {
-        String url = String.format("jdbc:mysql://%s:%d/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
-                dbConfig.getHost(), dbConfig.getPort());
+        String url = String.format("jdbc:mysql://%s:%d/?sslMode=%s&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+                dbConfig.getHost(), dbConfig.getPort(), dbConfig.getSslMode());
         try (Connection conn = DriverManager.getConnection(url, dbConfig.getUsername(), dbConfig.getPassword());
              Statement stmt = conn.createStatement()) {
             stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS " + dbConfig.getDatabase() + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");

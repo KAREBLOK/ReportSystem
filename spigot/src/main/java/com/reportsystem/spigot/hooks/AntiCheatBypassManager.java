@@ -4,6 +4,7 @@ import com.reportsystem.spigot.ReportSystemSpigot;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachment;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -63,8 +64,36 @@ public class AntiCheatBypassManager {
             "reportsystem.bypass.anticheat"
     ));
 
+    // Guvenlik agi: unutulmus cikis yollarinda kalan muafiyetleri en gec 5 sn'de kaldirir
+    private BukkitTask reconcileTask;
+
     public AntiCheatBypassManager(ReportSystemSpigot plugin) {
         this.plugin = plugin;
+        this.reconcileTask = Bukkit.getScheduler().runTaskTimer(plugin, this::reconcile, 100L, 100L);
+    }
+
+    /**
+     * Ana thread (runTaskTimer). Muaf listesindeki her oyuncu icin: cevrimdisiysa ya da
+     * aktif replay izlemiyorsa muafiyeti kaldirir (Overwatch post-replay dahil).
+     * exempt() cagrisindan ONCE activeReplays'e eklendigi icin (ReplayManager.finishReplayStart)
+     * aktif bir izleyiciyi yanlislikla cikarmaz.
+     */
+    private void reconcile() {
+        for (UUID uuid : new HashSet<>(exemptPlayers)) {
+            Player p = Bukkit.getPlayer(uuid);
+            if (p == null) {
+                unexempt(uuid);
+                continue;
+            }
+            // K4: yalniz aktif replay izleyicisi muaf kalir. Overwatch post-replay'de (replay bitti,
+            // karar bekleniyor) muafiyet gereksiz; "Tekrar Izle" finishReplayStart'ta yeniden muaf tutar.
+            boolean watching = plugin.getReplayManager() != null
+                    && plugin.getReplayManager().isWatchingReplay(uuid);
+            if (!watching) {
+                unexempt(uuid);
+                plugin.debug("[AC-BYPASS] Reconcile: stale exemption removed for " + p.getName());
+            }
+        }
     }
 
     /**
@@ -141,6 +170,10 @@ public class AntiCheatBypassManager {
      * Plugin disable olurken tum exempt'leri temizle.
      */
     public void shutdown() {
+        if (reconcileTask != null) {
+            reconcileTask.cancel();
+            reconcileTask = null;
+        }
         for (Map.Entry<UUID, PermissionAttachment> entry : new HashSet<>(attachments.entrySet())) {
             Player viewer = Bukkit.getPlayer(entry.getKey());
             if (viewer != null && viewer.isOnline()) {

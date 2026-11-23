@@ -44,6 +44,10 @@ public class RecordingListener implements Listener {
 
             // Kısa bir gecikmeyle replay'i başlat (spawn tamamlansın diye)
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                // Savunma derinligi: bekleyen replay yalnizca yetkiliye acilir
+                if (!player.isOnline() || !player.hasPermission("reportsystem.view.all")) {
+                    return;
+                }
                 plugin.getReplayManager().startReplay(pendingReportId, player);
                 plugin.getMessageManager().sendMessage(player, "replay.recording.auto-start");
             }, 20L); // 1 saniye gecikme

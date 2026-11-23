@@ -47,13 +47,11 @@ public class GUIManager {
         };
 
         for (String fileName : guiFiles) {
-            File file = new File(guiFolder, fileName);
-            if (!file.exists()) {
-                plugin.saveResource("guis/" + fileName, false);
-            }
+            String key = fileName.replace(".yml", "");
+            // H-49: dile göre guis/<dil>/<ad>.yml veya kök guis/<ad>.yml
+            File file = GUIConfig.resolveFile(plugin, key);
 
             FileConfiguration config = YamlConfiguration.loadConfiguration(file);
-            String key = fileName.replace(".yml", "");
             guiConfigs.put(key, config);
         }
     }

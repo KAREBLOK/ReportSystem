@@ -14,8 +14,23 @@ public interface ReportDAO {
     List<Report> getReportsByReporter(String reporterName);
     int getReportCount();
     boolean updateReportStatus(int id, String status);
+
+    /**
+     * Atomik koşullu durum geçişi: yalnız rapor hâlâ {@code expectedStatus} durumundaysa
+     * {@code newStatus}'a geçirir ({@code UPDATE ... WHERE id = ? AND status = ?}).
+     * İki yetkilinin aynı raporu aynı anda işlemesini (çift ceza / üzerine yazma) engeller.
+     *
+     * @return Etkilenen satır sayısı (0/1). 0 = rapor beklenen durumda değil (başkası işlemiş).
+     * @throws SQLException DB hatası yutulmaz, çağırana iletilir.
+     */
+    int transitionStatus(int id, String expectedStatus, String newStatus) throws SQLException;
     boolean updateReportServer(int id, String serverName);
     boolean updatePunishmentStatus(int reportId, String punishmentType) throws SQLException;
+
+    /**
+     * Raporu çözen yetkiliyi ve çözülme zamanını kalıcı yazar (H-14a). Bloklayan DB çağrısı.
+     */
+    boolean setResolution(int id, String resolvedBy, long resolvedAt) throws SQLException;
     boolean deleteReport(int id);
     void deleteOldReports(int days);
 

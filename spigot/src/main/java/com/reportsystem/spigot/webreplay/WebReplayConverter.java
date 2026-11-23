@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.webreplay;
 
+import java.util.Locale;
 import com.reportsystem.common.replay.actions.*;
 import com.reportsystem.spigot.utils.ItemSerializer;
 
@@ -79,7 +80,7 @@ public class WebReplayConverter {
      */
     private static int getEntityTypeIdFromNms(String entityTypeName) {
         try {
-            String name = entityTypeName.replace("minecraft:", "").toLowerCase();
+            String name = entityTypeName.replace("minecraft:", "").toLowerCase(Locale.ROOT);
 
             // NMS EntityType sinifinda static field olarak entity type'lari bul
             // Ornek: EntityType.ZOMBIE, EntityType.SKELETON, EntityType.ARROW vs.
@@ -99,7 +100,7 @@ public class WebReplayConverter {
             if (getIdMethod == null) return -1;
 
             // Static field adini olustur: "zombie" -> "ZOMBIE", "falling_block" -> "FALLING_BLOCK"
-            String fieldName = name.toUpperCase();
+            String fieldName = name.toUpperCase(Locale.ROOT);
             try {
                 Object nmsEntityType = entityTypeClass.getField(fieldName).get(null);
                 int id = (int) getIdMethod.invoke(registry, nmsEntityType);
@@ -992,7 +993,7 @@ public class WebReplayConverter {
                             "},\"type\":" + interactStateId + "}");
 
                     // Blok turune gore ses
-                    String bt = action.getBlockType().toUpperCase();
+                    String bt = action.getBlockType().toUpperCase(Locale.ROOT);
                     if (bt.contains("DOOR")) {
                         writeActionSound(ts, "block.wooden_door.open", 1.0f, 1.0f);
                     } else if (bt.contains("TRAPDOOR")) {
@@ -1315,17 +1316,18 @@ public class WebReplayConverter {
         // 2. "ENTITY_PLAYER_HURT" -> Bukkit Sound enum ile dogru resource location'a cevir
         if (soundName.contains(":")) {
             // Zaten resource location formatinda (PacketEvents recording)
-            soundName = soundName.toLowerCase();
+            soundName = soundName.toLowerCase(Locale.ROOT);
         } else {
             // Bukkit Sound enum adi (SoundListener'dan) - getKey() ile dogru MC ismine cevir
             // replace("_", ".") YANLIS: "BLOCK_WOODEN_DOOR_OPEN" -> "block.wooden.door.open"
             // Dogru: "minecraft:block.wooden_door.open"
             try {
-                org.bukkit.Sound bukkitSound = org.bukkit.Sound.valueOf(soundName.toUpperCase());
-                soundName = bukkitSound.getKey().toString();
+                String resolvedKey = com.reportsystem.spigot.utils.SoundUtil.resolveKey(soundName);
+                if (resolvedKey == null) throw new IllegalArgumentException("unknown sound");
+                soundName = resolvedKey.contains(":") ? resolvedKey : "minecraft:" + resolvedKey;
             } catch (Exception e) {
-                // Enum bulunamazsa fallback (imperfect)
-                soundName = "minecraft:" + soundName.toLowerCase().replace("_", ".");
+                // Cozulemezse fallback (imperfect)
+                soundName = "minecraft:" + soundName.toLowerCase(java.util.Locale.ROOT).replace("_", ".");
             }
         }
 
@@ -2183,7 +2185,7 @@ public class WebReplayConverter {
 
         try {
             Class<?> blocksClass = Class.forName("net.minecraft.world.level.block.Blocks");
-            Object nmsBlock = blocksClass.getField(blockFieldName.toUpperCase()).get(null);
+            Object nmsBlock = blocksClass.getField(blockFieldName.toUpperCase(Locale.ROOT)).get(null);
 
             Class<?> registriesClass = Class.forName("net.minecraft.core.registries.BuiltInRegistries");
             Object blockRegistry = registriesClass.getDeclaredField("BLOCK").get(null);
@@ -2216,7 +2218,7 @@ public class WebReplayConverter {
      */
     private static int getEntityTypeId(String entityType) {
         if (entityType == null) return -1;
-        String type = entityType.replace("minecraft:", "").toLowerCase();
+        String type = entityType.replace("minecraft:", "").toLowerCase(Locale.ROOT);
 
         // Cache kontrol
         Integer cached = entityTypeIdCache.get(type);
@@ -2238,7 +2240,7 @@ public class WebReplayConverter {
      */
     private static int getPotionEffectId(String effectType) {
         if (effectType == null) return -1;
-        String type = effectType.replace("minecraft:", "").toLowerCase();
+        String type = effectType.replace("minecraft:", "").toLowerCase(Locale.ROOT);
         switch (type) {
             case "speed":           return 0;
             case "slowness":        return 1;

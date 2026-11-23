@@ -1,0 +1,39 @@
+# Overwatch Leaderboard GUI
+title: "&8&nLeaderboard"
+
+# Rank prefixes
+rank-1: "&6&l#1 "
+rank-2: "&7&l#2 "
+rank-3: "&c&l#3 "
+rank-n: "&e#%rank% "
+
+# Decorative
+separator: "&8&m━━━━━━━━━━━━━━━━━━━━━━"
+
+# Empty state
+empty-name: "&c&lNo Data Yet"
+empty-lore: "&7No reviews have been made yet!"
+
+# Player entry lore
+rank: " &8▪ &7Rank: %rank_color%&l%rank%"
+level: " &8▪ &7Level: &a%level% &8(&6%xp% XP&8)"
+stats-title: ""
+total: " &8▪ &7Total: &a%total%"
+guilty: " &8▪ &7Guilty: &c%guilty%"
+innocent: " &8▪ &7Innocent: &a%innocent%"
+skip: " &8▪ &7Skipped: &e%skip%"
+accuracy: " &8▪ &7Accuracy: &6%accuracy%%"
+time: " &8▪ &7Time: &b%hours%h %minutes%m"
+average: " &8▪ &7Average: &b%avg_seconds%s"
+badge-1: "&6&l✦ TOP REVIEWER ✦"
+badge-2: "&7&l★ SECOND BEST ★"
+badge-3: "&c&l♦ THIRD BEST ♦"
+
+# Info item (slot 40)
+info-name: "&e&lInformation"
+info-lore1: "&7The leaderboard shows the players"
+info-lore2: "&7with the most reviews."
+info-sorting: " &8▪ &7Sorted by: &aTotal XP"
+
+# Back button (slot 49)
+back: "&8←"

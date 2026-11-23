@@ -1,0 +1,71 @@
+# Replay Hotbar Items
+# Control items given to the player's hotbar while watching a replay
+
+items:
+  play:
+    material: LIME_DYE
+    name: "&a▶ PLAY"
+    lore:
+      - '&7Resume the replay'
+      - ''
+      - '&e► Click'
+
+  pause:
+    material: GRAY_DYE
+    name: "&7⏸ PAUSE"
+    lore:
+      - '&7Pause the replay'
+      - ''
+      - '&e► Click'
+
+  settings:
+    material: COMPARATOR
+    name: "&eReplay Settings"
+    lore:
+      - ''
+      - ' &8▪ &7Player: &a%player%'
+      - ' &8▪ &7Time: &a%elapsed% / %total%'
+      - ' &8▪ &7Progress: &a%progress%'
+      - ' &8▪ &7Speed: &a%speed%x'
+      - ''
+      - '&e► Click for settings'
+
+  rewind:
+    material: PLAYER_HEAD
+    skull-owner: "MHF_ArrowLeft"
+    name: "&c◀ 5s Back"
+    lore:
+      - '&7Rewind 5 seconds'
+
+  teleport:
+    material: ENDER_PEARL
+    name: "&d🌀 Teleport"
+    lore:
+      - '&7Teleport to players'
+      - ''
+      - '&e► Click'
+
+  forward:
+    material: PLAYER_HEAD
+    skull-owner: "MHF_ArrowRight"
+    name: "&a5s Forward ▶"
+    lore:
+      - '&7Fast forward 5 seconds'
+
+  speed:
+    material: RABBIT_FOOT
+    name: "&b⚡ Speed: &f%speed%x"
+    lore:
+      - ''
+      - '&e► Left click &7to speed up'
+      - '&e► Right click &7to slow down'
+      - ''
+      - '&8Speeds: 0.25x, 0.5x, 1.0x, 2.0x, 4.0x'
+
+  stop:
+    material: BARRIER
+    name: "&c■ STOP"
+    lore:
+      - '&7Stop the replay and exit'
+      - ''
+      - '&e► Click'

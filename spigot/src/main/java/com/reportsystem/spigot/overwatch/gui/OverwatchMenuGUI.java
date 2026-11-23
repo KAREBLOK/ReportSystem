@@ -16,6 +16,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Main Overwatch Menu GUI - DeluxeMenu inspired clean design
@@ -27,6 +30,9 @@ import java.util.Optional;
  *   Row 5: .... BACK ....         (slot 40)
  */
 public class OverwatchMenuGUI implements InventoryHolder {
+
+    /** "İncelemeye başla" çift tık kilidi: sorgu async olduğu için aynı oyuncu iki rapor atamasın [THR-09]. */
+    private static final Set<UUID> STARTING = ConcurrentHashMap.newKeySet();
 
     private final ReportSystemSpigot plugin;
     private final Player player;
@@ -42,8 +48,10 @@ public class OverwatchMenuGUI implements InventoryHolder {
         this.inventory = Bukkit.createInventory(this, 45, plugin.getMessageManager().colorize(title));
 
         setupItems();
+        loadAsync();
     }
 
+    /** Ana thread: yalnız DB gerektirmeyen öğeler. Slot 4/20/22 {@link #loadAsync()} ile dolar [THR-01]. */
     private void setupItems() {
         // Black glass separator (row 2: slots 10-16)
         ItemStack blackGlass = createItem(Material.BLACK_STAINED_GLASS_PANE, "&7", null);
@@ -51,8 +59,62 @@ public class OverwatchMenuGUI implements InventoryHolder {
             inventory.setItem(i, blackGlass);
         }
 
+        // Leaderboard (Slot 24)
+        List<String> leaderboardLore = new ArrayList<>();
+        leaderboardLore.add("");
+        leaderboardLore.add(cfg.getString("leaderboard.lore-desc1", ""));
+        leaderboardLore.add(cfg.getString("leaderboard.lore-desc2", ""));
+        leaderboardLore.add("");
+        leaderboardLore.add(cfg.getString("leaderboard.lore-click", ""));
+
+        inventory.setItem(24, createItem(Material.GOLDEN_APPLE, cfg.getString("leaderboard.name", ""), leaderboardLore));
+
+        // How it Works (Slot 31)
+        List<String> tutorialLore = new ArrayList<>();
+        tutorialLore.add("");
+        tutorialLore.add(cfg.getString("tutorial.lore-header", ""));
+        tutorialLore.add("");
+        tutorialLore.add(cfg.getString("tutorial.lore-step1", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step2", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step3", ""));
+        tutorialLore.add(cfg.getString("tutorial.lore-step4", ""));
+        tutorialLore.add("");
+        tutorialLore.add(cfg.getString("tutorial.lore-click", ""));
+
+        inventory.setItem(31, createItem(Material.KNOWLEDGE_BOOK, cfg.getString("tutorial.name", ""), tutorialLore));
+
+        // Back Button (Slot 40)
+        inventory.setItem(40, createItem(Material.ARROW, cfg.getString("back", "&8←"), null));
+    }
+
+    /**
+     * İstatistik + bekleyen kuyruk sayısını async okur, ana thread'de slot 4/20/22'yi doldurur
+     * [THR-01][THR-17]. Envanter açıkken yerinde güncellenir.
+     */
+    private void loadAsync() {
+        if (!plugin.isEnabled()) return;
+        final UUID uuid = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Optional<OverwatchStats> statsOpt;
+            int pendingQueue;
+            try {
+                statsOpt = plugin.getOverwatchManager().getReviewerStats(uuid);
+                pendingQueue = plugin.getOverwatchManager().getPendingQueueCount();
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "[OVERWATCH] Failed to load menu data", t);
+                statsOpt = Optional.empty();
+                pendingQueue = 0;
+            }
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            final Optional<OverwatchStats> finalStats = statsOpt;
+            final int finalPending = pendingQueue;
+            Bukkit.getScheduler().runTask(plugin, () -> fill(finalStats, finalPending));
+        });
+    }
+
+    /** Ana thread: DB'li slotları (4, 20, 22) doldurur. */
+    private void fill(Optional<OverwatchStats> statsOpt, int pendingQueue) {
         // Player Head (Slot 4) - overview
-        Optional<OverwatchStats> statsOpt = plugin.getOverwatchManager().getReviewerStats(player.getUniqueId());
         List<String> headLore = new ArrayList<>();
         headLore.add("");
 
@@ -78,7 +140,6 @@ public class OverwatchMenuGUI implements InventoryHolder {
         reviewLore.add(cfg.getString("start-review.lore-desc1", ""));
         reviewLore.add(cfg.getString("start-review.lore-desc2", ""));
         reviewLore.add("");
-        int pendingQueue = plugin.getOverwatchManager().getPendingQueueCount();
         reviewLore.add(cfg.getString("start-review.lore-pending", "").replace("%count%", String.valueOf(pendingQueue)));
         reviewLore.add("");
         reviewLore.add(cfg.getString("start-review.lore-click", ""));
@@ -110,33 +171,6 @@ public class OverwatchMenuGUI implements InventoryHolder {
         statsLore.add(cfg.getString("stats.lore-click", ""));
 
         inventory.setItem(22, createItem(Material.BOOK, cfg.getString("stats.name", ""), statsLore));
-
-        // Leaderboard (Slot 24)
-        List<String> leaderboardLore = new ArrayList<>();
-        leaderboardLore.add("");
-        leaderboardLore.add(cfg.getString("leaderboard.lore-desc1", ""));
-        leaderboardLore.add(cfg.getString("leaderboard.lore-desc2", ""));
-        leaderboardLore.add("");
-        leaderboardLore.add(cfg.getString("leaderboard.lore-click", ""));
-
-        inventory.setItem(24, createItem(Material.GOLDEN_APPLE, cfg.getString("leaderboard.name", ""), leaderboardLore));
-
-        // How it Works (Slot 31)
-        List<String> tutorialLore = new ArrayList<>();
-        tutorialLore.add("");
-        tutorialLore.add(cfg.getString("tutorial.lore-header", ""));
-        tutorialLore.add("");
-        tutorialLore.add(cfg.getString("tutorial.lore-step1", ""));
-        tutorialLore.add(cfg.getString("tutorial.lore-step2", ""));
-        tutorialLore.add(cfg.getString("tutorial.lore-step3", ""));
-        tutorialLore.add(cfg.getString("tutorial.lore-step4", ""));
-        tutorialLore.add("");
-        tutorialLore.add(cfg.getString("tutorial.lore-click", ""));
-
-        inventory.setItem(31, createItem(Material.KNOWLEDGE_BOOK, cfg.getString("tutorial.name", ""), tutorialLore));
-
-        // Back Button (Slot 40)
-        inventory.setItem(40, createItem(Material.ARROW, cfg.getString("back", "&8←"), null));
     }
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
@@ -157,7 +191,7 @@ public class OverwatchMenuGUI implements InventoryHolder {
     }
 
     private String getRankColor(String rank) {
-        switch (rank.toUpperCase()) {
+        switch (rank.toUpperCase(java.util.Locale.ROOT)) {
             case "DIAMOND": return "§b";
             case "GOLD": return "§6";
             case "SILVER": return "§7";
@@ -197,49 +231,122 @@ public class OverwatchMenuGUI implements InventoryHolder {
             return;
         }
 
+        final UUID uuid = player.getUniqueId();
+        if (!STARTING.add(uuid)) {
+            return; // zaten bir "başla" isteği sürüyor
+        }
+
         player.closeInventory();
 
-        Optional<Integer> reportIdOpt = plugin.getOverwatchManager().getNextReportForReviewer(player);
+        // Kuyruk sorgusu ağır olabilir: DB ana thread'de çalışmaz [THR-01]
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Optional<Integer> reportIdOpt;
+            try {
+                reportIdOpt = plugin.getOverwatchManager().getNextReportForReviewer(player);
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] Failed to get next report", t);
+                reportIdOpt = Optional.empty();
+            }
 
-        if (reportIdOpt.isPresent()) {
-            int reportId = reportIdOpt.get();
+            if (!plugin.isEnabled()) {
+                STARTING.remove(uuid);
+                return; // kapanıyor: runTask atılamaz [THR-17]
+            }
 
-            String loadingMsg = plugin.getMessageManager().getMessage("overwatch.review.loading")
-                    .replace("%id%", String.valueOf(reportId));
-            player.sendMessage(plugin.getMessageManager().colorize(loadingMsg));
+            final Optional<Integer> result = reportIdOpt;
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                boolean handedOff = false;
+                try {
+                    handedOff = handleNextReport(result, uuid);
+                } finally {
+                    // Replay akışı devraldıysa kilidi o bırakır (startReplay sonucu belli olunca)
+                    if (!handedOff) STARTING.remove(uuid);
+                }
+            });
+        });
+    }
 
-            // Oyuncunun GERCEK envanterini/konumunu replay baslamadan ONCE kaydet.
-            //
-            // Burasi kritik: startReplay -> giveControlItems oyuncunun envanterini
-            // kontrol esyalariyla DEGISTIRIYOR. Kayit bir tik sonra alinsaydi gercek
-            // esyalar degil kontrol esyalari saklanirdi. Bu cagri eksik oldugu icin
-            // inceleme sonunda envanter geri yuklenemiyordu (esya kaybi).
-            plugin.getOverwatchReplayListener().savePlayerState(player);
+    /**
+     * Ana thread: async sorgunun sonucunu işler.
+     *
+     * @return true ise {@code STARTING} kilidini replay akışı (startReplay sonucu) bırakacak;
+     *         false ise çağıran hemen bırakır.
+     */
+    private boolean handleNextReport(Optional<Integer> reportIdOpt, UUID uuid) {
+        if (reportIdOpt.isEmpty()) {
+            if (player.isOnline()) {
+                String noReportsMsg = plugin.getMessageManager().getMessage("overwatch.review.no-reports");
+                String tryLaterMsg = plugin.getMessageManager().getMessage("overwatch.review.try-later");
+                player.sendMessage(plugin.getMessageManager().colorize(noReportsMsg));
+                player.sendMessage(plugin.getMessageManager().colorize(tryLaterMsg));
+            }
+            return false;
+        }
 
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                plugin.getReplayManager().startReplay(reportId, player).thenAccept(started -> {
+        int reportId = reportIdOpt.get();
+
+        if (!player.isOnline()) {
+            // Rapor atandı ama oyuncu çıktı: raporu kuyruğa geri ver (DB async)
+            Bukkit.getScheduler().runTaskAsynchronously(plugin,
+                    () -> plugin.getOverwatchManager().unassignReport(reportId));
+            return false;
+        }
+
+        String loadingMsg = plugin.getMessageManager().getMessage("overwatch.review.loading")
+                .replace("%id%", String.valueOf(reportId));
+        player.sendMessage(plugin.getMessageManager().colorize(loadingMsg));
+
+        // Inceleme kaydini ac: burada yalniz BASLANGIC KONUMU kesinlesir. Gercek envanter/durum
+        // ve PDC cokme yedegi, envanterin gercekten temizlendigi tick'te
+        // (ReplayControlManager.giveControlItems -> captureIfPending) alinir. Burada alinsaydi
+        // aradaki korumasiz pencerede (20 tick + async yukleme + dunya degisimi) sandiga konan
+        // esyalar inceleme sonunda geri yazilip cogalirdi.
+        plugin.getOverwatchReplayListener().savePlayerState(player);
+
+        // Buradan sonra kilidi replay akisi birakir: basari, basarisizlik, istisna ya da
+        // oyuncu cikisi — HER yolda finally ile (ikinci "basla" ilk incelemenin yedegini silmesin).
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            try {
+                plugin.getReplayManager().startReplay(reportId, player).whenComplete((started, error) -> {
+                    if (!plugin.isEnabled()) {
+                        STARTING.remove(uuid);
+                        return; // kapanıyor: runTask atılamaz [THR-17]
+                    }
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (started) {
-                            plugin.getOverwatchReplayListener().startReview(player, reportId);
-                        } else {
-                            // Replay hic baslamadi: envanter degismedi, bu yuzden
-                            // GERI YUKLEME degil sadece kaydi dusur ve raporu serbest birak.
-                            plugin.getOverwatchReplayListener().dropSavedState(player.getUniqueId());
-                            plugin.getOverwatchManager().unassignReport(reportId);
+                        try {
+                            if (error == null && Boolean.TRUE.equals(started)) {
+                                plugin.getOverwatchReplayListener().startReview(player, reportId);
+                            } else {
+                                if (error != null) {
+                                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                                            "[OVERWATCH] startReplay failed for report #" + reportId, error);
+                                }
+                                // Replay hic baslamadi: GERI YUKLEME degil sadece kaydi dusur ve raporu
+                                // serbest birak. (Arada baska bir replay envanteri temizlediyse
+                                // dropSavedState PDC yedegini silmez, o replay'e devreder.)
+                                plugin.getOverwatchReplayListener().dropSavedState(uuid);
+                                Bukkit.getScheduler().runTaskAsynchronously(plugin,
+                                        () -> plugin.getOverwatchManager().unassignReport(reportId));
 
-                            String failedMsg = plugin.getMessageManager().getMessage("overwatch.review.replay-failed");
-                            player.sendMessage(plugin.getMessageManager().colorize(failedMsg));
+                                if (player.isOnline()) {
+                                    String failedMsg = plugin.getMessageManager().getMessage("overwatch.review.replay-failed");
+                                    player.sendMessage(plugin.getMessageManager().colorize(failedMsg));
+                                }
+                            }
+                        } finally {
+                            STARTING.remove(uuid);
                         }
                     });
                 });
-            }, 20L);
-
-        } else {
-            String noReportsMsg = plugin.getMessageManager().getMessage("overwatch.review.no-reports");
-            String tryLaterMsg = plugin.getMessageManager().getMessage("overwatch.review.try-later");
-            player.sendMessage(plugin.getMessageManager().colorize(noReportsMsg));
-            player.sendMessage(plugin.getMessageManager().colorize(tryLaterMsg));
-        }
+            } catch (Throwable t) {
+                STARTING.remove(uuid);
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH] startReplay threw", t);
+                plugin.getOverwatchReplayListener().dropSavedState(uuid);
+                Bukkit.getScheduler().runTaskAsynchronously(plugin,
+                        () -> plugin.getOverwatchManager().unassignReport(reportId));
+            }
+        }, 20L);
+        return true;
     }
 
     private void showTutorial() {

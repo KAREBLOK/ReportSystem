@@ -1,0 +1,99 @@
+# Animated Ban GUI
+title: "&8&nBan"
+size: 36
+
+# Background
+background:
+  enabled: false
+
+# Player info
+player-info:
+  slot: 4
+  material: PLAYER_HEAD
+  name: "&4⚡ %target%"
+  lore:
+    - ''
+    - '&7This player will be punished'
+    - '&7with an animated ban!'
+    - ''
+    - '&c&lThe wrath of the gods awaits...'
+
+# Duration options
+durations:
+  30-minutes:
+    slot: 10
+    material: PAPER
+    name: "&e30 Minutes"
+    duration: "30m"
+
+  1-hour:
+    slot: 11
+    material: PAPER
+    name: "&61 Hour"
+    duration: "1h"
+
+  6-hours:
+    slot: 12
+    material: GOLD_NUGGET
+    name: "&c6 Hours"
+    duration: "6h"
+
+  1-day:
+    slot: 14
+    material: GOLD_INGOT
+    name: "&c1 Day"
+    duration: "1d"
+
+  7-days:
+    slot: 15
+    material: IRON_INGOT
+    name: "&c7 Days"
+    duration: "7d"
+
+  30-days:
+    slot: 16
+    material: IRON_INGOT
+    name: "&430 Days"
+    duration: "30d"
+
+  permanent:
+    slot: 21
+    material: BARRIER
+    name: "&4&l⚠ PERMANENT BAN"
+    lore:
+      - ''
+      - '&7Permanently ban the'
+      - '&7player from the server.'
+      - ''
+      - '&4&lTHE FINAL JUDGEMENT OF THE GODS!'
+      - ''
+      - '&e► Click'
+    duration: "permanent"
+
+  custom:
+    slot: 23
+    material: NAME_TAG
+    name: "&b&lCustom Duration"
+    lore:
+      - ''
+      - '&7Enter a custom duration.'
+      - '&8(e.g. 2h, 15d, 1w)'
+      - ''
+      - '&e► Click'
+    duration: "custom"
+
+# Control buttons
+controls:
+  cancel:
+    slot: 28
+    material: RED_CONCRETE
+    name: "&c✖ Cancel"
+    lore:
+      - "&7Cancel the animated ban"
+
+  back:
+    slot: 34
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Back to report details"

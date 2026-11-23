@@ -88,7 +88,7 @@ public class TrustLevelManager {
      * Trust level'ın lokalize adını getir
      */
     public String getLocalizedLevelName(TrustLevel level) {
-        String path = "trust-level.levels." + level.getName().toLowerCase();
+        String path = "trust-level.levels." + level.getName().toLowerCase(Locale.ROOT);
         return plugin.getMessageManager().getMessage(path);
     }
 
@@ -130,13 +130,13 @@ public class TrustLevelManager {
      */
     private double getBasePoints(String punishmentType) {
         if (punishmentType == null) return 5;
-        String key = "trust-level.points." + punishmentType.toLowerCase();
+        String key = "trust-level.points." + punishmentType.toLowerCase(Locale.ROOT);
         return plugin.getConfig().getDouble(key, getDefaultPoints(punishmentType));
     }
 
     private double getDefaultPoints(String type) {
         if (type == null) return 5;
-        switch (type.toUpperCase()) {
+        switch (type.toUpperCase(Locale.ROOT)) {
             case "BAN": return 40;
             case "MUTE": return 15;
             case "KICK": return 10;

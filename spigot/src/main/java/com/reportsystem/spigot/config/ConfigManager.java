@@ -5,7 +5,6 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.util.List;
 import org.bukkit.ChatColor;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,23 +12,10 @@ import java.util.List;
 public class ConfigManager {
     private final JavaPlugin plugin;
     private FileConfiguration config;
-    private FileConfiguration messagesConfig;
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.config = plugin.getConfig();
-        loadMessages();
-    }
-
-    private void loadMessages() {
-        String language = config.getString("general.language", "en");
-        File messagesFile = new File(plugin.getDataFolder(), "messages_" + language + ".yml");
-
-        if (!messagesFile.exists()) {
-            plugin.saveResource("messages_" + language + ".yml", false);
-        }
-
-        this.messagesConfig = YamlConfiguration.loadConfiguration(messagesFile);
     }
 
     // General Settings
@@ -37,8 +23,49 @@ public class ConfigManager {
         return config.getBoolean("general.debug", false);
     }
 
+    /** Desteklenen dil kodları (messages_<dil>.yml jar'da bulunanlar). */
+    private static final java.util.Set<String> SUPPORTED_LANGUAGES = java.util.Set.of("en", "tr");
+    private volatile String lastWarnedLanguage;
+
+    /**
+     * I18N-14 / K-h: ham dil değerini tek yerde normalize eder. trim + lower-case (Locale.ROOT),
+     * "tr_TR"/"tr-TR" -> "tr", "en_US" -> "en". Desteklenmeyen / boş değer "en"e düşer; asla istisna atmaz.
+     *
+     * @return normalize edilmiş dil kodu; uyarı için bkz. {@link #isSupportedLanguage}
+     */
+    public static String normalizeLanguage(String raw) {
+        String l = stripLanguage(raw);
+        return SUPPORTED_LANGUAGES.contains(l) ? l : "en";
+    }
+
+    /** Ham değer (trim/case/bölge eki sonrası) desteklenen bir dile karşılık geliyor mu? */
+    public static boolean isSupportedLanguage(String raw) {
+        return SUPPORTED_LANGUAGES.contains(stripLanguage(raw));
+    }
+
+    /** trim + lower-case + bölge ekini at; null -> "". */
+    private static String stripLanguage(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String l = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        int sep = l.indexOf('_');
+        if (sep < 0) {
+            sep = l.indexOf('-');
+        }
+        return sep > 0 ? l.substring(0, sep) : l;
+    }
+
     public String getLanguage() {
-        return config.getString("general.language", "en");
+        String raw = config.getString("general.language", "en");
+        String normalized = normalizeLanguage(raw);
+        if (!isSupportedLanguage(raw) && raw != null && !raw.isBlank()
+                && !raw.equals(lastWarnedLanguage)) {
+            lastWarnedLanguage = raw;
+            plugin.getLogger().warning("Unsupported general.language '" + raw
+                    + "' (supported: en, tr). Falling back to 'en'.");
+        }
+        return normalized;
     }
 
     public String getDateFormat() {
@@ -72,6 +99,31 @@ public class ConfigManager {
 
     public String getMySQLPassword() {
         return config.getString("database.mysql.password", "password");
+    }
+
+    // MySQL connection pool (HikariCP) — sınırlar DatabaseConfig.withPool'da uygulanır
+    public int getMySQLPoolMaximumSize() {
+        return config.getInt("database.mysql.pool.maximum-pool-size", 10);
+    }
+
+    public int getMySQLPoolMinimumIdle() {
+        return config.getInt("database.mysql.pool.minimum-idle", 2);
+    }
+
+    public long getMySQLPoolConnectionTimeout() {
+        return config.getLong("database.mysql.pool.connection-timeout", 5000L);
+    }
+
+    public long getMySQLPoolIdleTimeout() {
+        return config.getLong("database.mysql.pool.idle-timeout", 600000L);
+    }
+
+    public long getMySQLPoolMaxLifetime() {
+        return config.getLong("database.mysql.pool.max-lifetime", 1800000L);
+    }
+
+    public String getMySQLSslMode() {
+        return config.getString("database.mysql.ssl-mode", "DISABLED");
     }
 
     // BungeeCord Settings
@@ -197,19 +249,9 @@ public class ConfigManager {
         return config.getInt("performance.cache.expiry", 10);
     }
 
-    // Messages
-    public String getPrefix() {
-        return messagesConfig.getString("prefix.general", "&8[&6Report&8]");
-    }
-
-    public String getMessage(String path) {
-        return messagesConfig.getString(path, "Message not found: " + path);
-    }
-
     public void reload() {
         plugin.reloadConfig();
         this.config = plugin.getConfig();
-        loadMessages();
     }
 
     public String getGuiTitle(String guiName, String... replacements) {
@@ -227,10 +269,8 @@ public class ConfigManager {
     }
 
     public FileConfiguration getGuiConfig(String guiName) {
-        File guiFile = new File(plugin.getDataFolder(), "guis/" + guiName + ".yml");
-        if (!guiFile.exists()) {
-            plugin.saveResource("guis/" + guiName + ".yml", false);
-        }
+        // H-49: dile göre guis/<dil>/<ad>.yml veya kök guis/<ad>.yml
+        File guiFile = com.reportsystem.spigot.gui.GUIConfig.resolveFile(plugin, guiName);
         return YamlConfiguration.loadConfiguration(guiFile);
     }
 
@@ -427,7 +467,7 @@ public class ConfigManager {
      * Get commands to execute on rank up (bronze, silver, gold, diamond)
      */
     public List<String> getRankUpCommands(String rank) {
-        return config.getStringList("overwatch.rewards.on-rank-up." + rank.toLowerCase());
+        return config.getStringList("overwatch.rewards.on-rank-up." + rank.toLowerCase(java.util.Locale.ROOT));
     }
 
     /**

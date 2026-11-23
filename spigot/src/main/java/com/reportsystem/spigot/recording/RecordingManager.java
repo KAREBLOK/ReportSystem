@@ -10,7 +10,6 @@ import com.reportsystem.common.replay.actions.EquipmentAction;
 import com.reportsystem.common.replay.actions.EntityUpdateAction;
 import com.reportsystem.common.replay.actions.LocationAction;
 import com.reportsystem.common.replay.actions.PlayerInfoAction;
-import com.reportsystem.spigot.commands.ReportCommand;
 import com.reportsystem.spigot.utils.SkinUtils;
 import com.reportsystem.spigot.utils.ItemSerializer;
 import org.bukkit.Bukkit;
@@ -20,7 +19,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import com.reportsystem.spigot.ReportSystemSpigot;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
@@ -38,9 +36,65 @@ public class RecordingManager {
     private final Map<UUID, Integer> stopTasks = new ConcurrentHashMap<>();
     private final Map<UUID, NearbyPlayerTracker> nearbyPlayerTrackers = new ConcurrentHashMap<>();
 
+    // H-27: çökme/kill'e karşı periyodik disk checkpoint'i + açılışta kurtarma
+    private final RecordingJournal journal;
+    private final boolean crashRecoveryEnabled;
+    private org.bukkit.scheduler.BukkitTask checkpointTask;
+
     public RecordingManager(ReportSystemSpigot plugin, ReplayDAO replayDAO) {
         this.plugin = plugin;
         this.replayDAO = replayDAO;
+        this.journal = new RecordingJournal(plugin);
+        this.crashRecoveryEnabled = plugin.getConfig().getBoolean("replay.crash-recovery.enabled", true);
+
+        if (crashRecoveryEnabled) {
+            // Önceki çökmeden kalan günlükleri DB'ye taşı (dosya + DB işi yalnız journal executor'ında)
+            journal.recoverAsync(replayDAO, plugin.getConfig().getInt("replay.max-file-size", 5));
+
+            int intervalSeconds = Math.max(2, plugin.getConfig().getInt("replay.crash-recovery.interval-seconds", 10));
+            long intervalTicks = intervalSeconds * 20L;
+            this.checkpointTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(
+                    plugin, this::checkpointActiveRecordings, intervalTicks, intervalTicks);
+        } else {
+            // F-K5: kapalıyken eski günlükler işlenmez; varsa bir kez uyar
+            journal.warnIfLeftoverAsync();
+        }
+    }
+
+    /**
+     * Gerçek (DB'ye yazılacak) rapor ID'si mi? 0/negatif geçersiz, 9999 manuel kayıt.
+     */
+    private static boolean isRealReportId(int id) {
+        return id > 0 && id != 9999;
+    }
+
+    /**
+     * Async zamanlayıcıdan çağrılır: her aktif kaydın anlık kopyasını günlüğe yazar.
+     * Kopya burada (kısa kilitle) alınır; serileştirme + dosya G/Ç journal executor'ında.
+     */
+    private void checkpointActiveRecordings() {
+        for (Map.Entry<UUID, RecordingInfo> entry : recordingInfoMap.entrySet()) {
+            try {
+                RecordingInfo info = entry.getValue();
+                List<Integer> ids = info.getAllReportIds();
+                if (ids.isEmpty()) {
+                    continue;
+                }
+                RecordingSession session = info.getSession();
+                List<com.reportsystem.common.replay.actions.ReplayAction> live = session.getActions();
+                List<com.reportsystem.common.replay.actions.ReplayAction> snapshot;
+                synchronized (live) {
+                    snapshot = new ArrayList<>(live);
+                }
+                if (snapshot.isEmpty()) {
+                    continue;
+                }
+                journal.checkpointAsync(entry.getKey(), ids, session.getRecordedPlayerName(),
+                        session.getWorldName(), session.getStartTime(), snapshot);
+            } catch (Exception e) {
+                plugin.getLogger().warning("[RECORDING] Checkpoint alınamadı: " + e.getMessage());
+            }
+        }
     }
 
     /**
@@ -72,8 +126,9 @@ public class RecordingManager {
         if (recordingInfoMap.containsKey(playerUUID)) {
             plugin.getLogger()
                     .warning("[RECORDING] " + player.getName() + " için zaten aktif kayıt var, önce durdurulacak.");
-            // PERFORMANS: .join() ana thread'i bloklar — async callback kullan
-            stopRecording(playerUUID).thenRun(() -> {
+            // PERFORMANS: .join() ana thread'i bloklar — async callback kullan.
+            // F-Ö3: süre dolmadan kesilen eski kaydın raporları için de bildirim gönderilir.
+            stopRecording(playerUUID, true).thenRun(() -> {
                 plugin.getLogger().info("[RECORDING] Eski kayıt durduruldu: " + player.getName());
             }).exceptionally(e -> {
                 plugin.getLogger().warning("[RECORDING] Eski kayıt durdurulurken hata: " + e.getMessage());
@@ -84,8 +139,10 @@ public class RecordingManager {
         plugin.getLogger().info("[RECORDING] Kayıt başlatılıyor: " + player.getName() +
                 " (Initial Report ID: " + reportId + ") - Süre: " + durationSeconds + " saniye");
 
-        // Session oluştur
-        RecordingSession session = new RecordingSession(player.getName());
+        // Session oluştur (H-07: aksiyon tavanı + tip başına saniyelik sınır; <= 0 → sınırsız)
+        RecordingSession session = new RecordingSession(player.getName(),
+                plugin.getConfig().getInt("replay.limits.max-actions", 150000),
+                plugin.getConfig().getInt("replay.limits.max-actions-per-type-per-second", 400));
         // /report anındaki dünyayı kullan (oyuncu GUI açıkken ölüp dünya
         // değiştirebilir)
         String worldName = (overrideWorldName != null) ? overrideWorldName : player.getWorld().getName();
@@ -146,83 +203,131 @@ public class RecordingManager {
                 () -> {
                     stopTasks.remove(playerUUID); // kendi kendine tetiklendi, kaydı temizle
                     plugin.getLogger().info("[RECORDING] Kayıt süresi doldu, durduruluyor: " + player.getName());
-                    stopRecording(playerUUID).thenAccept(success -> {
-                        if (success) {
-                            // Kayıt başarıyla tamamlandı, yetkililere bildirim gönder
-                            RecordingInfo recordingInfo = info;
-                            if (recordingInfo != null && recordingInfo.getReportId() > 0) {
-                                plugin.getLogger()
-                                        .info("[RECORDING] Kayıt başarıyla tamamlandı, bildirim gönderiliyor...");
-
-                                // Yetkililere toast bildirim gönder (messages dosyasından okunur)
-                                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                    plugin.getReportCommand().notifyStaff(
-                                            recordingInfo.getReporterName(),
-                                            player.getName(),
-                                            recordingInfo.getReason(),
-                                            recordingInfo.getReportId());
-                                });
-
-                                // Discord webhook bildirimi
-                                if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
-                                    plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                                        com.reportsystem.common.models.Report report = plugin.getReportService()
-                                                .getReportById(recordingInfo.getReportId());
-                                        if (report != null) {
-                                            plugin.getLogger()
-                                                    .info("[Webhook] Sending new report notification for report #"
-                                                            + recordingInfo.getReportId());
-                                            plugin.getWebhookManager().sendNewReportNotification(report);
-                                        } else {
-                                            plugin.getLogger().warning("[Webhook] Could not fetch report #"
-                                                    + recordingInfo.getReportId() + " from database!");
-                                        }
-                                    });
-                                }
-
-                                // BungeeCord'a bildirim gönder (network-wide)
-                                if (plugin.getConfigManager().isBungeeCordEnabled()) {
-                                    sendNotificationToBungee(
-                                            recordingInfo.getReportId(),
-                                            player.getName(),
-                                            recordingInfo.getReporterName(),
-                                            recordingInfo.getReason());
-                                }
-                            }
-                        }
-                    });
+                    // Bildirimler stopRecording içinde (notifyReports=true) tek noktadan gönderilir;
+                    // kaydın DB'ye yazılma başarısına bağlı değildir (F-Ö3).
+                    stopRecording(playerUUID, true);
                 },
                 durationSeconds * 20L);
         stopTasks.put(playerUUID, stopTask.getTaskId());
     }
 
     /**
-     * Report ID'yi günceller
+     * Açık kayda rapor ID'si bağlar (H-40: EZMEZ). Birincil ID yoksa (<= 0) birincil
+     * olur; aksi halde ek rapor olarak eklenir — kayıt bitince aynı replay her ID'ye yazılır.
+     * Proxy yolu (ReportSystemSpigot.updateRecordingReportId) bu metodu kullanır.
      */
     public void updateReportId(UUID playerUUID, int newReportId) {
-        RecordingInfo info = recordingInfoMap.get(playerUUID);
-        if (info != null) {
-            int oldId = info.reportId;
-            info.reportId = newReportId;
-            plugin.getLogger().info("[RECORDING] Report ID güncellendi: " + oldId + " -> " + newReportId);
-        } else {
-            plugin.getLogger().warning("[RECORDING] Güncellenecek kayıt bulunamadı: " + playerUUID);
-        }
+        attachReport(playerUUID, newReportId, false);
     }
 
     /**
-     * Report ID ve reason'ı günceller
+     * Açık kayda rapor bağlar.
+     *
+     * @param notifyOnFinish true ise bu rapor için yetkili/webhook/proxy bildirimi kayıt
+     *                       bitince gönderilir (bildirimi henüz yapılmamış yollar için)
+     * @return kayıt bulunup bağlandıysa true
      */
-    public void updateReportIdAndReason(UUID playerUUID, int newReportId, String reason) {
+    public boolean attachReport(UUID playerUUID, int reportId, boolean notifyOnFinish) {
+        if (reportId <= 0) {
+            plugin.getLogger().warning("[RECORDING] Geçersiz rapor ID'si bağlanamaz: " + reportId);
+            return false;
+        }
         RecordingInfo info = recordingInfoMap.get(playerUUID);
-        if (info != null) {
-            int oldId = info.reportId;
-            info.reportId = newReportId;
-            info.reason = reason;
-            plugin.getLogger().info("[RECORDING] Report ID ve sebep güncellendi: " + oldId + " -> " + newReportId
-                    + " | Sebep: " + reason);
-        } else {
-            plugin.getLogger().warning("[RECORDING] Güncellenecek kayıt bulunamadı: " + playerUUID);
+        if (info == null) {
+            plugin.getLogger().warning("[RECORDING] Rapor #" + reportId + " bağlanacak aktif kayıt bulunamadı: " + playerUUID);
+            return false;
+        }
+        synchronized (info) {
+            if (info.reportId <= 0) {
+                int oldId = info.reportId;
+                info.reportId = reportId;
+                plugin.getLogger().info("[RECORDING] Birincil rapor ID atandı: " + oldId + " -> " + reportId);
+            } else if (reportId != info.reportId && !info.extraReportIds.contains(reportId)) {
+                info.extraReportIds.add(reportId);
+                plugin.getLogger().info("[RECORDING] Açık kayda ek rapor bağlandı: #" + reportId
+                        + " (birincil #" + info.reportId + ")");
+            }
+            if (notifyOnFinish) {
+                info.notifyOnFinish.add(reportId);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Kayıt bitince (süre sonu / çıkış / AC yeniden başlatma) bildirimleri gönderir: birincil
+     * rapor (kaydı başlatan bilgilerle) + notifyOnFinish isteyen ek raporlar (DB'den okunur).
+     * Herhangi bir thread'den çağrılabilir; Bukkit işleri runTask ile ana thread'e alınır.
+     */
+    private void sendFinishNotifications(RecordingInfo info, String targetName) {
+        if (info == null || !plugin.isEnabled()) {
+            return;
+        }
+        int primary = info.getReportId();
+        if (isRealReportId(primary)) {
+            plugin.getLogger().info("[RECORDING] Kayıt bitti, bildirim gönderiliyor (Rapor #" + primary + ")");
+            dispatchReportNotification(primary, targetName, info.getReporterName(), info.getReason(), null);
+        }
+
+        List<Integer> extra = new ArrayList<>();
+        for (Integer id : info.notifyOnFinish) {
+            if (id != null && id != primary && isRealReportId(id) && !extra.contains(id)) {
+                extra.add(id);
+            }
+        }
+        if (extra.isEmpty()) {
+            return;
+        }
+        // Ek raporların raporlayan/sebep bilgisi kayıtta yok → DB'den async oku
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            for (int id : extra) {
+                com.reportsystem.common.models.Report report = plugin.getReportService().getReportById(id);
+                if (report == null) {
+                    plugin.getLogger().warning("[RECORDING] Bildirim için rapor #" + id + " okunamadı.");
+                    continue;
+                }
+                String reporter = report.getReporterName() != null ? report.getReporterName() : report.getReporter();
+                dispatchReportNotification(id, targetName, reporter != null ? reporter : "",
+                        report.getReason() != null ? report.getReason() : "", report);
+            }
+        });
+    }
+
+    /**
+     * Tek rapor için yetkili toast + Discord webhook + proxy bildirimi.
+     *
+     * @param prefetched DB'den zaten okunmuş rapor (webhook için); null ise async okunur
+     */
+    private void dispatchReportNotification(int reportId, String targetName, String reporterName, String reason,
+            com.reportsystem.common.models.Report prefetched) {
+        if (!plugin.isEnabled()) {
+            return;
+        }
+        // Yetkililere toast bildirim (messages dosyasından okunur) — ana thread
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (plugin.getReportCommand() != null) {
+                plugin.getReportCommand().notifyStaff(reporterName, targetName, reason, reportId);
+            }
+        });
+
+        // Discord webhook bildirimi — async
+        if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                com.reportsystem.common.models.Report report = prefetched != null ? prefetched
+                        : plugin.getReportService().getReportById(reportId);
+                if (report != null) {
+                    plugin.getLogger().info("[Webhook] Sending new report notification for report #" + reportId);
+                    plugin.getWebhookManager().sendNewReportNotification(report);
+                } else {
+                    plugin.getLogger().warning("[Webhook] Could not fetch report #" + reportId + " from database!");
+                }
+            });
+        }
+
+        // BungeeCord'a bildirim (network-wide) — oyuncu listesi + plugin mesajı ana thread'de
+        if (plugin.getConfigManager().isBungeeCordEnabled()) {
+            plugin.getServer().getScheduler().runTask(plugin,
+                    () -> sendNotificationToBungee(reportId, targetName, reporterName, reason));
         }
     }
 
@@ -270,9 +375,24 @@ public class RecordingManager {
     }
 
     /**
-     * Kaydı durdurur ve veritabanına kaydeder
+     * Kaydı durdurur ve veritabanına kaydeder; rapor bildirimi GÖNDERMEZ.
+     * (Kapanış / yönetimsel durdurma için. Çıkış ve yeniden başlatmada
+     * {@link #stopRecording(UUID, boolean)} ile true verilir.)
      */
     public CompletableFuture<Boolean> stopRecording(UUID playerUUID) {
+        return stopRecording(playerUUID, false);
+    }
+
+    /**
+     * Kaydı durdurur ve veritabanına kaydeder.
+     *
+     * @param notifyReports true → kayda bağlı raporların (birincil + notifyOnFinish) yetkili/webhook/
+     *                      proxy bildirimi kayıt kaydetme işi bittikten sonra, BAŞARISINA BAKILMAKSIZIN
+     *                      gönderilir (süre sonu, oyuncu çıkışı, AC yeniden başlatma). Kapanışta (stopAll)
+     *                      false. Kayıt haritadan atomik olarak alındığı için aynı kayda iki kez bildirim
+     *                      gitmez (ikinci çağıran kaydı bulamaz).
+     */
+    public CompletableFuture<Boolean> stopRecording(UUID playerUUID, boolean notifyReports) {
         RecordingSession session = activeRecordings.remove(playerUUID);
         RecordingInfo info = recordingInfoMap.remove(playerUUID);
 
@@ -298,72 +418,18 @@ public class RecordingManager {
         }
 
         if (session != null && info != null) {
-            // Önce bekleyen Report ID var mı kontrol et
-            Integer pendingReportId = ReportCommand.getPendingReportId(playerUUID);
-            if (pendingReportId != null && info.reportId == -999) {
-                info.reportId = pendingReportId;
-                plugin.getLogger().info("[RECORDING] Bekleyen Report ID kullanıldı: #" + pendingReportId);
-            }
-
-            plugin.getLogger().info("[RECORDING] Kayıt durduruluyor: " + session.getRecordedPlayerName() +
-                    " (Final Report ID: " + info.reportId + ")");
-
-            // Packet listener'ı kaldır
-            var listener = session.getPacketListener();
-            if (listener != null) {
-                PacketEvents.getAPI().getEventManager().unregisterListener(listener);
-                plugin.getLogger().info("[RECORDING] PacketListener kaldırıldı");
-            }
-
-            session.setEndTime(System.currentTimeMillis());
-
-            int actionCount = session.getActions().size();
-            plugin.getLogger().info("[RECORDING] " + session.getRecordedPlayerName() +
-                    " için kayıt tamamlandı. Toplam " + actionCount + " aksiyon yakalandı.");
-
-            // Manuel kayıt kontrolü
-            if (info.reportId == 9999) {
-                plugin.getLogger().info("[RECORDING] Manuel kayıt tamamlandı, veritabanına kaydedilmeyecek.");
-                return CompletableFuture.completedFuture(true);
-            }
-
-            // Geçici ID kontrolü (-999 ise ve değişmemişse)
-            if (info.reportId == -999) {
-                plugin.getLogger().warning("[RECORDING] Report ID hala geçici değerde (-999), " +
-                        "5 saniye daha beklenecek...");
-
-                // 5 saniye sonra Bukkit scheduler ile tekrar kontrol et (Thread.sleep yerine)
-                CompletableFuture<Boolean> delayedFuture = new CompletableFuture<>();
-                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    Integer lateReportId = ReportCommand.getPendingReportId(playerUUID);
-                    if (lateReportId != null && lateReportId > 0) {
-                        plugin.getLogger().info("[RECORDING] Geç gelen Report ID alındı: #" + lateReportId);
-                        saveReplayAsync(session, lateReportId).thenAccept(delayedFuture::complete);
-                    } else {
-                        plugin.getLogger().severe("[RECORDING] Report ID alınamadı, kayıt iptal edildi!");
-                        delayedFuture.complete(false);
+            CompletableFuture<Boolean> result = finishAndSave(playerUUID, session, info);
+            if (notifyReports) {
+                String targetName = session.getRecordedPlayerName();
+                result.whenComplete((saved, error) -> {
+                    try {
+                        sendFinishNotifications(info, targetName);
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("[RECORDING] Rapor bildirimi gönderilemedi: " + e.getMessage());
                     }
-                }, 100L); // 5 saniye = 100 tick
-                return delayedFuture;
+                });
             }
-
-            // Report ID geçersizse
-            if (info.reportId <= 0) {
-                plugin.getLogger().warning("[RECORDING] Geçersiz Report ID (" + info.reportId +
-                        "), replay veritabanına kaydedilmeyecek!");
-                return CompletableFuture.completedFuture(false);
-            }
-
-            // Action kontrolü
-            if (actionCount == 0) {
-                plugin.getLogger().warning("[RECORDING] Hiç aksiyon yakalanmadı! Kayıt yapılmayacak.");
-                return CompletableFuture.completedFuture(false);
-            }
-
-            // Normal kaydetme
-            plugin.getLogger().info("[RECORDING] Veritabanına kaydediliyor (Report #" + info.reportId + ")");
-            return saveReplayAsync(session, info.reportId);
-
+            return result;
         } else {
             plugin.getLogger().warning("[RECORDING] Durdurulacak kayıt bulunamadı: " + playerUUID);
         }
@@ -371,79 +437,145 @@ public class RecordingManager {
     }
 
     /**
-     * Replay'i asenkron olarak veritabanına kaydeder
+     * Haritalardan alınmış (durdurulmuş) kaydı sonlandırır ve DB'ye yazar.
      */
-    private CompletableFuture<Boolean> saveReplayAsync(RecordingSession session, int reportId) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // VERİ KAYBI KORUMASI: session.getActions() bir synchronizedList; serialize
-                // onu iterasyonla yazarken başka thread (gecikmeli paket callback'i) addAction
-                // çağırırsa ConcurrentModificationException → catch → replay HİÇ kaydedilmez.
-                // Bu yüzden serialize'dan önce senkronize bir anlık kopya alıyoruz.
-                java.util.List<com.reportsystem.common.replay.actions.ReplayAction> live = session.getActions();
-                java.util.List<com.reportsystem.common.replay.actions.ReplayAction> actionsSnapshot;
-                synchronized (live) {
-                    actionsSnapshot = new java.util.ArrayList<>(live);
-                }
+    private CompletableFuture<Boolean> finishAndSave(UUID playerUUID, RecordingSession session, RecordingInfo info) {
+        List<Integer> ids = info.getAllReportIds();
+        plugin.getLogger().info("[RECORDING] Kayıt durduruluyor: " + session.getRecordedPlayerName() +
+                " (Rapor ID'leri: " + ids + ")");
 
+        // Packet listener'ı kaldır
+        var listener = session.getPacketListener();
+        if (listener != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(listener);
+            plugin.getLogger().info("[RECORDING] PacketListener kaldırıldı");
+        }
+
+        session.setEndTime(System.currentTimeMillis());
+
+        int actionCount = session.getActions().size();
+        long dropped = session.getDroppedCount();
+        plugin.getLogger().info("[RECORDING] " + session.getRecordedPlayerName() +
+                " için kayıt tamamlandı. Toplam " + actionCount + " aksiyon yakalandı."
+                + (dropped > 0 ? " (Sınırlar nedeniyle düşürülen: " + dropped + ")" : ""));
+
+        // Manuel kayıt kontrolü (ek rapor bağlanmadıysa DB'ye yazılmaz)
+        if (ids.isEmpty() && info.reportId == 9999) {
+            plugin.getLogger().info("[RECORDING] Manuel kayıt tamamlandı, veritabanına kaydedilmeyecek.");
+            return CompletableFuture.completedFuture(true);
+        }
+
+        // Bağlı geçerli rapor yoksa
+        if (ids.isEmpty()) {
+            plugin.getLogger().warning("[RECORDING] Geçerli rapor ID'si yok (" + info.reportId +
+                    "), replay veritabanına kaydedilmeyecek!");
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Action kontrolü
+        if (actionCount == 0) {
+            plugin.getLogger().warning("[RECORDING] Hiç aksiyon yakalanmadı! Kayıt yapılmayacak.");
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Normal kaydetme — tek serileştirme, her rapor ID'sine aynı veri (H-40)
+        plugin.getLogger().info("[RECORDING] Veritabanına kaydediliyor (Rapor " + ids + ")");
+        return saveReplayAsync(session, ids, playerUUID);
+    }
+
+    /**
+     * Replay'i asenkron olarak veritabanına kaydeder. Tek serileştirme yapılır, aynı veri
+     * kayda bağlı her rapor ID'sine ayrı satır olarak yazılır (H-40). Boyut sınırı aşılırsa
+     * replay ATILMAZ, kuyruktan kısaltılır (H-07). Tümü başarılıysa çökme günlüğü silinir;
+     * bir ID bile başarısızsa günlük son hâliyle kalır ve açılışta kurtarılır (H-27).
+     *
+     * @return en az bir rapor ID'si için yazıldıysa true
+     */
+    private CompletableFuture<Boolean> saveReplayAsync(RecordingSession session, List<Integer> reportIds,
+            UUID recordedUUID) {
+        final int primaryId = reportIds.get(0);
+        return CompletableFuture.supplyAsync(() -> {
+            // VERİ KAYBI KORUMASI: session.getActions() bir synchronizedList; serialize
+            // onu iterasyonla yazarken başka thread (gecikmeli paket callback'i) addAction
+            // çağırırsa ConcurrentModificationException → catch → replay HİÇ kaydedilmez.
+            // Bu yüzden serialize'dan önce senkronize bir anlık kopya alıyoruz.
+            java.util.List<com.reportsystem.common.replay.actions.ReplayAction> live = session.getActions();
+            java.util.List<com.reportsystem.common.replay.actions.ReplayAction> actionsSnapshot;
+            synchronized (live) {
+                actionsSnapshot = new java.util.ArrayList<>(live);
+            }
+
+            byte[] data;
+            int savedActionCount;
+            try {
                 // Action'ları serialize et
-                byte[] data = ReplaySerializer.serialize(actionsSnapshot, true);
-                double sizeKB = ReplaySerializer.calculateSizeKB(data);
-                double sizeMB = sizeKB / 1024.0;
+                byte[] fullData = ReplaySerializer.serialize(actionsSnapshot, true);
+                double sizeKB = ReplaySerializer.calculateSizeKB(fullData);
 
                 plugin.getLogger().info("[RECORDING] Replay verisi sıkıştırıldı: " +
-                        String.format("%.2f KB (%.2f MB)", sizeKB, sizeMB) + " (Report #" + reportId + ")");
+                        String.format(Locale.ROOT, "%.2f KB (%.2f MB)", sizeKB, sizeKB / 1024.0)
+                        + " (Rapor " + reportIds + ")");
 
-                // Boyut limiti kontrolü
+                // Boyut limiti: aşılırsa kuyruktan kısalt (en çok 3 deneme), ATMA
                 int maxFileSizeMB = plugin.getConfig().getInt("replay.max-file-size", 5);
-                if (maxFileSizeMB > 0 && sizeMB > maxFileSizeMB) {
-                    plugin.getLogger().warning("[RECORDING] ⚠ Replay boyutu çok büyük! " +
-                            String.format("%.2f MB > %d MB limit", sizeMB, maxFileSizeMB) +
-                            " - Kayıt iptal edildi (Report #" + reportId + ")");
-                    return false;
-                }
-
-                // Replay nesnesini oluştur
-                Replay replay = new Replay(
-                        reportId,
-                        session.getRecordedPlayerName(),
-                        session.getWorldName(),
-                        session.getStartTime(),
-                        session.getEndTime(),
-                        actionsSnapshot.size(),
-                        data,
-                        true);
-
-                // Veritabanına kaydet
-                replayDAO.saveReplay(replay);
-
-                plugin.getLogger()
-                        .info("[RECORDING] ✓ Replay başarıyla veritabanına kaydedildi (Report #" + reportId + ")");
-
-                // Web replay auto-generate
-                if (plugin instanceof com.reportsystem.spigot.ReportSystemSpigot) {
-                    com.reportsystem.spigot.ReportSystemSpigot spigotPlugin = (com.reportsystem.spigot.ReportSystemSpigot) plugin;
-                    if (spigotPlugin.getConfigManager().isWebReplayEnabled()
-                            && spigotPlugin.getConfigManager().isWebReplayAutoGenerate()) {
-                        spigotPlugin.getReplayManager().generateWebReplay(reportId)
-                                .thenAccept(url -> {
-                                    if (url != null) {
-                                        plugin.getLogger().info("[WebReplay] Otomatik export tamamlandi: " + url);
-                                    }
-                                });
-                    }
-                }
-
-                return true;
-
-            } catch (IOException e) {
-                plugin.getLogger().severe("[RECORDING] Replay serialize edilirken hata: " + e.getMessage());
-                e.printStackTrace();
+                long limitBytes = maxFileSizeMB > 0 ? maxFileSizeMB * 1024L * 1024L : -1L;
+                RecordingJournal.FitResult fitted = RecordingJournal.fitToSizeLimit(actionsSnapshot, fullData,
+                        limitBytes, plugin.getLogger(), "Rapor " + reportIds);
+                data = fitted.data();
+                savedActionCount = fitted.actionCount();
             } catch (Exception e) {
-                plugin.getLogger().severe("[RECORDING] Replay kaydedilirken hata: " + e.getMessage());
-                e.printStackTrace();
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "[RECORDING] Replay serialize edilirken hata", e);
+                return false;
             }
-            return false;
+
+            List<Integer> failedIds = new ArrayList<>();
+            List<Integer> savedIds = new ArrayList<>();
+            for (int reportId : reportIds) {
+                try {
+                    Replay replay = new Replay(
+                            reportId,
+                            session.getRecordedPlayerName(),
+                            session.getWorldName(),
+                            session.getStartTime(),
+                            session.getEndTime(),
+                            savedActionCount,
+                            data,
+                            true);
+                    replayDAO.saveReplay(replay);
+                    savedIds.add(reportId);
+                    plugin.getLogger()
+                            .info("[RECORDING] ✓ Replay başarıyla veritabanına kaydedildi (Report #" + reportId + ")");
+                } catch (Exception e) {
+                    failedIds.add(reportId);
+                    plugin.getLogger().severe("[RECORDING] Replay kaydedilirken hata (Report #" + reportId + "): "
+                            + e.getMessage());
+                }
+            }
+
+            if (failedIds.isEmpty()) {
+                journal.delete(recordedUUID, session.getStartTime());
+            } else if (crashRecoveryEnabled) {
+                // Günlüğü son (tam) hâliyle ve yalnız başarısız ID'lerle güncelle → açılışta kurtarılır
+                journal.checkpointAsync(recordedUUID, failedIds, session.getRecordedPlayerName(),
+                        session.getWorldName(), session.getStartTime(), actionsSnapshot, true);
+                plugin.getLogger().warning("[RECORDING] Kaydedilemeyen raporlar " + failedIds
+                        + " için replay çökme günlüğünde tutuluyor; sonraki açılışta tekrar denenecek.");
+            }
+
+            // Web replay auto-generate — yalnız birincil ID için
+            if (savedIds.contains(primaryId)
+                    && plugin.getConfigManager().isWebReplayEnabled()
+                    && plugin.getConfigManager().isWebReplayAutoGenerate()
+                    && plugin.getReplayManager() != null) {
+                plugin.getReplayManager().generateWebReplay(primaryId)
+                        .thenAccept(url -> {
+                            if (url != null) {
+                                plugin.getLogger().info("[WebReplay] Otomatik export tamamlandi: " + url);
+                            }
+                        });
+            }
+
+            return !savedIds.isEmpty();
         });
     }
 
@@ -634,6 +766,12 @@ public class RecordingManager {
      * Shutdown sırasında async save'lerin tamamlanmasını bekler (DB kapanmadan önce)
      */
     public void stopAll() {
+        // Periyodik checkpoint'i durdur — kayıtlar aşağıda son hâlleriyle kaydedilecek
+        if (checkpointTask != null) {
+            checkpointTask.cancel();
+            checkpointTask = null;
+        }
+
         Set<UUID> activeUUIDs = new HashSet<>(recordingInfoMap.keySet());
         List<CompletableFuture<Boolean>> saveFutures = new ArrayList<>();
         for (UUID uuid : activeUUIDs) {
@@ -657,6 +795,10 @@ public class RecordingManager {
         }
         nearbyPlayerTrackers.clear();
 
+        // Kuyruktaki günlük işlerini (silme / son checkpoint) kısa süre bekle, executor'ı kapat.
+        // Bitmeyenler diskte kalır; açılış kurtarması DB'de replay varsa tekrar yazmaz.
+        journal.shutdown();
+
         plugin.getLogger().info("[RECORDING] Tüm aktif kayıtlar durduruldu.");
     }
 
@@ -668,14 +810,25 @@ public class RecordingManager {
     }
 
     /**
-     * Tüm aktif kayıtları kaydeder (auto-save için)
+     * 5 dakikalık auto-save görevinden çağrılır (ReportSystemSpigot.startTasks).
+     * Çökmeye karşı koruma burada DEĞİL: aktif kayıtlar ayrı async zamanlayıcıyla
+     * (replay.crash-recovery.interval-seconds) RecordingJournal'a checkpoint'lenir ve
+     * açılışta kurtarılır (H-27). Bu metot yalnız durum logu yazar.
      */
     public void saveAllRecordings() {
-        // Bu metot şu anda bir şey yapmıyor çünkü kayıtlar
-        // durdurulduğunda otomatik olarak kaydediliyor
-        // İleride incremental save eklenebilir
         ReportSystemSpigot.getInstance()
-                .debug("[RECORDING] Auto-save check completed. Active recordings: " + activeRecordings.size());
+                .debug("[RECORDING] Auto-save check completed. Active recordings: " + activeRecordings.size()
+                        + " (crash-recovery " + (crashRecoveryEnabled ? "on" : "off") + ")");
+    }
+
+    /**
+     * Kaydedilen oyuncunun etkin periyodik NearbyPlayerTracker'ı (yoksa / config'te kapalıysa null).
+     * Etkinse yakın oyuncu PLAYER_APPEAR'ının tek sahibi odur (H-11): olay dinleyicisi APPEAR
+     * üretmek yerine {@link NearbyPlayerTracker#ensureTracked} çağırır.
+     */
+    public NearbyPlayerTracker getActiveNearbyTracker(UUID recordedPlayerUUID) {
+        NearbyPlayerTracker tracker = nearbyPlayerTrackers.get(recordedPlayerUUID);
+        return tracker != null && tracker.isEnabled() ? tracker : null;
     }
 
     /**
@@ -692,15 +845,16 @@ public class RecordingManager {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("NewReport");
         out.writeInt(reportId);
-        out.writeUTF(targetName);
+        // Alan sirasi proxy/Spigot tuketicisiyle ayni: id, reporter, reported, reason, server
         out.writeUTF(reporterName);
+        out.writeUTF(targetName);
         out.writeUTF(reason);
         out.writeUTF(plugin.getServerName());
 
         // Herhangi bir online oyuncuya mesajı gönder
         Player player = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
         if (player != null) {
-            player.sendPluginMessage(plugin, "reportsystem:notification", out.toByteArray());
+            plugin.sendSigned(player, "reportsystem:notification", out.toByteArray());
             plugin.getLogger().info("[ReportNotification] Sent notification to BungeeCord for report #" + reportId);
         } else {
             plugin.getLogger().warning("[ReportNotification] Cannot send to BungeeCord - no online players!");
@@ -711,7 +865,12 @@ public class RecordingManager {
      * Recording bilgilerini tutan inner class
      */
     public static class RecordingInfo {
-        private int reportId;
+        // Birincil rapor ID'si (kaydı başlatan). Async checkpoint zamanlayıcısı da okur → volatile.
+        private volatile int reportId;
+        // H-40: aynı açık kayda sonradan bağlanan raporlar (birincili EZMEZ)
+        private final List<Integer> extraReportIds = new java.util.concurrent.CopyOnWriteArrayList<>();
+        // Bildirimi kayıt bitince gönderilecek rapor ID'leri
+        private final Set<Integer> notifyOnFinish = ConcurrentHashMap.newKeySet();
         private RecordingSession session;
         private long startTime;
         private String reporterName;
@@ -727,6 +886,23 @@ public class RecordingManager {
 
         public int getReportId() {
             return reportId;
+        }
+
+        /**
+         * Replay'in yazılacağı tüm rapor ID'leri: birincil (> 0 ve ≠ 9999) + ekler, tekrarsız.
+         */
+        public List<Integer> getAllReportIds() {
+            List<Integer> ids = new ArrayList<>();
+            int primary = reportId;
+            if (isRealReportId(primary)) {
+                ids.add(primary);
+            }
+            for (Integer id : extraReportIds) {
+                if (id != null && isRealReportId(id) && !ids.contains(id)) {
+                    ids.add(id);
+                }
+            }
+            return ids;
         }
 
         public RecordingSession getSession() {

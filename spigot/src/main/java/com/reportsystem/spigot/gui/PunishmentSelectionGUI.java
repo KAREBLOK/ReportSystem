@@ -2,6 +2,7 @@ package com.reportsystem.spigot.gui;
 
 import com.reportsystem.common.models.Report;
 import com.reportsystem.spigot.ReportSystemSpigot;
+import com.reportsystem.spigot.punishment.ReportResolution;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -10,6 +11,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
+
+import java.util.Locale;
 
 public class PunishmentSelectionGUI implements InventoryHolder {
 
@@ -25,9 +28,9 @@ public class PunishmentSelectionGUI implements InventoryHolder {
         this.plugin = plugin;
         this.guiConfig = new GUIConfig(plugin, "punishment-selection");
 
-        plugin.getLogger().info("[PunishmentSelectionGUI] GUIConfig loaded for punishment-selection");
-        plugin.getLogger().info("[PunishmentSelectionGUI] Config title: " + guiConfig.getTitle());
-        plugin.getLogger().info("[PunishmentSelectionGUI] Config size: " + guiConfig.getSize());
+        plugin.debug("[PunishmentSelectionGUI] GUIConfig loaded for punishment-selection");
+        plugin.debug("[PunishmentSelectionGUI] Config title: " + guiConfig.getTitle());
+        plugin.debug("[PunishmentSelectionGUI] Config size: " + guiConfig.getSize());
 
         String title = guiConfig.getTitle("%player%", report.getReportedPlayerName());
         int size = guiConfig.getSize();
@@ -37,7 +40,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
     }
 
     private void setupInventory() {
-        plugin.getLogger().info("[PunishmentSelectionGUI] Setting up inventory for " + report.getReportedPlayerName());
+        plugin.debug("[PunishmentSelectionGUI] Setting up inventory for " + report.getReportedPlayerName());
 
         // Background
         if (guiConfig.isBackgroundEnabled()) {
@@ -59,7 +62,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
                 playerInfo.setItemMeta(skullMeta);
             }
             int slot = guiConfig.getItemSlot("player-info");
-            plugin.getLogger().info("[PunishmentSelectionGUI] Player info at slot " + slot);
+            plugin.debug("[PunishmentSelectionGUI] Player info at slot " + slot);
             inventory.setItem(slot, playerInfo);
         } else {
             plugin.getLogger().warning("[PunishmentSelectionGUI] Player info item is null or not a PLAYER_HEAD!");
@@ -80,7 +83,7 @@ public class PunishmentSelectionGUI implements InventoryHolder {
         ItemStack item = guiConfig.getItem(path);
         if (item != null) {
             int slot = guiConfig.getItemSlot(path);
-            plugin.getLogger().info("[PunishmentSelectionGUI] Adding item " + path + " at slot " + slot + " (" + item.getType() + ")");
+            plugin.debug("[PunishmentSelectionGUI] Adding item " + path + " at slot " + slot + " (" + item.getType() + ")");
             inventory.setItem(slot, item);
         } else {
             plugin.getLogger().warning("[PunishmentSelectionGUI] Item " + path + " is null!");
@@ -130,132 +133,150 @@ public class PunishmentSelectionGUI implements InventoryHolder {
             viewer.closeInventory();
             plugin.getMessageManager().sendMessage(viewer, "reports.actions.accept-cancelled");
             // Go back to report detail
-            new ReportDetailGUI(viewer, report, plugin.getReplayDAO()).open();
+            ReportDetailGUI.openAsync(plugin, viewer, report);
         }
     }
 
-    /**
-     * ÇİFT-CEZA KORUMASI: rapor bellekteki eski nesneyle işleniyordu; iki yetkili aynı
-     * PENDING raporu açıp ceza verirse hedef iki kez cezalandırılıyordu. İşlemden hemen
-     * önce DB'den taze durumu okuyup PENDING değilse iptal ediyoruz.
-     * @return true → işleme devam edilebilir; false → başka biri raporu çoktan kapatmış.
-     */
-    private boolean ensureStillPending() {
-        Report fresh = plugin.getReportService().getReportById(report.getId());
-        if (fresh == null || !fresh.isPending()) {
-            viewer.closeInventory();
-            plugin.getMessageManager().sendMessage(viewer, "reports.actions.already-handled");
+    /** Talep sonucu ALREADY_HANDLED/ERROR ise yetkiliye bildirir; CLAIMED ise false döner. */
+    private boolean handleClaimFailure(ReportResolution.ClaimResult result) {
+        if (result == ReportResolution.ClaimResult.CLAIMED) {
             return false;
+        }
+        if (viewer.isOnline()) {
+            plugin.getMessageManager().sendMessage(viewer, result == ReportResolution.ClaimResult.ALREADY_HANDLED
+                    ? "reports.actions.already-handled"
+                    : "reports.actions.database-error");
         }
         return true;
     }
 
-    private void executePunishment(String type, long duration) {
-        // Başka bir yetkili bu raporu çoktan işlediyse çift cezayı engelle
-        if (!ensureStillPending()) return;
+    private void sendOfflineMessage(String typeLower, String targetPlayer) {
+        if (!viewer.isOnline()) return;
+        plugin.getMessageManager().sendMessage(viewer,
+                typeLower.equals("warn") ? "punishments.warn.offline" : "punishments.kick.offline",
+                "%player%", targetPlayer);
+    }
 
+    private void executePunishment(String type, long duration) {
         // Execute punishment
         String targetPlayer = report.getReportedPlayerName();
         String reason = report.getReason();
         String punisher = viewer.getName();
+        String typeLower = type.toLowerCase(Locale.ROOT);
+        String typeUpper = type.toUpperCase(Locale.ROOT);
+        int reportId = report.getId();
 
-        boolean success = false;
-        switch (type.toLowerCase()) {
-            case "kick":
-                Player target = org.bukkit.Bukkit.getPlayer(targetPlayer);
-                if (target != null && target.isOnline()) {
-                    String kickMessage = plugin.getMessageManager().colorize(
-                        plugin.getMessageManager().getMessage("punishments.kick.player-message")
-                                .replace("%reason%", reason)
-                                .replace("%staff%", punisher));
-                    target.kickPlayer(kickMessage);
-                    success = true;
-                } else {
-                    plugin.getMessageManager().sendMessage(viewer, "punishments.kick.offline", "%player%", targetPlayer);
-                    return;
-                }
-                break;
-            case "warn":
-                Player targetWarn = org.bukkit.Bukkit.getPlayer(targetPlayer);
-                if (targetWarn != null && targetWarn.isOnline()) {
-                    String warnMsg = plugin.getMessageManager().getMessage("punishments.warn.player-message")
-                            .replace("%reason%", reason)
-                            .replace("%staff%", punisher)
-                            .replace("%count%", "");
-                    for (String line : warnMsg.split("\n")) {
-                        targetWarn.sendMessage(plugin.getMessageManager().colorize(line));
-                    }
-                    targetWarn.playSound(targetWarn.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.5f);
-                    success = plugin.getPunishmentManager().getProvider().warn(targetPlayer, reason, punisher);
-                } else {
-                    plugin.getMessageManager().sendMessage(viewer, "punishments.warn.offline", "%player%", targetPlayer);
-                    return;
-                }
-                break;
+        // Kick/uyarı çevrimiçi hedef ister — talepten önce kontrol (CRA-02: tam ad eşleşmesi)
+        if (Bukkit.getPlayerExact(targetPlayer) == null) {
+            sendOfflineMessage(typeLower, targetPlayer);
+            return;
         }
 
-        if (success) {
-            // Update report status to ACCEPTED
-            report.setStatus(Report.Status.ACCEPTED.getValue());
-            report.setResolvedBy(viewer.getName());
-            report.setResolvedAt(System.currentTimeMillis());
-            report.setPunished(true);
-            report.setPunishmentType(type.toUpperCase());
+        // ÇİFT-CEZA KORUMASI (DATA-03/DB-21): cezadan ÖNCE raporu atomik olarak talep et;
+        // başka bir yetkili raporu çoktan işlediyse ceza uygulanmaz.
+        ReportResolution.claim(plugin, reportId, Report.Status.ACCEPTED, result -> {
+            if (handleClaimFailure(result)) return;
 
+            // Talep sırasında hedef çıkmış olabilir
+            Player target = Bukkit.getPlayerExact(targetPlayer);
+            if (target == null || !target.isOnline()) {
+                ReportResolution.revert(plugin, reportId, Report.Status.ACCEPTED);
+                sendOfflineMessage(typeLower, targetPlayer);
+                return;
+            }
+
+            boolean success = false;
             try {
-                plugin.getReportService().updateReport(report);
-
-                // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU) ve kuyruktan kaldır
-                if (plugin.getOverwatchManager() != null) {
-                    plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
-                }
-
-                plugin.getMessageManager().sendMessage(viewer, "punishments.applied-with-report");
-
-                // Send Discord webhook notification
-                if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
-                    plugin.getWebhookManager().sendReportClosedWithPunishmentNotification(
-                        report, punisher, type.toUpperCase(), reason, type.equals("kick") ? "Instant" : "N/A"
-                    );
+                switch (typeLower) {
+                    case "kick": {
+                        String kickMessage = plugin.getMessageManager().colorize(
+                            plugin.getMessageManager().getMessage("punishments.kick.player-message")
+                                    .replace("%reason%", reason)
+                                    .replace("%staff%", punisher));
+                        target.kickPlayer(kickMessage);
+                        success = true;
+                        break;
+                    }
+                    case "warn": {
+                        String warnMsg = plugin.getMessageManager().getMessage("punishments.warn.player-message")
+                                .replace("%reason%", reason)
+                                .replace("%staff%", punisher)
+                                .replace("%count%", "");
+                        for (String line : warnMsg.split("\n")) {
+                            target.sendMessage(plugin.getMessageManager().colorize(line));
+                        }
+                        target.playSound(target.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 0.5f);
+                        success = plugin.getPunishmentManager().getProvider().warn(targetPlayer, reason, punisher);
+                        break;
+                    }
+                    default:
+                        break;
                 }
             } catch (Exception e) {
-                plugin.getLogger().warning("Failed to update report status after punishment: " + e.getMessage());
-                plugin.getMessageManager().sendMessage(viewer, "punishments.applied-report-failed");
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "[PunishmentSelectionGUI] Punishment error (" + typeUpper + " " + targetPlayer + ")", e);
+                success = false;
             }
-        } else {
-            plugin.getMessageManager().sendMessage(viewer, "punishments.failed");
-        }
+
+            if (!success) {
+                // Ceza uygulanamadı → rapor tekrar PENDING (yetkili tekrar deneyebilir)
+                ReportResolution.revert(plugin, reportId, Report.Status.ACCEPTED);
+                if (viewer.isOnline()) {
+                    plugin.getMessageManager().sendMessage(viewer, "punishments.failed");
+                }
+                return;
+            }
+
+            // Yalnız webhook nesnesi için (DB'ye bayat nesne yazılmaz)
+            report.setStatus(Report.Status.ACCEPTED.getValue());
+            report.setResolvedBy(punisher);
+            report.setResolvedAt(System.currentTimeMillis());
+            report.setPunished(true);
+            report.setPunishmentType(typeUpper);
+
+            // Ceza türü + Overwatch oylamasını sonlandır (SUÇLU) — async
+            ReportResolution.finishAsync(plugin, reportId, typeUpper, true, punisher);
+
+            if (viewer.isOnline()) {
+                plugin.getMessageManager().sendMessage(viewer, "punishments.applied-with-report");
+            }
+
+            // Send Discord webhook notification
+            if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
+                plugin.getWebhookManager().sendReportClosedWithPunishmentNotification(
+                    report, punisher, typeUpper, reason, typeLower.equals("kick") ? "Instant" : "N/A"
+                );
+            }
+        });
     }
 
     private void acceptWithoutPunishment() {
-        // Başka bir yetkili bu raporu çoktan işlediyse çift işlemi engelle
-        if (!ensureStillPending()) return;
+        String staffName = viewer.getName();
+        int reportId = report.getId();
 
-        // Update report status to ACCEPTED
-        report.setStatus(Report.Status.ACCEPTED.getValue());
-        report.setResolvedBy(viewer.getName());
-        report.setResolvedAt(System.currentTimeMillis());
-        report.setPunished(false);
+        // ÇİFT-İŞLEM KORUMASI: yalnız hâlâ PENDING olan rapor kabul edilir (atomik talep)
+        ReportResolution.claim(plugin, reportId, Report.Status.ACCEPTED, result -> {
+            if (handleClaimFailure(result)) return;
 
-        try {
-            plugin.getReportService().updateReport(report);
+            // Yalnız webhook nesnesi için
+            report.setStatus(Report.Status.ACCEPTED.getValue());
+            report.setResolvedBy(staffName);
+            report.setResolvedAt(System.currentTimeMillis());
+            report.setPunished(false);
 
-            // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU/KABUL) ve kuyruktan kaldır
-            if (plugin.getOverwatchManager() != null) {
-                plugin.getOverwatchManager().resolveReportVoting(report.getId(), true);
+            // Overwatch oylamasını yetkili kararına göre sonlandır (SUÇLU/KABUL) — async
+            ReportResolution.finishAsync(plugin, reportId, null, true, staffName);
+
+            if (viewer.isOnline()) {
+                plugin.getMessageManager().sendMessage(viewer, "reports.actions.accepted-no-punishment", "%id%", String.valueOf(reportId));
             }
-
-            plugin.getMessageManager().sendMessage(viewer, "reports.actions.accepted-no-punishment", "%id%", String.valueOf(report.getId()));
 
             // Send Discord webhook notification (no punishment)
             if (plugin.getWebhookManager() != null && plugin.getWebhookManager().isEnabled()) {
-                plugin.getWebhookManager().sendReportClosedNotification(report, viewer.getName(), null);
-                plugin.getLogger().info("[Webhook] Report #" + report.getId() + " accepted without punishment");
+                plugin.getWebhookManager().sendReportClosedNotification(report, staffName, null);
+                plugin.debug("[Webhook] Report #" + reportId + " accepted without punishment");
             }
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to update report status: " + e.getMessage());
-            plugin.getMessageManager().sendMessage(viewer, "reports.actions.update-failed");
-        }
+        });
     }
 
     @Override

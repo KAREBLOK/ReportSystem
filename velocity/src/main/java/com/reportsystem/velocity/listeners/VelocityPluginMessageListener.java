@@ -11,11 +11,17 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import java.io.*;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class VelocityPluginMessageListener {
 
+    private static final long SIG_WARN_INTERVAL_MS = 60_000L;
+
     private final ReportSystemVelocity plugin;
+    /** Guvenlik uyarisi hiz siniri: anahtar (kaynak) -> son uyari zamani. */
+    private final Map<String, Long> lastSigWarn = new ConcurrentHashMap<>();
 
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
@@ -33,35 +39,110 @@ public class VelocityPluginMessageListener {
 
     @Subscribe
     public void onPluginMessage(PluginMessageEvent event) {
-        if (!event.getIdentifier().equals(ReportSystemVelocity.CHANNEL)) {
+        boolean main = event.getIdentifier().equals(ReportSystemVelocity.CHANNEL);
+        if (!main && !event.getIdentifier().equals(ReportSystemVelocity.NOTIFICATION_CHANNEL)) {
             return;
         }
 
-        if (!(event.getSource() instanceof ServerConnection connection)) {
-            return;
-        }
-
-        // Mesajin client'a iletilmesini engelle
+        // Kanal yalnizca proxy <-> backend arasindadir: ne istemciye ne de istemciden iletilir.
         event.setResult(PluginMessageEvent.ForwardResult.handled());
 
-        DataInputStream in = new DataInputStream(new ByteArrayInputStream(event.getData()));
+        // Istemciden (oyuncu baglantisindan) gelen her sey atilir (sahte mesaj denemesi)
+        if (!(event.getSource() instanceof ServerConnection connection)) {
+            String sender = event.getSource() instanceof Player p ? p.getUsername() : String.valueOf(event.getSource());
+            if (shouldWarn("client:" + sender)) {
+                plugin.getLogger().warn("[SECURITY] Istemci kaynakli plugin message atildi ({}): {} (60 sn icinde tekrarlar loglanmaz)",
+                        event.getIdentifier().getId(), event.getSource());
+            }
+            return;
+        }
+
+        // Bildirim kanali: backend'in yerel olarak olusturdugu raporu (NewReport) diger sunuculara yayar
+        if (!main) {
+            handleBackendNotification(connection, event.getIdentifier().getId(), event.getData());
+            return;
+        }
+
+        // HMAC-SHA256 dogrulamasi (bkz. MessageSigner)
+        byte[] payload = plugin.getMessageSigner().verify(event.getIdentifier().getId(), event.getData());
+        if (payload == null) {
+            String server = connection.getServerInfo().getName();
+            if (shouldWarn("main:" + server)) {
+                plugin.getLogger().warn("[SECURITY] Gecersiz imza/zaman damgasi, mesaj reddedildi (sunucu: {}). "
+                        + "message-secret tum sunucularda ayni mi? (60 sn icinde tekrarlar loglanmaz)", server);
+            }
+            return;
+        }
+
+        DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload));
         try {
             String subchannel = in.readUTF();
             String serverName = connection.getServerInfo().getName();
 
-            plugin.getLogger().info("[PLUGIN-MESSAGE] Received from {}: {}", serverName, subchannel);
+            // Her mesajda kosulsuz INFO log taskini yapmasin: yalniz debug.log-messages acikken
+            if (config().getBoolean("debug.log-messages", false)) {
+                plugin.getLogger().info("[PLUGIN-MESSAGE] Received from {}: {}", serverName, subchannel);
+            }
 
             switch (subchannel) {
                 case "CreateReport" -> handleCreateReport(connection, in, serverName);
                 case "GlobalPunishment" -> handleGlobalPunishment(connection, in);
                 case "GlobalUnpunishment" -> handleGlobalUnpunishment(connection, in);
                 case "CheckPunishment" -> handleCheckPunishment(connection, in);
-                case "CheckServerAndReplay" -> handleCheckServerAndReplay(in);
+                case "CheckServerAndReplay" -> handleCheckServerAndReplay(connection, in);
                 default -> plugin.getLogger().warn("[PLUGIN-MESSAGE] Bilinmeyen subchannel: {} (sunucu: {})", subchannel, serverName);
             }
         } catch (IOException e) {
             plugin.getLogger().error("Plugin mesaji okunurken hata!", e);
         }
+    }
+
+    /** reportsystem:notification (backend -> proxy): NewReport(int id, UTF reporter, UTF reported, UTF reason, UTF server). */
+    private void handleBackendNotification(ServerConnection connection, String channelId, byte[] data) {
+        byte[] payload = plugin.getMessageSigner().verify(channelId, data);
+        if (payload == null) {
+            String server = connection.getServerInfo().getName();
+            if (shouldWarn("notification:" + server)) {
+                plugin.getLogger().warn("[SECURITY] Gecersiz imzali bildirim reddedildi (sunucu: {}). "
+                        + "(60 sn icinde tekrarlar loglanmaz)", server);
+            }
+            return;
+        }
+        try {
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload));
+            if (!in.readUTF().equals("NewReport")) {
+                return;
+            }
+            int reportId = in.readInt();
+            String reporter = in.readUTF();
+            String reported = in.readUTF();
+            String reason = in.readUTF();
+            String serverName = in.readUTF();
+            ReportNotificationListener listener = plugin.getReportNotificationListener();
+            if (listener != null) {
+                // Kaynak sunucu kendi yetkililerine zaten yerel bildirim gonderdi -> tekrar gonderme
+                listener.broadcastReportNotification(reportId, reporter, reported, reason, serverName,
+                        connection.getServerInfo().getName());
+            }
+        } catch (IOException | RuntimeException e) {
+            plugin.getLogger().warn("[NOTIFICATION] Bozuk bildirim mesaji: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Oyuncunun SU ANKI sunucusuna imzali StartReplay gonderir:
+     * (oyuncu UUID UTF, reportId int, kaynak sunucu UTF — bossa donus yok).
+     * Kaynak alani sona eklendi: eski Spigot fazla bayti okumaz (geriye uyumlu).
+     */
+    private void sendStartReplay(Player player, int reportId, String origin) {
+        player.getCurrentServer().ifPresent(conn -> {
+            byte[] msg = createPluginMessage("StartReplay", out -> {
+                out.writeUTF(player.getUniqueId().toString());
+                out.writeInt(reportId);
+                out.writeUTF(origin != null ? origin : "");
+            });
+            plugin.sendSigned(conn.getServer(), ReportSystemVelocity.CHANNEL, msg);
+        });
     }
 
     private void handleCreateReport(ServerConnection connection, DataInputStream in, String serverName) throws IOException {
@@ -108,11 +189,10 @@ public class VelocityPluginMessageListener {
                     if (target != null) {
                         target.getCurrentServer().ifPresent(server -> {
                             byte[] response = createPluginMessage("ReportCreated", out -> {
-                                out.writeUTF(reporterName);
+                                out.writeUTF(target.getUniqueId().toString());
                                 out.writeInt(reportId);
-                                out.writeUTF(targetName);
                             });
-                            server.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, response);
+                            plugin.sendSigned(server.getServer(), ReportSystemVelocity.CHANNEL, response);
                             plugin.getLogger().info("[REPORT] Sent report ID #{} to server: {}",
                                     reportId, server.getServerInfo().getName());
                         });
@@ -142,33 +222,37 @@ public class VelocityPluginMessageListener {
         });
     }
 
-    private void handleCheckServerAndReplay(DataInputStream in) throws IOException {
+    private void handleCheckServerAndReplay(ServerConnection connection, DataInputStream in) throws IOException {
         String playerName = in.readUTF();
         String reportServerName = in.readUTF();
         int reportId = in.readInt();
 
         Player player = plugin.getServer().getPlayer(playerName).orElse(null);
-        if (player == null) {
-            plugin.getLogger().warn("[REPLAY] Player not found: {}", playerName);
+        ServerConnection current = player != null ? player.getCurrentServer().orElse(null) : null;
+        if (player == null || current == null) {
+            plugin.getLogger().warn("[REPLAY] Player not found or not connected: {}", playerName);
             return;
         }
 
-        String currentServer = player.getCurrentServer()
-                .map(conn -> conn.getServerInfo().getName())
-                .orElse("");
+        // H-21: istek, oyuncunun BULUNDUGU sunucudan gelmeli (baska sunucu adina oyuncu tasinamasin)
+        String senderServer = connection.getServerInfo().getName();
+        if (!current.getServerInfo().getName().equals(senderServer)) {
+            if (shouldWarn("replay:" + senderServer)) {
+                plugin.getLogger().warn("[SECURITY] CheckServerAndReplay reddedildi: {} su an {} sunucusunda, istek {} "
+                                + "sunucusundan geldi. (60 sn icinde tekrarlar loglanmaz)",
+                        playerName, current.getServerInfo().getName(), senderServer);
+            }
+            return;
+        }
+
+        String currentServer = current.getServerInfo().getName();
 
         plugin.getLogger().info("[REPLAY] Check server - Player: {}, Current: {}, Report Server: {}",
                 playerName, currentServer, reportServerName);
 
         if (currentServer.equalsIgnoreCase(reportServerName)) {
-            // Ayni sunucuda, direkt replay baslat
-            player.getCurrentServer().ifPresent(conn -> {
-                byte[] msg = createPluginMessage("StartReplayDirect", out -> {
-                    out.writeUTF(playerName);
-                    out.writeInt(reportId);
-                });
-                conn.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, msg);
-            });
+            // Ayni sunucuda, direkt replay baslat (donus sunucusu yok)
+            sendStartReplay(player, reportId, "");
             plugin.getLogger().info("[REPLAY] Same server, starting replay directly on: {}", currentServer);
         } else {
             // Farkli sunucu, transfer gerekli
@@ -181,15 +265,20 @@ public class VelocityPluginMessageListener {
                 return;
             }
 
-            player.getCurrentServer().ifPresent(conn -> {
-                byte[] msg = createPluginMessage("TransferForReplay", out -> {
-                    out.writeUTF(playerName);
-                    out.writeUTF(reportServerName);
-                    out.writeInt(reportId);
-                });
-                conn.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, msg);
+            // Oyuncuyu proxy bagla; baglaninca hedef sunucuya StartReplay gider.
+            // H-20: hedef sunucu replay bitince izleyiciyi buraya (kaynak) geri gonderir.
+            final String origin = currentServer;
+            player.createConnectionRequest(targetServer).connect().thenAccept(result -> {
+                if (result.isSuccessful()) {
+                    sendStartReplay(player, reportId, origin);
+                } else {
+                    plugin.getLogger().warn("[REPLAY] Could not connect {} to {}", playerName, reportServerName);
+                }
+            }).exceptionally(ex -> {
+                // K-2: baglanti istegi (veya StartReplay gonderimi) istisnayla biterse sessizce yutulmasin
+                plugin.getLogger().warn("[REPLAY] Connection request failed for {} to {}", playerName, reportServerName, ex);
+                return null;
             });
-            plugin.getLogger().info("[REPLAY] Sent transfer request to current server");
         }
     }
 
@@ -214,18 +303,29 @@ public class VelocityPluginMessageListener {
 
         plugin.getLogger().info("[PUNISHMENT] {} request for {} from {}", type, playerName, serverOrigin);
 
-        boolean success = switch (type) {
-            case "ban" -> plugin.getPunishmentManager().globalBan(playerName, reason, punisher, duration, serverOrigin);
-            case "mute" -> plugin.getPunishmentManager().globalMute(playerName, reason, punisher, duration, serverOrigin);
-            case "kick" -> plugin.getPunishmentManager().globalKick(playerName, reason, punisher, serverOrigin);
-            default -> false;
-        };
+        // Alanlar olay thread'inde okundu; ceza isi (DB, saglayici) async yapilir
+        RegisteredServer origin = connection.getServer();
+        plugin.getServer().getScheduler().buildTask(plugin, () -> {
+            boolean success = false;
+            try {
+                success = switch (type) {
+                    case "ban" -> plugin.getPunishmentManager().globalBan(playerName, reason, punisher, duration, serverOrigin);
+                    case "mute" -> plugin.getPunishmentManager().globalMute(playerName, reason, punisher, duration, serverOrigin);
+                    case "kick" -> plugin.getPunishmentManager().globalKick(playerName, reason, punisher, serverOrigin);
+                    case "warn" -> plugin.getPunishmentManager().globalWarn(playerName, reason, punisher, serverOrigin);
+                    default -> false;
+                };
+            } catch (RuntimeException e) {
+                plugin.getLogger().error("[PUNISHMENT] {} islenemedi: {}", type, playerName, e);
+            }
 
-        byte[] response = createPluginMessage("PunishmentResult", out -> {
-            out.writeUTF(requestId);
-            out.writeBoolean(success);
-        });
-        connection.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, response);
+            final boolean result = success;
+            byte[] response = createPluginMessage("PunishmentResult", out -> {
+                out.writeUTF(requestId);
+                out.writeBoolean(result);
+            });
+            plugin.sendSigned(origin, ReportSystemVelocity.CHANNEL, response);
+        }).schedule();
     }
 
     private void handleGlobalUnpunishment(ServerConnection connection, DataInputStream in) throws IOException {
@@ -233,17 +333,26 @@ public class VelocityPluginMessageListener {
         String playerName = in.readUTF();
         String type = in.readUTF();
 
-        boolean success = switch (type) {
-            case "unban" -> plugin.getPunishmentManager().removePunishment(playerName, "ban");
-            case "unmute" -> plugin.getPunishmentManager().removePunishment(playerName, "mute");
-            default -> false;
-        };
+        RegisteredServer origin = connection.getServer();
+        plugin.getServer().getScheduler().buildTask(plugin, () -> {
+            boolean success = false;
+            try {
+                success = switch (type) {
+                    case "unban" -> plugin.getPunishmentManager().removePunishment(playerName, "ban");
+                    case "unmute" -> plugin.getPunishmentManager().removePunishment(playerName, "mute");
+                    default -> false;
+                };
+            } catch (RuntimeException e) {
+                plugin.getLogger().error("[PUNISHMENT] {} islenemedi: {}", type, playerName, e);
+            }
 
-        byte[] response = createPluginMessage("UnpunishmentResult", out -> {
-            out.writeUTF(requestId);
-            out.writeBoolean(success);
-        });
-        connection.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, response);
+            final boolean result = success;
+            byte[] response = createPluginMessage("UnpunishmentResult", out -> {
+                out.writeUTF(requestId);
+                out.writeBoolean(result);
+            });
+            plugin.sendSigned(origin, ReportSystemVelocity.CHANNEL, response);
+        }).schedule();
     }
 
     private void handleCheckPunishment(ServerConnection connection, DataInputStream in) throws IOException {
@@ -251,13 +360,22 @@ public class VelocityPluginMessageListener {
         String playerName = in.readUTF();
         String type = in.readUTF();
 
-        boolean result = plugin.getPunishmentManager().isActivePunishment(playerName, type);
+        RegisteredServer origin = connection.getServer();
+        plugin.getServer().getScheduler().buildTask(plugin, () -> {
+            boolean active = false;
+            try {
+                active = plugin.getPunishmentManager().isActivePunishment(playerName, type);
+            } catch (RuntimeException e) {
+                plugin.getLogger().error("[PUNISHMENT] Ceza kontrolu basarisiz: {}", playerName, e);
+            }
 
-        byte[] response = createPluginMessage("CheckPunishmentResult", out -> {
-            out.writeUTF(requestId);
-            out.writeBoolean(result);
-        });
-        connection.getServer().sendPluginMessage(ReportSystemVelocity.CHANNEL, response);
+            final boolean result = active;
+            byte[] response = createPluginMessage("CheckPunishmentResult", out -> {
+                out.writeUTF(requestId);
+                out.writeBoolean(result);
+            });
+            plugin.sendSigned(origin, ReportSystemVelocity.CHANNEL, response);
+        }).schedule();
     }
 
     private byte[] createPluginMessage(String subchannel, MessageWriter writer) {
@@ -270,6 +388,25 @@ public class VelocityPluginMessageListener {
             plugin.getLogger().error("Plugin mesaji olusturulurken hata!", e);
         }
         return msgBytes.toByteArray();
+    }
+
+    /**
+     * Imza/kaynak uyarilarini anahtar basina 60 sn'de bire sinirlar (H-19: log taskini).
+     */
+    private boolean shouldWarn(String key) {
+        long now = System.currentTimeMillis();
+        boolean[] warn = {false};
+        lastSigWarn.compute(key, (k, prev) -> {
+            if (prev == null || now - prev >= SIG_WARN_INTERVAL_MS) {
+                warn[0] = true;
+                return now;
+            }
+            return prev;
+        });
+        if (warn[0] && lastSigWarn.size() > 256) {
+            lastSigWarn.values().removeIf(t -> now - t >= SIG_WARN_INTERVAL_MS);
+        }
+        return warn[0];
     }
 
     @FunctionalInterface

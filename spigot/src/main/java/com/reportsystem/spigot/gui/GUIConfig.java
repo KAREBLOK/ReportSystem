@@ -14,8 +14,10 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,18 +36,58 @@ public class GUIConfig {
         loadConfig();
     }
 
-    private void loadConfig() {
-        File guiFile = new File(plugin.getDataFolder(), "guis/" + guiName + ".yml");
-        if (!guiFile.exists()) {
-            plugin.saveResource("guis/" + guiName + ".yml", false);
+    /**
+     * GUI dosyasının jar içi kaynak yolunu dile göre çözer (H-49).
+     * Dil "tr" ise eski davranış: {@code guis/<ad>.yml}. Diğer dillerde jar'da
+     * {@code guis/<dil>/<ad>.yml} varsa o, yoksa kök Türkçe dosya.
+     */
+    public static String resourcePath(JavaPlugin p, String guiName) {
+        String lang = "tr";
+        if (p instanceof ReportSystemSpigot rs && rs.getConfigManager() != null) {
+            String configured = rs.getConfigManager().getLanguage();
+            if (configured != null && !configured.isBlank()) {
+                lang = com.reportsystem.spigot.config.ConfigManager.normalizeLanguage(configured);
+            }
         }
+        if (!"tr".equals(lang)) {
+            String localized = "guis/" + lang + "/" + guiName + ".yml";
+            try (InputStream in = p.getResource(localized)) {
+                if (in != null) {
+                    return localized;
+                }
+            } catch (IOException ignored) {
+                // kaynak kapatılamadı; kök dosyaya düş
+            }
+        }
+        return "guis/" + guiName + ".yml";
+    }
+
+    /**
+     * Dile göre çözülen GUI dosyasını veri klasöründe döndürür; yoksa jar'dan kopyalar.
+     */
+    public static File resolveFile(JavaPlugin p, String guiName) {
+        String path = resourcePath(p, guiName);
+        File file = new File(p.getDataFolder(), path);
+        if (!file.exists()) {
+            p.saveResource(path, false);
+        }
+        return file;
+    }
+
+    private void loadConfig() {
+        String path = resourcePath(plugin, guiName);
+        File guiFile = resolveFile(plugin, guiName);
         this.config = YamlConfiguration.loadConfiguration(guiFile);
 
         // JAR'daki varsayılan değerleri yükle - eksik key'ler için fallback
-        InputStream defaultStream = plugin.getResource("guis/" + guiName + ".yml");
-        if (defaultStream != null) {
-            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
-            this.config.setDefaults(defaults);
+        try (InputStream defaultStream = plugin.getResource(path)) {
+            if (defaultStream != null) {
+                YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
+                        new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
+                this.config.setDefaults(defaults);
+            }
+        } catch (IOException e) {
+            plugin.getLogger().warning("Could not read default GUI config " + path + ": " + e.getMessage());
         }
     }
 

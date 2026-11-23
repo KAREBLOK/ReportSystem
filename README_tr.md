@@ -4,10 +4,10 @@
 
 **Minecraft Sunucuları İçin Yeni Nesil Görsel Replay, Overwatch İnceleme ve Oyuncu Moderasyon Sistemi**
 
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.oracle.com/java/)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://www.oracle.com/java/)
 [![Minecraft](https://img.shields.io/badge/Minecraft-Paper%201.21%2B-blue.svg)](https://papermc.io/)
-[![PacketEvents](https://img.shields.io/badge/PacketEvents-2.11.2%2B-green.svg)](https://github.com/retrooper/packetevents)
-[![Sürüm](https://img.shields.io/badge/S%C3%BCr%C3%BCm-v2.1.5-brightgreen.svg)](https://github.com/KAREBLOK/ReportSystem/releases)
+[![PacketEvents](https://img.shields.io/badge/PacketEvents-2.14.0%2B-green.svg)](https://github.com/retrooper/packetevents)
+[![Sürüm](https://img.shields.io/badge/S%C3%BCr%C3%BCm-v2.2.0-brightgreen.svg)](https://github.com/KAREBLOK/ReportSystem/releases)
 [![Lisans](https://img.shields.io/badge/Lisans-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Bize%20Kat%C4%B1l%C4%B1n-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/invite/WZc5bE9cK8)
 
@@ -32,6 +32,7 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 - [Kurulum Rehberi](#kurulum-rehberi)
   - [Tekil Sunucu Kurulumu (Paper)](#tekil-sunucu-kurulumu-paper)
   - [Ağ / Proxy Kurulumu (Velocity / BungeeCord)](#ağ--proxy-kurulumu-velocity--bungeecord)
+- [2.2.0'a Yükseltme](#220a-yükseltme)
 - [Temel Sistemler](#temel-sistemler)
   - [1. Görsel Replay Motoru](#1-görsel-replay-motoru)
   - [2. Overwatch Topluluk İnceleme Sistemi](#2-overwatch-topluluk-i̇nceleme-sistemi)
@@ -55,7 +56,7 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 - **Kare Hassasiyetinde Görsel Replay:** **53'ten fazla paket eylem türünü** (yürüme, koşma, zıplama, yüzme, eğilme, süzülme/elytra, kafa hareketleri, vuruşlar, yay çekme, kalkan engelleme, eşya düşürme/alma ve blok etkileşimleri) kaydeder.
 - **Hotbar Kontrol Kumandası:** Replay izlerken Duraklat/Oynat, 10 Saniye İleri/Geri Sar, Hızı Ayarla (0.25x - 2x), Şüpheliye Işınlan ve Ayrıntılı Görsel Ayarları (hitbox, izler vb.) yönet.
 - **Overwatch İnceleme Sistemi:** Güvenilir oyuncuların isimleri gizlenmiş anonim tekrarları izlemesini, şüpheliyi oylamasını ve XP/Seviye/Rütbe kazanmasını sağlayın.
-- **Açık Topluluk Oylaması (v2.1.5):** Rapor havuzuna tüm oyuncuların oy vermesine olanak tanıyın (`auto-complete-queue: false`). Yetkililer `/reports` üzerinden oy dağılımını canlı görüp son kararı verebilir.
+- **Açık Topluluk Oylaması (v2.1.5+):** Rapor havuzuna tüm oyuncuların oy vermesine olanak tanıyın (`auto-complete-queue: false`). Yetkililer `/reports` üzerinden oy dağılımını canlı görüp son kararı verebilir.
 - **Animasyonlu Ban Gösterisi:** Hilecileri cezalandırırken gökten örs düşürün, yıldırım çarptırın, hareketsiz dondurun ve sunucu geneline özel ölüm mesajıyla duyurun.
 - **Anti-Cheat Kancaları:** **Polar**, **Vulcan** ve **GrimAC** ile doğrudan entegrasyon. Belirli bir şüphe puanı aşıldığında otomatik 30 saniyelik kayıt başlatır ve Overwatch kuyruğuna aktarır.
 - **Çok Kanallı Bildirimler:** Yetkililere anlık Toast (Başarım tarzı popup), Ekran Ortası Title, Actionbar kayan yazı, özel sesler ve tıklanabilir JSON sohbet bildirimleri.
@@ -69,11 +70,14 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 
 | Bileşen | Minimum Gereksinim | Önerilen |
 | :--- | :--- | :--- |
-| **Platform** | Paper 1.21+ (Purpur, Folia, Pufferfish) | En güncel Paper 1.21.x |
-| **Java** | Java 21 | Java 21+ |
-| **PacketEvents** | **v2.11.2+ (ZORUNLU)** | En güncel 2.x sürümü |
-| **Veritabanı** | SQLite (Tek sunucular için dahili) | MySQL 8.0+ / MariaDB 10.5+ (HikariCP) |
-| **Proxy (Opsiyonel)** | BungeeCord veya Velocity 3.3+ | Velocity 3.3+ |
+| **Platform** | Paper 1.21+ (veya Purpur gibi bir Paper türevi) | En güncel Paper |
+| **Java** | Java 17+ (eklentinin bayt kodu hedefi) | Paper sürümünüzün istediği Java (Paper 1.21 için Java 21) |
+| **PacketEvents** | **v2.13+ (ZORUNLU)** | **v2.14.0+** (Minecraft 26.3 için gerekli) |
+| **Veritabanı** | SQLite (Tek sunucular için dahili) | MySQL 8.0+ (HikariCP) |
+| **Proxy (Opsiyonel)** | BungeeCord veya Velocity 3.4+ (Velocity jarı Java 21 ister) | Velocity 3.5+ |
+
+> [!NOTE]
+> **Folia desteklenmez.** Eklenti `folia-supported` bildirmez ve standart Bukkit zamanlayıcısını kullanır.
 
 > [!IMPORTANT]
 > **PacketEvents kütüphanesi zorunludur.** Replay kayıt ve oynatma motoru doğrudan PacketEvents paket sarmalayıcılarına dayanır. PacketEvents kurulu olmadığında eklenti güvenli bir şekilde kendini devre dışı bırakır.
@@ -84,10 +88,10 @@ Eski usul, yetersiz metin logları veya kolayca taklit edilebilen sohbet ekran g
 
 ### Tekil Sunucu Kurulumu (Paper)
 
-1. En son çıkan `ReportSystem-v2.1.5.jar` ve `packetevents-spigot.jar` dosyalarını indirin.
+1. En son çıkan `ReportSystem-Spigot-2.2.0.jar` ve `packetevents-spigot.jar` dosyalarını indirin.
 2. İki JAR dosyasını da sunucunuzun `plugins/` klasörüne kopyalayın.
 3. Ayar dosyalarının ve yerel SQLite veritabanının oluşması için sunucuyu bir kez başlatın.
-4. `plugins/ReportSystem/config.yml` dosyasını ihtiyacınıza göre düzenleyin. Dil için `language: "tr"` kullanabilirsiniz.
+4. `plugins/ReportSystem-Spigot/config.yml` dosyasını ihtiyacınıza göre düzenleyin. Dil için `language: "tr"` kullanabilirsiniz.
 5. Sunucuyu yeniden başlatın veya `/rs reload` komutunu çalıştırın.
 
 ### Ağ / Proxy Kurulumu (Velocity / BungeeCord)
@@ -101,15 +105,36 @@ graph LR
 ```
 
 1. **Alt Sunucular (Paper):**
-   - Her bir alt sunucunun `plugins/` klasörüne `ReportSystem.jar` ve `packetevents.jar` ekleyin.
-   - `plugins/ReportSystem/config.yml` dosyasında:
+   - Her bir alt sunucunun `plugins/` klasörüne `ReportSystem-Spigot-2.2.0.jar` ve `packetevents-spigot.jar` ekleyin.
+   - `plugins/ReportSystem-Spigot/config.yml` dosyasında:
      - `database.type: "mysql"` yapın.
      - MySQL bağlantı bilgilerinizi (`host`, `port`, `database`, `username`, `password`) girin.
-     - Her sunucuya özel bir sunucu adı atayın: `general.server-name: "survival-1"` (veya "skyblock-1").
+     - `bungeecord.enabled: true` yapın ve `bungeecord.display-name` değerini sunucunun **proxy'de kayıtlı adıyla birebir aynı** yazın (ör. `"survival-1"`).
+     - `bungeecord.message-secret` değerini tüm alt sunucularda ve proxy'de aynı yazın (tırnak içinde).
 2. **Proxy Sunucusu:**
-   - `ReportSystem.jar` dosyasını Velocity veya BungeeCord sunucunuzun `plugins/` klasörüne ekleyin.
-   - Proxy üzerindeki config dosyasında da aynı MySQL bilgilerini yapılandırın.
+   - `ReportSystem-Bungee-2.2.0.jar` (BungeeCord) veya `ReportSystem-Velocity-2.2.0.jar` (Velocity) dosyasını proxy'nin `plugins/` klasörüne ekleyin.
+   - Proxy config dosyasında aynı MySQL bilgilerini ve aynı `message-secret` değerini yapılandırın.
 3. Tüm ağı yeniden başlatın.
+
+---
+
+## 2.2.0'a Yükseltme
+
+2.2.0, proxy-sunucu mesaj protokolünü ve bazı varsayılan davranışları değiştirir. Güncellemeden önce bu listeyi okuyun.
+
+1. **Proxy ve TÜM alt sunucuları birlikte 2.2.0'a güncelleyin.** Karışık 2.1.x / 2.2.0 ağları çalışmaz. `message-secret` her yerde aynı olmalı (proxy `message-secret`, Spigot `bungeecord.message-secret`) ve sunucu saatleri NTP ile eşitlenmiş olmalı (mesajlar 30 saniyelik pencere içinde kabul edilir). Sunucular arası replay için Spigot `bungeecord.display-name` değeri proxy config'indeki sunucu adıyla aynı olmalı.
+2. **`message-secret` değerini tırnak içinde yazın** (ör. `message-secret: "abc123"`). Tırnaksız, sayıya benzeyen değerler YAML tarafından dönüştürülür ve eşleşmez.
+3. **Proxy ban kontrolü:** artık giriş doğrulamasından sonra (LoginEvent) ve UUID ile yapılır. Esas kaynak veritabanıdır; bellekteki liste yalnızca yedektir. Yalnızca isimle kaydedilmiş eski banlar, oyuncunun ilk girişinde UUID'sine bağlanır. Proxy `warn` artık çalışıyor.
+4. **Hibrit premium/cracked ağlar** (FastLogin veya kullanıcı adı öneki kullanılmayan Floodgate): aynı isim farklı UUID'lere ait olabilir. Yalnızca isimle verilmiş banlar, o isimle ilk giren hesabın UUID'sine bağlanır; yükseltmeden sonra bu banları gözden geçirin ve cezaları mümkünse çevrimiçi oyunculara verin.
+5. **Spigot MySQL havuz ayarları** (`database.mysql.pool.*`) artık gerçekten uygulanıyor (önceden yok sayılıyordu). Önerilen `connection-timeout` değeri `5000`; mevcut dosyanızda hâlâ `30000` varsa elle düşürün. Yeni `database.mysql.ssl-mode` (varsayılan `DISABLED` = eski davranış), proxy config'lerinde de var.
+6. Replay veya Overwatch vakası izlerken yalnızca `replay.viewer-allowed-commands` listesindeki komutlar kullanılabilir (yetkililer dahil). `reportsystem.view.all` yetkisi olmayan izleyiciler, izlenen oyuncudan `replay.viewer-max-distance` (48 blok) ötesine gidemez; Overwatch "replay bitti" ekranında hareket kilitlidir.
+7. `language` değeri `tr` dışında olan sunucular (ör. `en`) GUI'leri artık `plugins/ReportSystem-Spigot/guis/en/` klasöründen okur. `guis/*.yml` dosyalarını özelleştirdiyseniz değişikliklerinizi oraya taşıyın.
+8. **Kayıt limitleri:** `replay.limits.*`. Boyut sınırını aşan replay artık silinmez, sonundan kısaltılır. Çökme kurtarma için `recording-journal/` klasörü kullanılır.
+9. Replay verisi bir güvenlik filtresiyle okunur; tanınmayan veri içeren kayıtlar açılmaz ve konsola yazılır.
+10. **Bağımlılıklar:** sqlite-jdbc 3.54.1.0 (Paper ilk açılışta indirir), mysql-connector-j 26.10.0, Minecraft 26.3 için PacketEvents 2.14.0+. Connector/J 26.x resmi olarak **MySQL 8.0 ve üzerini** destekler.
+11. Özel süre alanında `perm` / `-1` / `forever` artık geçersiz süre sayılır; kalıcı ceza için "permanent" seçin.
+12. Yeni veritabanı sütunları `resolved_by` ve `resolved_at` otomatik eklenir. PlaceholderAPI değerleri en fazla 30 saniye gecikmeyle güncellenir. Proxy bildirimleri `reportsystem.notify` yetkisine gider (eski, tanımsız `reportsystem.staff` yerine).
+13. Spigot jar'ı artık karartılmış (obfuscate) değildir (ProGuard derlemeden kaldırıldı).
 
 ---
 
@@ -157,7 +182,7 @@ Counter-Strike'ın Overwatch sisteminden esinlenilen bu modül; güvenilir oyunc
 
 - **Anonimlik:** Ön yargıyı önlemek için şüpheli ve raporlayan isimleri gizlenir (Örn: `Şüpheli #842`).
 - **Puanlama Sistemi:** Doğru karar veren oyuncular XP kazanır. Hatalı veya rastgele oy verenlerin güven puanı ve oy ağırlığı düşer.
-- **Açık Topluluk Oylaması (v2.1.5):** Sunucular `auto-complete-queue: false` modunu açarak sınırsız sayıda oyuncunun oy vermesini sağlayabilir. Yetkililer `/reports` detay panelinde oy oranlarını canlı görüp ceza verebilir veya davayı kapatabilir.
+- **Açık Topluluk Oylaması (v2.1.5+):** Sunucular `auto-complete-queue: false` modunu açarak sınırsız sayıda oyuncunun oy vermesini sağlayabilir. Yetkililer `/reports` detay panelinde oy oranlarını canlı görüp ceza verebilir veya davayı kapatabilir.
 
 ---
 
@@ -171,9 +196,9 @@ Hub veya lobi dünyalarınıza PacketEvents destekli sanal Overwatch NPC'leri ye
 
 ```bash
 /overwatch npc create &b&lOVERWATCH &7(Tıkla)
-/overwatch npc skin Steve
-/overwatch npc look true
-/overwatch npc move
+/overwatch npc skin <npc> Steve
+/overwatch npc look <npc>
+/overwatch npc move <npc>
 /overwatch npc delete <id>
 ```
 
@@ -249,117 +274,126 @@ Oyun içindeki olayları doğrudan yetkili Discord kanalınıza aktarın:
 
 ### Örnek Yapılandırma
 
+`plugins/ReportSystem-Spigot/config.yml` dosyasından bir kesit (oluşturulan dosyada tüm anahtarlar açıklamalarıyla bulunur):
+
 ```yaml
 general:
+  debug: false
   language: "tr"               # "tr" (Türkçe) veya "en" (İngilizce)
-  server-name: "survival-1"    # Ağ senkronizasyonu için sunucu kimliği
   check-updates: true
 
 database:
-  type: "sqlite"               # "sqlite" veya "mysql"
-  sqlite:
-    file: "reports.db"
+  type: sqlite                 # "sqlite" veya "mysql" (proxy ağlarında mysql kullanın)
   mysql:
     host: "localhost"
     port: 3306
     database: "reportsystem"
     username: "root"
-    password: "parola"
+    password: "CHANGE_THIS_PASSWORD"
+    ssl-mode: "DISABLED"
     pool:
       maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
+      minimum-idle: 2
+      connection-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+bungeecord:
+  enabled: false
+  display-name: ""             # Proxy config'indeki sunucu adıyla aynı olmalı
+  message-secret: ""           # Proxy'de ve tüm alt sunucularda aynı değer, tırnak içinde
 
 reports:
-  cooldown-seconds: 60
-  max-pending-per-player: 3
-  reasons:
-    - "KillAura"
-    - "Fly / Speed"
-    - "Scaffold"
-    - "X-Ray"
-    - "Sohbet / Küfür"
-  notifications:
-    notify-staff: true
-    title-enabled: true
-    actionbar-enabled: true
-    sound-enabled: true
-    sound: "ENTITY_EXPERIENCE_ORB_PICKUP"
+  require-online: true
+  cooldown: 60
+  global-rate-limit: 5
+  max-reports-per-player: 3
 
 replay:
   enabled: true
   auto-record: true
-  duration-seconds: 45
+  recording-duration: 45
+  max-recordings: 3
+  max-file-size: 5
   auto-delete-days: 7
-  max-recordings: 5
-  nearby-player-tracking:
-    enabled: true
-    radius: 16
-    interval-ticks: 3
-    movement-threshold: 0.05
 
 overwatch:
   enabled: true
-  auto-complete-queue: false   # v2.1.5: Açık topluluk oylaması için false yapın
-  required-reviews: 3          # Otomatik kapanmada gereken oy sayısı
-  anonymize-names: true
-  rewards:
-    xp-correct: 50
-    xp-incorrect: -20
+  auto-complete-queue: false   # false: açık topluluk oylaması (v2.1.5+)
+  min-reviewers: 3             # Yalnızca auto-complete-queue true iken kullanılır
 ```
+
+### 2.2.0 ile eklenen yapılandırma anahtarları
+
+| Anahtar | Varsayılan | Açıklama |
+| :--- | :--- | :--- |
+| `database.mysql.ssl-mode` | `DISABLED` | Connector/J `sslMode`: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY`. Proxy config'lerinde de var. |
+| `database.mysql.pool.*` | yukarıya bakın | HikariCP havuzu (`maximum-pool-size`, `minimum-idle`, `connection-timeout`, `idle-timeout`, `max-lifetime`); artık gerçekten uygulanıyor. |
+| `replay.limits.max-actions` | `150000` | Kayıt başına en fazla eylem (`0` veya `-1` = sınırsız). |
+| `replay.limits.max-actions-per-type-per-second` | `400` | Saniyede aynı türden en fazla eylem (`0` veya `-1` = sınırsız). |
+| `replay.crash-recovery.enabled` | `true` | Süren kayıtları düzenli olarak `recording-journal/` klasörüne yazar; çökmeden sonraki açılışta veritabanına kaydeder. |
+| `replay.crash-recovery.interval-seconds` | `10` | Ara kayıt aralığı (en az 2). |
+| `replay.viewer-allowed-commands` | ReportSystem komutları, özel mesaj, `helpop` | Replay / Overwatch vakası izlerken yalnızca bu komut adları çalışır. |
+| `replay.viewer-max-distance` | `48` | İzleyicinin izlenen oyuncudan uzaklaşabileceği en fazla mesafe (blok); `0` = kapalı. `reportsystem.view.all` muaftır. |
+| `guis/en/` (klasör) | - | İngilizce GUI dosyaları; `language` değeri `tr` değilse kullanılır. |
 
 ---
 
 ## Komutlar ve Kısayollar
 
 ### Oyuncu ve Yetkili Komutları
-| Komut | Kısayol | Yetki | Açıklama |
+| Komut | Kısayollar | Yetki | Açıklama |
 | :--- | :--- | :--- | :--- |
-| `/report <oyuncu> [sebep]` | `/sikayet` | `reportsystem.report` | Rapor oluşturma GUI'sini veya raporu açar |
-| `/reports` | `/raporlar` | `reportsystem.reports` | Yetkili rapor yönetim panelini açar |
-| `/overwatch` | `/ow` | `reportsystem.overwatch` | Overwatch inceleme menüsünü açar |
-| `/overwatch stats [oyuncu]` | `/ow stats` | `reportsystem.overwatch.stats` | Overwatch seviye, XP ve doğruluk oranını gösterir |
-| `/overwatch queue` | `/ow queue` | `reportsystem.overwatch.queue` | İncelenmeyi bekleyen vakaları listeler |
-| `/overwatch top` | `/ow top` | `reportsystem.overwatch.top` | En iyi müfettişler sıralamasını açar |
-| `/overwatch history` | `/ow history` | `reportsystem.overwatch.history` | Geçmişte verdiğiniz kararları gösterir |
+| `/report <oyuncu> [sebep]` | `/rapor`, `/reportplayer`, `/raporla` | `reportsystem.report` | Oyuncuyu raporlar (rapor GUI'sini açar) |
+| `/reports [sayfa]` | `/raporlar`, `/reportlist`, `/raporlistesi` | `reportsystem.view.all` | Yetkili rapor listesini açar (tüm raporlar) |
+| `/overwatch` | `/ow`, `/overwatchsystem` | `reportsystem.overwatch` | Overwatch ana menüsünü açar |
+| `/overwatch stats [oyuncu]` | `/ow stats` | `reportsystem.overwatch` | Overwatch istatistiklerini gösterir (çevrimiçi oyuncu) |
+| `/overwatch leaderboard` | `/ow lb`, `/ow top` | `reportsystem.overwatch` | Müfettiş sıralamasını açar |
+| `/overwatch help` | `/ow help` | `reportsystem.overwatch` | Overwatch komut yardımını gösterir |
 
 ### Yönetici Komutları
+`/reportsystem` kısayolları: `/rs`, `/rsystem`, `/raporsistem`.
+
 | Komut | Yetki | Açıklama |
 | :--- | :--- | :--- |
 | `/reportsystem reload` | `reportsystem.admin` | Yapılandırma ve dil dosyalarını yeniler |
-| `/reportsystem stats` | `reportsystem.admin` | Sunucu geneli rapor ve kayıt istatistiklerini gösterir |
-| `/reportsystem delete <id>` | `reportsystem.delete` | Belirli bir raporu ve kaydını kalıcı siler |
-| `/reportsystem deleteall` | `reportsystem.admin` | Tüm rapor ve kayıtları veritabanından temizler |
-| `/reportsystem purge <gün>` | `reportsystem.admin` | X günden eski rapor ve kayıtları temizler |
-| `/reportsystem debug` | `reportsystem.admin` | Konsolda detaylı debug modunu açar/kapatır |
-| `/reportsystem verdict <id> <karar>` | `reportsystem.punish` | Topluluk oylaması sonrası yetkilinin son kararı vermesi |
-| `/overwatch addqueue <reportId>` | `reportsystem.admin` | Bir raporu manuel olarak inceleme kuyruğuna ekler |
-| `/overwatch npc <create/delete/skin/look/move/name/select>` | `reportsystem.overwatch.npc` | Lobi NPC'lerini yönetir |
+| `/reportsystem stats` | `reportsystem.admin` | Rapor istatistiklerini gösterir |
+| `/reportsystem info` | `reportsystem.admin` | Eklenti bilgisini gösterir |
+| `/reportsystem lang` | `reportsystem.admin` | Etkin dil dosyasını gösterir |
+| `/reportsystem debug <true/false>` | `reportsystem.admin` | Debug kayıtlarını açar/kapatır |
+| `/reportsystem testnotif` | `reportsystem.admin` | Kendinize deneme toast bildirimi gönderir |
+| `/reportsystem checkadv` | `reportsystem.admin` | Başarım (toast) durumunu kontrol eder |
+| `/reportsystem ban <oyuncu> <sebep> [süre]` | `reportsystem.admin` | Oyuncuyu banlar |
+| `/reportsystem unban <oyuncu>` | `reportsystem.admin` | Banı kaldırır |
+| `/reportsystem unmute <oyuncu>` | `reportsystem.admin` | Susturmayı kaldırır |
+| `/reportsystem webreplay <raporId>` | `reportsystem.admin` | Web replay bağlantısı üretir (web replay açıksa) |
+| `/overwatch addqueue <raporId> [öncelik]` | `reportsystem.overwatch.admin` | Raporu Overwatch kuyruğuna ekler |
+| `/overwatch npc <create/delete/list/skin/look/move/name/select>` | `reportsystem.overwatch.admin` | Overwatch NPC'lerini yönetir |
+
+Proxy eklentileri (BungeeCord / Velocity) komut kaydetmez.
 
 ---
 
 ## Yetkiler (Permissions)
 
+`plugin.yml` içinde tanımlı yetkiler:
+
 ```
-reportsystem.use                   # Varsayılan: true  - Temel eklenti fonksiyonları
-reportsystem.report                # Varsayılan: true  - Oyuncuları raporlama hakkı
-reportsystem.reports               # Varsayılan: op    - Yetkili panelini açma yetkisi
-reportsystem.view                  # Varsayılan: op    - Rapor detaylarını inceleme
-reportsystem.view.other            # Varsayılan: op    - Başka yetkililerin raporlarını görme
-reportsystem.delete                # Varsayılan: op    - Raporları ve repleri silme
-reportsystem.punish                # Varsayılan: op    - Menüden ceza uygulama
-reportsystem.admin                 # Varsayılan: op    - Tam yönetici yetkileri
-reportsystem.bypass                # Varsayılan: false - Rapor edilmekten muafiyet
-reportsystem.notify                # Varsayılan: op    - Yeni rapor bildirimlerini alma
-reportsystem.overwatch             # Varsayılan: true  - Overwatch sistemine erişim
-reportsystem.overwatch.review      # Varsayılan: true  - Replay izleyip oy verme
-reportsystem.overwatch.stats       # Varsayılan: true  - Kendi istatistiklerini görme
-reportsystem.overwatch.stats.other # Varsayılan: op    - Başka oyuncuların istatistiklerini görme
-reportsystem.overwatch.top         # Varsayılan: true  - Sıralama tablosunu görme
-reportsystem.overwatch.history     # Varsayılan: true  - Geçmiş karar geçmişini görme
-reportsystem.overwatch.queue       # Varsayılan: op    - Tüm kuyruğu görüntüleme
-reportsystem.overwatch.npc         # Varsayılan: op    - Lobi NPC'lerini yönetme
-reportsystem.overwatch.admin       # Varsayılan: op    - Overwatch yönetim yetkileri
+reportsystem.*                     # Varsayılan: op    - Tüm ReportSystem yetkileri (bypass.anticheat hariç aşağıdakiler)
+reportsystem.report                # Varsayılan: true  - Rapor oluşturma
+reportsystem.report.others         # Varsayılan: op    - Başkaları adına rapor oluşturma
+reportsystem.view                  # Varsayılan: true  - Kendi raporlarını görme
+reportsystem.view.all              # Varsayılan: op    - Tüm raporları görme (/reports); replay izleyici mesafe sınırından muaf
+reportsystem.admin                 # Varsayılan: op    - /reportsystem yönetici komutları
+reportsystem.notify                # Varsayılan: op    - Rapor bildirimlerini alma (proxy eklentileri de kullanır)
+reportsystem.manage                # Varsayılan: op    - Raporları kabul/red etme
+reportsystem.punish                # Varsayılan: op    - Ceza verme (ban, mute, kick, warn)
+reportsystem.delete                # Varsayılan: op    - Rapor silme
+reportsystem.cooldown.bypass       # Varsayılan: op    - Rapor bekleme süresini atlama
+reportsystem.exempt                # Varsayılan: op    - Raporlanamama
+reportsystem.overwatch             # Varsayılan: op    - Overwatch sistemini kullanma
+reportsystem.overwatch.admin       # Varsayılan: op    - Overwatch yönetici komutları (NPC ve kuyruk yönetimi)
+reportsystem.bypass.anticheat      # Varsayılan: false - Replay izleyenlere otomatik verilir; anti-cheat'ler bunu bypass kuralı olarak kullanabilir
 ```
 
 ---
@@ -421,11 +455,11 @@ ReportSystem, yüksek oyunculu sunucularda sıfır TPS kaybı hedefiyle mimarile
 ### Olası Sorunlar ve Çözümleri
 
 - **Eklenti başlamıyor:**
-  - Java sürümünüzün 21 veya üzeri olduğunu kontrol edin (`java -version`).
-  - PacketEvents'in yüklü ve sunucu sürümünüzle uyumlu olduğundan emin olun.
+  - Java sürümünüzün 17 veya üzeri olduğunu ve Paper sürümünüzün gereksinimini karşıladığını kontrol edin (`java -version`).
+  - PacketEvents'in yüklü ve sunucu sürümünüzle uyumlu olduğundan emin olun (Minecraft 26.3 için 2.14.0+).
 - **Replay kaydedilmiyor:**
   - `config.yml` içinde `replay.auto-record: true` olduğunu kontrol edin.
-  - `plugins/ReportSystem/replays/` klasörünün yazma izinlerini kontrol edin.
+  - Replay'ler veritabanında saklanır: konsolda veritabanı hatası olup olmadığını ve sunucunun `plugins/ReportSystem-Spigot/` klasörüne (çökme kurtarma günlüğü) yazabildiğini kontrol edin.
 - **Veritabanı Bağlantı Hatası:**
   - MySQL bilgilerinizi, portunuzu ve sunucu güvenlik duvarı ayarlarınızı kontrol edin.
 

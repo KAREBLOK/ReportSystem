@@ -36,11 +36,15 @@ import org.bukkit.event.vehicle.VehicleEnterEvent;
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 /**
  * Yakındaki oyuncuların aksiyonlarını kaydeder
@@ -51,8 +55,11 @@ public class NearbyPlayerTrackerListener implements Listener {
     private final ReportSystemSpigot plugin;
     private static final double NEARBY_DISTANCE = 50.0; // 50 blok mesafe
 
-    // Nearby player'ların spawn edilip edilmediğini takip et
-    private final Map<UUID, Map<UUID, Boolean>> spawnedNearbyPlayers = new HashMap<>(); // <RecordingSessionUUID, <NearbyPlayerUUID, spawned>>
+    // Nearby player'ların spawn edilip edilmediğini takip et: <RecordingSession, {NearbyPlayerUUID}>
+    // Anahtar oturumun kendisi (WeakHashMap) → kayıt bitip oturum bırakılınca kendiliğinden düşer;
+    // aynı oyuncunun yeni kaydı eski setle karışmaz (crash D1 / H-11).
+    private final Map<RecordingSession, Set<UUID>> spawnedNearbyPlayers =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     public NearbyPlayerTrackerListener(ReportSystemSpigot plugin) {
         this.plugin = plugin;
@@ -84,11 +91,22 @@ public class NearbyPlayerTrackerListener implements Listener {
      * Nearby player'ın spawn edildiğinden emin olur
      */
     private void ensureNearbyPlayerSpawned(RecordingSession session, UUID recordedPlayerUUID, Player nearbyPlayer) {
-        // Bu session için spawn map'i al veya oluştur
-        Map<UUID, Boolean> sessionSpawns = spawnedNearbyPlayers.computeIfAbsent(recordedPlayerUUID, k -> new HashMap<>());
+        // H-11: periyodik NearbyPlayerTracker etkinse PLAYER_APPEAR'ın tek sahibi odur (tek dedup
+        // seti tracker'da). Dinleyici APPEAR üretmez, oyuncuyu tracker'a bildirir: henüz izlenmiyorsa
+        // tracker APPEAR'ı hemen üretir; tracker mesafesi dışındaki (ör. 32-50 blok) oyuncu da
+        // dinleyici yarıçapı içinde kaldıkça izlenir, çıkınca tracker DISAPPEAR yazar.
+        com.reportsystem.spigot.recording.NearbyPlayerTracker tracker =
+                plugin.getRecordingManager().getActiveNearbyTracker(recordedPlayerUUID);
+        if (tracker != null) {
+            tracker.ensureTracked(nearbyPlayer, NEARBY_DISTANCE);
+            return;
+        }
+
+        // Bu session için spawn setini al veya oluştur
+        Set<UUID> sessionSpawns = spawnedNearbyPlayers.computeIfAbsent(session, k -> new HashSet<>());
 
         // Eğer daha önce spawn edilmediyse
-        if (!sessionSpawns.getOrDefault(nearbyPlayer.getUniqueId(), false)) {
+        if (!sessionSpawns.contains(nearbyPlayer.getUniqueId())) {
             // Equipment map'i oluştur
             Map<EquipmentAction.EquipmentSlot, EquipmentAction.ItemData> equipmentMap = new HashMap<>();
 
@@ -109,10 +127,10 @@ public class NearbyPlayerTrackerListener implements Listener {
                     null, // skinSignature - can be null for now
                     equipmentMap
             );
-            session.addAction(spawnAction);
-
-            // Spawn edildi olarak işaretle
-            sessionSpawns.put(nearbyPlayer.getUniqueId(), true);
+            // Spawn edildi olarak yalnız APPEAR gerçekten kayda girdiyse işaretle (F-Ö1)
+            if (session.addAction(spawnAction)) {
+                sessionSpawns.add(nearbyPlayer.getUniqueId());
+            }
 
             plugin.debug("[NEARBY-TRACKING] Nearby player appeared: " + nearbyPlayer.getName() +
                     " for recorded player session");
@@ -1741,7 +1759,7 @@ public class NearbyPlayerTrackerListener implements Listener {
     private VehicleAction.VehicleType convertToVehicleType(String entityType) {
         if (entityType == null) return null;
 
-        String type = entityType.toUpperCase();
+        String type = entityType.toUpperCase(java.util.Locale.ROOT);
         if (type.contains("MINECART")) return VehicleAction.VehicleType.MINECART;
         if (type.contains("BOAT")) return VehicleAction.VehicleType.BOAT;
         if (type.contains("HORSE")) return VehicleAction.VehicleType.HORSE;

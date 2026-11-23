@@ -105,14 +105,14 @@ reports:
         icon: "MAP"
         frame: "TASK"
 
-  # Reporter feedback (Hypixel style - only for accepted reports)
-  reporter-feedback:
-    accepted: "%prefix_success% &aYour report has been reviewed and action was taken! &7(Report #%id% - %player%)"
-
     # Staff join notification (pending reports)
     staff-join-title: "&6&l⚠ PENDING REPORTS"
     staff-join-message: "&eThere are &c%count% &epending reports on the server!"
     staff-join-action: "&eCheck them: &b/reports"
+
+  # Reporter feedback (Hypixel style - only for accepted reports)
+  reporter-feedback:
+    accepted: "%prefix_success% &aYour report has been reviewed and action was taken! &7(Report #%id% - %player%)"
 
   # List messages
   list:
@@ -186,7 +186,8 @@ replay:
   server-connect-error: "%prefix_error% &cError connecting to server!"
   world-change: "%prefix_info% &e✦ Replay: Changing to &b%world% &eworld..."
   command-blocked: "%prefix_error% &cYou cannot use this command while watching a replay!"
-  command-blocked-tip: "&eStop the replay first: &f/replay stop"
+  command-blocked-tip: "&eStop the replay first (use the Stop item in your hotbar)."
+  teleport-blocked: "&cYou cannot teleport while watching a replay or reviewing."
 
   # Nametag prefixes
   nametag-recorded-player: "&c&l[WATCHED] "
@@ -242,6 +243,7 @@ punishments:
     already-banned: "%prefix_error% &cPlayer is already banned!"
     not-banned: "%prefix_error% &cPlayer is not banned!"
     unbanned: "%prefix_success% &aPlayer &e%player% &ahas been unbanned!"
+    unknown-player: "%prefix_error% &c%player% &7has never been seen on this server; the ban cannot be applied unless the player is online (no blocking Mojang lookup on the main thread)."
     offline: "%prefix_error% &c%player% &7is offline! Player must be online for animated ban."
     enter-reason: "&6Enter ban reason (default: %default%)"
     animated-started: "&a⚡ &lANIMATED BAN STARTED!"
@@ -290,6 +292,11 @@ punishments:
     time-permanent: " (Permanent)"
     # When unmuted
     unmuted-player: "&a✓ You can now speak again!"
+
+  # Proxy (global) ceza isteği sonuçları / Proxy punishment request results
+  proxy:
+    failed: "%prefix_error% &cProxy %type% request for %player% failed!"
+    timeout: "%prefix_error% &cNo timely proxy reply for %type% request on %player% (it may not have been applied)!"
 
   kick:
     success: "%prefix_success% &e%player% &7has been kicked!"
@@ -466,6 +473,7 @@ overwatch:
     try-later: "&7Please try again later."
     completed: "%overwatch_prefix% &aReview completed! &e+%xp% XP &8| %rank% &7Level %level%"
     verdict-submitted: "%overwatch_prefix% &7Replay finished! Please submit your verdict."
+    own-report-rejected: "%overwatch_prefix% &cYou cannot vote on a report you are involved in (reporter or reported)!"
 
   # Verdict Messages
   verdict:
@@ -478,6 +486,7 @@ overwatch:
     thank-you: "&a&lThank you! Review recorded."
     footer: "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     cancelled: "%overwatch_prefix% &eReview cancelled. Report returned to queue."
+    error: "%overwatch_prefix% &cYour verdict could not be saved, please try again."
 
     # Verdict types (for display)
     types:

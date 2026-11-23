@@ -24,6 +24,7 @@ public class ReportListGUI extends GUI {
     private final int itemsPerPage = 28;
     private final GUIConfig guiConfig;
     private Map<String, Integer> reportCountCache = new HashMap<>();
+    private Map<Integer, String> votingStatsCache = new HashMap<>();
 
     private SortType currentSort = SortType.NEWEST_FIRST;
 
@@ -71,8 +72,16 @@ public class ReportListGUI extends GUI {
                 int calculatedMaxPage = (int) Math.ceil((double) totalReports / itemsPerPage);
                 if (calculatedMaxPage == 0) calculatedMaxPage = 1;
 
-                // Return processed reports, counts, and maxPage
-                return new Object[]{pageReports, counts, calculatedMaxPage};
+                // Overwatch oylama özetleri: tüm sayfa için ASYNC fazda önceden çek
+                Map<Integer, String> stats = new HashMap<>();
+                if (plugin.getOverwatchManager() != null) {
+                    List<Integer> ids = new java.util.ArrayList<>();
+                    for (Report r : pageReports) ids.add(r.getId());
+                    stats = plugin.getOverwatchManager().getVotingStatsForReports(ids);
+                }
+
+                // Return processed reports, counts, maxPage and voting stats
+                return new Object[]{pageReports, counts, calculatedMaxPage, stats};
             } catch (Exception e) {
                 plugin.getLogger().severe("Raporlar yüklenirken hata: " + e.getMessage());
                 return null;
@@ -85,12 +94,16 @@ public class ReportListGUI extends GUI {
                 @SuppressWarnings("unchecked")
                 Map<String, Integer> counts = (Map<String, Integer>) data[1];
                 int newMaxPage = (Integer) data[2];
+                @SuppressWarnings("unchecked")
+                Map<Integer, String> stats = (Map<Integer, String>) data[3];
 
                 this.reports = processedReports;
                 this.reportCountCache = counts;
                 this.maxPage = newMaxPage;
+                this.votingStatsCache = stats;
 
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) return;
                     build();
                     player.openInventory(inventory);
                 });
@@ -192,7 +205,7 @@ public class ReportListGUI extends GUI {
         lore.add("&8▪ &7" + labelTotalReports + " &c" + totalReports);
 
         // Add Overwatch voting statistics if available
-        String votingStats = plugin.getOverwatchManager().getVotingStats(report.getId());
+        String votingStats = votingStatsCache.get(report.getId());
         if (votingStats != null) {
             String labelOverwatch = guiConfig.getConfig().getString("report-item.labels.overwatch", "Overwatch:");
             lore.add("&8▪ &7" + labelOverwatch + " &e" + votingStats);
@@ -332,7 +345,7 @@ public class ReportListGUI extends GUI {
             Report report = getReportAtSlot(slot);
             if (report != null) {
                 player.closeInventory();
-                new ReportDetailGUI(player, report, ((ReportSystemSpigot) plugin).getReplayDAO()).open();
+                ReportDetailGUI.openAsync((ReportSystemSpigot) plugin, player, report);
             }
         }
     }

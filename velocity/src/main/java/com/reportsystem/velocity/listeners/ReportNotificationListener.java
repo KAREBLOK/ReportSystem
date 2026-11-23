@@ -29,8 +29,17 @@ public class ReportNotificationListener {
      */
     public void broadcastReportNotification(int reportId, String reporterName, String reportedName,
                                            String reason, String serverName) {
+        broadcastReportNotification(reportId, reporterName, reportedName, reason, serverName, null);
+    }
+
+    /** excludeServer: bu sunucuya gonderme (kaynak sunucu zaten yerel bildirim yapti); null = hepsi. */
+    public void broadcastReportNotification(int reportId, String reporterName, String reportedName,
+                                           String reason, String serverName, String excludeServer) {
         // Tum sunuculara plugin message gonder
         for (RegisteredServer server : plugin.getServer().getAllServers()) {
+            if (excludeServer != null && server.getServerInfo().getName().equalsIgnoreCase(excludeServer)) {
+                continue;
+            }
             try {
                 ByteArrayOutputStream msgBytes = new ByteArrayOutputStream();
                 DataOutputStream out = new DataOutputStream(msgBytes);
@@ -41,7 +50,7 @@ public class ReportNotificationListener {
                 out.writeUTF(reason);
                 out.writeUTF(serverName);
 
-                server.sendPluginMessage(ReportSystemVelocity.NOTIFICATION_CHANNEL, msgBytes.toByteArray());
+                plugin.sendSigned(server, ReportSystemVelocity.NOTIFICATION_CHANNEL, msgBytes.toByteArray());
 
                 plugin.getLogger().info("[NOTIFICATION] Sent report #{} notification to server: {}",
                         reportId, server.getServerInfo().getName());

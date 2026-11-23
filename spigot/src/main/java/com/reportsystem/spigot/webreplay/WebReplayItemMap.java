@@ -1,5 +1,6 @@
 package com.reportsystem.spigot.webreplay;
 
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -178,7 +179,7 @@ public final class WebReplayItemMap {
                 || materialName.equalsIgnoreCase("AIR")) {
             return -1;
         }
-        String name = materialName.replace("minecraft:", "").toUpperCase();
+        String name = materialName.replace("minecraft:", "").toUpperCase(Locale.ROOT);
 
         // NMS ile gercek item ID'sini al
         initNmsItem();

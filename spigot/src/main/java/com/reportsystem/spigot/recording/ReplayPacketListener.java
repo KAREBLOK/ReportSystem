@@ -35,7 +35,9 @@ public class ReplayPacketListener extends PacketListenerAbstract {
     private final Player recordedPlayer;
     private final JavaPlugin plugin;
     private long lastPositionTime = 0;
-    private Location lastLocation;
+    // volatile: netty thread yazar/okur; dünya referansı ana thread'de önbelleğe alınır
+    private volatile Location lastLocation;
+    private volatile org.bukkit.World cachedWorld;
     private Vector lastVelocity = new Vector(0, 0, 0);
     // volatile: paket işleme thread'i (netty) ile diğer erişimler arası görünürlük garantisi
     private volatile boolean isUsingItem = false;
@@ -49,6 +51,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         this.recordedPlayer = recordedPlayer;
         this.plugin = plugin;
         this.lastLocation = recordedPlayer.getLocation();
+        this.cachedWorld = recordedPlayer.getWorld(); // yapıcı ana thread'de çalışır
 
         // İlk skin bilgisini kaydet
         String[] skinData = SkinUtils.getSkinData(recordedPlayer);
@@ -391,7 +394,8 @@ public class ReplayPacketListener extends PacketListenerAbstract {
                 double soundZ = soundPos.getZ() / 8.0;
 
                 // Cok uzak sesler kaydetme (30 blok mesafe, performans icin)
-                Location playerLoc = recordedPlayer.getLocation();
+                Location playerLoc = lastLocation; // netty thread: Bukkit'e dokunma, paket kaynaklı konum
+                if (playerLoc == null) return;
                 double dx = soundX - playerLoc.getX();
                 double dy = soundY - playerLoc.getY();
                 double dz = soundZ - playerLoc.getZ();
@@ -431,7 +435,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         if (packetType.equals(PacketType.Play.Client.PLAYER_POSITION)) {
             WrapperPlayClientPlayerPosition wrapper = new WrapperPlayClientPlayerPosition(event);
             newLocation = new Location(
-                    recordedPlayer.getWorld(),
+                    cachedWorld,
                     wrapper.getPosition().getX(),
                     wrapper.getPosition().getY(),
                     wrapper.getPosition().getZ(),
@@ -441,7 +445,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         } else if (packetType.equals(PacketType.Play.Client.PLAYER_POSITION_AND_ROTATION)) {
             WrapperPlayClientPlayerPositionAndRotation wrapper = new WrapperPlayClientPlayerPositionAndRotation(event);
             newLocation = new Location(
-                    recordedPlayer.getWorld(),
+                    cachedWorld,
                     wrapper.getPosition().getX(),
                     wrapper.getPosition().getY(),
                     wrapper.getPosition().getZ(),
@@ -451,7 +455,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
         } else if (packetType.equals(PacketType.Play.Client.PLAYER_ROTATION)) {
             WrapperPlayClientPlayerRotation wrapper = new WrapperPlayClientPlayerRotation(event);
             newLocation = new Location(
-                    recordedPlayer.getWorld(),
+                    cachedWorld,
                     lastLocation.getX(),
                     lastLocation.getY(),
                     lastLocation.getZ(),
@@ -496,6 +500,7 @@ public class ReplayPacketListener extends PacketListenerAbstract {
 
             // YENİ: Yanma durumu kontrolü
             plugin.getServer().getScheduler().runTask(plugin, () -> {
+                cachedWorld = recordedPlayer.getWorld(); // ana thread: dünya değişimini yakala
                 boolean isOnFire = recordedPlayer.getFireTicks() > 0;
 
                 if (wasOnFire != isOnFire) {

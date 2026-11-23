@@ -1,0 +1,168 @@
+# Report Creation GUI
+title: "&8&n%player%"
+size: 45
+
+# Background
+background:
+  enabled: false
+  material: BLACK_STAINED_GLASS_PANE
+  name: " "
+  slots: all
+
+# Report reason names
+reasons:
+  cheating: "Cheating"
+  chat-abuse: "Chat Abuse"
+  griefing: "Griefing"
+  bug-abuse: "Bug Abuse"
+  teaming: "Teaming"
+
+# Status
+status:
+  online: '&aOnline'
+  offline: '&cOffline'
+
+# Items
+items:
+  # Player header
+  player-head:
+    slot: 4
+    material: PLAYER_HEAD
+    name: "&b%player%"
+    lore:
+      - ''
+      - ' &8▪ &7Server: &a%server%'
+      - ' &8▪ &7Status: %online_status%'
+      - ''
+      - '&7Pick a reason to create a report.'
+
+  # Report reasons
+  reasons:
+    cheating:
+      slot: 20
+      material: IRON_SWORD
+      name: "&c&l⚔ Cheating"
+      lore:
+        - ''
+        - '&7The player is using illegal'
+        - '&7modifications or cheats.'
+        - ''
+        - '&8Examples:'
+        - ' &8▪ &7Kill Aura'
+        - ' &8▪ &7Fly Hacks'
+        - ' &8▪ &7X-Ray'
+        - ''
+        - '&e► Click to report'
+      enchanted: true
+      enchantments:
+        - "DURABILITY:1"
+      flags:
+        - HIDE_ENCHANTS
+
+    chat-abuse:
+      slot: 21
+      material: BOOK
+      name: "&6&l📖 Chat Abuse"
+      lore:
+        - ''
+        - '&7Inappropriate behavior'
+        - '&7in chat.'
+        - ''
+        - '&8Examples:'
+        - ' &8▪ &7Insults/Swearing'
+        - ' &8▪ &7Spam'
+        - ' &8▪ &7Advertising'
+        - ''
+        - '&e► Click to report'
+
+    griefing:
+      slot: 22
+      material: TNT
+      name: "&c&l💣 Griefing"
+      lore:
+        - ''
+        - '&7Destroying or stealing'
+        - '&7other players'' builds.'
+        - ''
+        - '&8Examples:'
+        - ' &8▪ &7Breaking builds'
+        - ' &8▪ &7Stealing items'
+        - ' &8▪ &7Claim violation'
+        - ''
+        - '&e► Click to report'
+
+    bug-abuse:
+      slot: 23
+      material: REDSTONE
+      name: "&e&l🔧 Bug Abuse"
+      lore:
+        - ''
+        - '&7Abusing game'
+        - '&7bugs.'
+        - ''
+        - '&8Examples:'
+        - ' &8▪ &7Dupe glitch'
+        - ' &8▪ &7Economy exploit'
+        - ' &8▪ &7Permission bypass'
+        - ''
+        - '&e► Click to report'
+
+    teaming:
+      slot: 24
+      material: GOLDEN_APPLE
+      name: "&d&l👥 Teaming"
+      lore:
+        - ''
+        - '&7Teaming up in'
+        - '&7solo game modes.'
+        - ''
+        - '&7Only use in modes where'
+        - '&7teaming is not allowed.'
+        - ''
+        - '&e► Click to report'
+
+  # Custom reason
+  custom-reason:
+    slot: 31
+    material: WRITABLE_BOOK
+    name: "&b&l✏ Custom Reason"
+    lore:
+      - ''
+      - '&7Can''t find the right category?'
+      - '&7Write your own reason.'
+      - ''
+      - ' &8▪ &7Min length: &a%min_length%'
+      - ' &8▪ &7Max length: &a%max_length%'
+      - ''
+      - '&e► Click to write a reason'
+    glow: true
+
+  # Close
+  close:
+    slot: 40
+    material: ARROW
+    name: "&8←"
+    lore: []
+
+  # Info
+  info:
+    slot: 8
+    material: NETHER_STAR
+    name: "&b❓ How to Report"
+    lore:
+      - ''
+      - '&7Pick the category that best'
+      - '&7describes the rule violation.'
+      - ''
+      - '&c&lWarning:'
+      - '&7False reports may'
+      - '&7lead to punishment!'
+      - ''
+      - ' &8▪ &7Cooldown: &a%cooldown%s'
+
+# Sounds
+sounds:
+  open: UI_BUTTON_CLICK
+  select-reason: ENTITY_EXPERIENCE_ORB_PICKUP
+  close: BLOCK_CHEST_CLOSE
+  error: ENTITY_VILLAGER_NO

@@ -12,7 +12,7 @@ softdepend: [PlaceholderAPI, Vault, PolarLoader, Vulcan, GrimAC]
 
 # Kütüphaneler
 libraries:
-  - org.xerial:sqlite-jdbc:3.45.1.0
+  - org.xerial:sqlite-jdbc:3.54.1.0
 
 # Komutlar
 commands:

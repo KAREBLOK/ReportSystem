@@ -44,6 +44,12 @@ public class NearbyPlayerTracker {
     private final Map<UUID, Boolean> lastSneakingState = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> lastSprintingState = new ConcurrentHashMap<>();
     private final Set<UUID> trackedPlayers = ConcurrentHashMap.newKeySet();
+    // H-11: olay dinleyicisinin (NearbyPlayerTrackerListener) tracker mesafesi dışında ama kendi
+    // yakınlık yarıçapında bildirdiği oyuncular → bunlar için tutma yarıçapı genişletilir
+    // (32-50 blok bandında APPEAR/DISAPPEAR titremesi olmasın). UUID → tutma yarıçapı.
+    private final Map<UUID, Double> extendedRetention = new ConcurrentHashMap<>();
+    // start() ile true, stop() ile false — durmuş tracker'a dinleyiciden oyuncu eklenmesin
+    private volatile boolean active;
 
     public NearbyPlayerTracker(ReportSystemSpigot plugin, RecordingSession session, Player recordedPlayer) {
         this.plugin = plugin;
@@ -75,11 +81,12 @@ public class NearbyPlayerTracker {
             return;
         }
 
+        active = true;
         trackingTask = plugin.getServer().getScheduler().runTaskTimer(
                 plugin,
                 this::trackNearbyPlayers,
-                20L, // İlk çalışma (1 saniye sonra)
-                intervalTicks // Her X tick'te bir
+                1L, // İlk çalışma hemen (eskiden 1 sn bekliyordu → kaydın ilk saniyesinde yakın oyuncu yoktu)
+                Math.max(1, intervalTicks) // Her X tick'te bir
         );
 
         plugin.debug("[NEARBY-TRACKER] Started for " + recordedPlayer.getName());
@@ -89,6 +96,7 @@ public class NearbyPlayerTracker {
      * Tracking'i durdurur
      */
     public void stop() {
+        active = false;
         if (trackingTask != null) {
             trackingTask.cancel();
             trackingTask = null;
@@ -103,8 +111,35 @@ public class NearbyPlayerTracker {
         lastSneakingState.clear();
         lastSprintingState.clear();
         trackedPlayers.clear();
+        extendedRetention.clear();
 
         plugin.debug("[NEARBY-TRACKER] Stopped for " + recordedPlayer.getName());
+    }
+
+    /**
+     * H-11: Yakın oyuncu PLAYER_APPEAR'ının TEK sahibi tracker'dır. Olay dinleyicisi bir yakın
+     * oyuncunun aksiyonunu kaydetmeden önce bunu çağırır; oyuncu henüz izlenmiyorsa APPEAR hemen
+     * burada üretilir (tracker'ın ilk turunu beklemeden). Oyuncu tracker mesafesinin dışındaysa
+     * {@code retainDistance} yarıçapı içinde kaldığı sürece izlenir, dışına çıkınca tracker
+     * kendi döngüsünde DISAPPEAR ile çıkarır. Yalnız ana thread'den çağrılır.
+     *
+     * @param retainDistance dinleyicinin yakınlık yarıçapı (blok)
+     */
+    public void ensureTracked(Player player, double retainDistance) {
+        if (!enabled || !active || player == null || player.equals(recordedPlayer)) {
+            return;
+        }
+        if (!recordedPlayer.isOnline() || !recordedPlayer.getWorld().equals(player.getWorld())
+                || !recordedPlayer.canSee(player)) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        if (retainDistance > trackingDistance) {
+            extendedRetention.merge(uuid, retainDistance, Math::max);
+        }
+        if (!trackedPlayers.contains(uuid)) {
+            recordPlayerAppear(player);
+        }
     }
 
     /**
@@ -133,7 +168,13 @@ public class NearbyPlayerTracker {
 
             // Mesafe kontrolü (squared distance for performance)
             double distanceSquared = nearbyPlayer.getLocation().distanceSquared(recordedLoc);
-            double maxDistanceSquared = trackingDistance * trackingDistance;
+            double maxDistance = trackingDistance;
+            // Dinleyicinin bildirdiği (izlenen) oyuncu için genişletilmiş tutma yarıçapı
+            Double retain = extendedRetention.get(nearbyPlayer.getUniqueId());
+            if (retain != null && trackedPlayers.contains(nearbyPlayer.getUniqueId())) {
+                maxDistance = Math.max(maxDistance, retain);
+            }
+            double maxDistanceSquared = maxDistance * maxDistance;
 
             if (distanceSquared <= maxDistanceSquared) {
                 currentNearbyPlayers.add(nearbyPlayer.getUniqueId());
@@ -158,6 +199,7 @@ public class NearbyPlayerTracker {
                 recordPlayerDisappear(player);
             }
             trackedPlayers.remove(uuid);
+            extendedRetention.remove(uuid);
         }
     }
 
@@ -165,7 +207,11 @@ public class NearbyPlayerTracker {
      * Oyuncu ilk kez göründüğünde kaydeder
      */
     private void recordPlayerAppear(Player player) {
-        trackedPlayers.add(player.getUniqueId());
+        // Toplam aksiyon tavanı doluysa pahalı skin/envanter serileştirmesine hiç girme
+        // (APPEAR zaten düşer; oyuncu izlenmeyen olarak kalır)
+        if (session.isActionCapReached()) {
+            return;
+        }
 
         // Location kaydet
         lastLocations.put(player.getUniqueId(), player.getLocation().clone());
@@ -217,10 +263,20 @@ public class NearbyPlayerTracker {
                 inventory // Full inventory
         );
 
-        session.addAction(appearAction);
+        // F-Ö1: oyuncu yalnız APPEAR gerçekten kayda girdiyse "izleniyor" sayılır; aksi halde
+        // sonraki hareket/ekipman aksiyonları replay'de var olmayan bir NPC'ye yazılırdı.
+        if (!session.addAction(appearAction)) {
+            UUID uuid = player.getUniqueId();
+            lastLocations.remove(uuid);
+            lastEquipment.remove(uuid);
+            lastSneakingState.remove(uuid);
+            lastSprintingState.remove(uuid);
+            return;
+        }
+        trackedPlayers.add(player.getUniqueId());
 
         plugin.debug("[NEARBY-TRACKER] Player appeared: " + player.getName() +
-                " at " + String.format("%.1f, %.1f, %.1f", player.getLocation().getX(),
+                " at " + String.format(Locale.ROOT, "%.1f, %.1f, %.1f", player.getLocation().getX(),
                 player.getLocation().getY(), player.getLocation().getZ()));
     }
 

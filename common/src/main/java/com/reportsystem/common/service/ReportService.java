@@ -118,6 +118,34 @@ public class ReportService {
     }
 
     /**
+     * Raporu çözen yetkiliyi ve çözülme zamanını kalıcı yazar (H-14a).
+     * Bloklayan DB çağrısıdır; ana thread'den çağırma.
+     */
+    public boolean setResolution(int reportId, String resolvedBy, long resolvedAt) {
+        try {
+            return reportDAO.setResolution(reportId, resolvedBy, resolvedAt);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "Rapor #" + reportId + " çözüm bilgisi yazılırken hata", e);
+            return false;
+        }
+    }
+
+    /**
+     * Atomik koşullu durum geçişi (expectedStatus -> newStatus). Bloklayan DB çağrısıdır;
+     * ana thread'den çağırma.
+     * @return 1 = geçiş yapıldı, 0 = rapor beklenen durumda değil (başkası işlemiş), -1 = DB hatası
+     */
+    public int transitionStatus(int reportId, String expectedStatus, String newStatus) {
+        try {
+            return reportDAO.transitionStatus(reportId, expectedStatus, newStatus);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "Rapor durum geçişi başarısız (#" + reportId + " "
+                    + expectedStatus + " -> " + newStatus + ")", e);
+            return -1;
+        }
+    }
+
+    /**
      * ID ile rapor getirir
      */
     public Report getReportById(int id) {

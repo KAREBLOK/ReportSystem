@@ -1,0 +1,91 @@
+# Replay Settings GUI
+title: "&8&nReplay Settings"
+size: 27
+
+# Background
+background:
+  enabled: false
+
+# Status
+status-playing: "&aPlaying"
+status-paused: "&cPaused"
+
+# First-person exit message
+first-person-exit-message: "&e&lSneak &7to exit first-person view."
+
+# Items
+items:
+  info:
+    slot: 10
+    material: PAPER
+    name: "&eReplay Info"
+    lore:
+      - ''
+      - ' &8▪ &7Player: &a%player%'
+      - ' &8▪ &7Time: &a%elapsed% / %total%'
+      - ' &8▪ &7Progress: &a%progress%'
+      - ' &8▪ &7Action: &a%current% / %total_actions%'
+      - ' &8▪ &7Status: %status%'
+      - ' &8▪ &7Speed: &a%speed%x'
+      - ''
+
+  glow:
+    enabled:
+      material: SPECTRAL_ARROW
+      name: "&aGlow: ON"
+      lore:
+        - ''
+        - '&7Glow effect around the suspect'
+        - ''
+        - '&e► Click to disable'
+    disabled:
+      material: ARROW
+      name: "&7Glow: OFF"
+      lore:
+        - ''
+        - '&7Glow effect around the suspect'
+        - ''
+        - '&e► Click to enable'
+
+  night-vision:
+    enabled:
+      material: GOLDEN_CARROT
+      name: "&aNight Vision: ON"
+      lore:
+        - ''
+        - '&7See better in dark areas'
+        - ''
+        - '&e► Click to disable'
+    disabled:
+      material: CARROT
+      name: "&7Night Vision: OFF"
+      lore:
+        - ''
+        - '&7See better in dark areas'
+        - ''
+        - '&e► Click to enable'
+
+  first-person:
+    enabled:
+      material: ENDER_EYE
+      name: "&aFirst Person: ON"
+      lore:
+        - ''
+        - '&7Watch through the suspect''s eyes'
+        - ''
+        - '&e► Back to free camera'
+    disabled:
+      material: ENDER_PEARL
+      name: "&7First Person: OFF"
+      lore:
+        - ''
+        - '&7Watch through the suspect''s eyes'
+        - ''
+        - '&e► Switch to first-person view'
+
+  close:
+    slot: 22
+    material: ARROW
+    name: "&8←"
+    lore:
+      - "&7Close"

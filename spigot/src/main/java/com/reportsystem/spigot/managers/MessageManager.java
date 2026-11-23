@@ -3,10 +3,10 @@ package com.reportsystem.spigot.managers;
 import com.reportsystem.spigot.ReportSystemSpigot;
 import com.reportsystem.spigot.config.ConfigManager;
 import com.reportsystem.spigot.utils.AdvancementNotification;
+import com.reportsystem.spigot.utils.SoundUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.Sound;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -15,14 +15,16 @@ import org.bukkit.entity.Player;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.HashMap;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MessageManager {
     private final ReportSystemSpigot plugin;
     private final ConfigManager configManager;
     private FileConfiguration messagesConfig;
-    private final Map<String, String> messageCache = new HashMap<>();
+    private final Map<String, String> messageCache = new ConcurrentHashMap<>();
 
     public MessageManager(ReportSystemSpigot plugin) {
         this.plugin = plugin;
@@ -31,7 +33,8 @@ public class MessageManager {
     }
 
     private void loadMessages() {
-        String language = configManager.getLanguage();
+        // N-2: "EN" / " tr " gibi yazımlar messages_EN.yml arayıp saveResource istisnası atmasın
+        String language = com.reportsystem.spigot.config.ConfigManager.normalizeLanguage(configManager.getLanguage());
         File messagesFile = new File(plugin.getDataFolder(), "messages_" + language + ".yml");
 
         if (!messagesFile.exists()) {
@@ -43,7 +46,7 @@ public class MessageManager {
         // JAR'daki varsayılan değerleri yükle - kullanıcı dosyasında eksik key varsa fallback olarak kullanılır
         InputStream defaultStream = plugin.getResource("messages_" + language + ".yml");
         if (defaultStream != null) {
-            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream));
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
             messagesConfig.setDefaults(defaults);
         }
 
@@ -159,7 +162,7 @@ public class MessageManager {
         boolean actionbarEnabled = plugin.getConfig().getBoolean("reports.notifications.actionbar-enabled", false);
 
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-            if (onlinePlayer.hasPermission("reportsystem.staff")) {
+            if (onlinePlayer.hasPermission("reportsystem.notify")) {
                 sendToastToPlayer(onlinePlayer, "new-report", reporter, reported, reason, reportId, serverName);
 
                 // Title bildirimi
@@ -234,7 +237,7 @@ public class MessageManager {
     private Material getToastIcon(String toastType) {
         String iconName = messagesConfig.getString("reports.notify.toast." + toastType + ".icon", "PAPER");
         try {
-            return Material.valueOf(iconName.toUpperCase());
+            return Material.valueOf(iconName.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return Material.PAPER;
         }
@@ -246,7 +249,7 @@ public class MessageManager {
     private AdvancementNotification.FrameType getToastFrame(String toastType) {
         String frameName = messagesConfig.getString("reports.notify.toast." + toastType + ".frame", "CHALLENGE");
         try {
-            return AdvancementNotification.FrameType.valueOf(frameName.toUpperCase());
+            return AdvancementNotification.FrameType.valueOf(frameName.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return AdvancementNotification.FrameType.CHALLENGE;
         }
@@ -258,13 +261,8 @@ public class MessageManager {
     private void playNotificationSound(Player player) {
         if (!configManager.isNotificationSoundEnabled()) return;
 
-        try {
-            String soundName = plugin.getConfig().getString("reports.notifications.sound", "BLOCK_NOTE_BLOCK_PLING");
-            Sound sound = Sound.valueOf(soundName.toUpperCase());
-            player.playSound(player.getLocation(), sound, 1.0f, 1.0f);
-        } catch (IllegalArgumentException e) {
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
-        }
+        String soundName = plugin.getConfig().getString("reports.notifications.sound", "BLOCK_NOTE_BLOCK_PLING");
+        SoundUtil.play(player, player.getLocation(), soundName, 1.0f, 1.0f);
     }
 
     /**
@@ -280,13 +278,8 @@ public class MessageManager {
 
         // Ses efekti
         if (plugin.getConfig().getBoolean("reports.reporter-feedback.sound-enabled", true)) {
-            try {
-                String soundName = plugin.getConfig().getString("reports.reporter-feedback.sound", "ENTITY_EXPERIENCE_ORB_PICKUP");
-                Sound sound = Sound.valueOf(soundName.toUpperCase());
-                reporter.playSound(reporter.getLocation(), sound, 1.0f, 1.0f);
-            } catch (IllegalArgumentException e) {
-                reporter.playSound(reporter.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
-            }
+            String soundName = plugin.getConfig().getString("reports.reporter-feedback.sound", "ENTITY_EXPERIENCE_ORB_PICKUP");
+            SoundUtil.play(reporter, reporter.getLocation(), soundName, 1.0f, 1.0f);
         }
     }
 
@@ -311,7 +304,7 @@ public class MessageManager {
             return "Unknown";
         }
 
-        String path = "reports.status.name." + status.toLowerCase();
+        String path = "reports.status.name." + status.toLowerCase(Locale.ROOT);
         String translatedName = messagesConfig.getString(path);
 
         // Eğer çeviri bulunamazsa, orijinal status'ü döndür

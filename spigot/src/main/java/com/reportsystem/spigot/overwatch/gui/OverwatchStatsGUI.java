@@ -43,15 +43,24 @@ public class OverwatchStatsGUI implements InventoryHolder {
         this.targetUUID = targetUUID;
         this.cfg = new GUIConfig(plugin, "overwatch-stats").getConfig();
 
-        Optional<OverwatchStats> statsOpt = plugin.getOverwatchManager().getReviewerStats(targetUUID);
-        String playerName = statsOpt.map(OverwatchStats::getReviewerName).orElse("Unknown");
+        // Başlık DB'ye bakmadan: çevrimiçi oyuncu, yoksa UUID ile çevrimdışı ad (ağ sorgusu yok) [THR-01]
+        String playerName;
+        Player online = Bukkit.getPlayer(targetUUID);
+        if (online != null) {
+            playerName = online.getName();
+        } else {
+            String offlineName = Bukkit.getOfflinePlayer(targetUUID).getName();
+            playerName = offlineName != null ? offlineName : "?";
+        }
 
         String title = cfg.getString("title", "&8&n%player%").replace("%player%", playerName);
         this.inventory = Bukkit.createInventory(this, 54, plugin.getMessageManager().colorize(title));
 
         setupItems();
+        loadAsync();
     }
 
+    /** Ana thread: yalnız DB gerektirmeyen öğeler; istatistikler {@link #loadAsync()} ile dolar [THR-01]. */
     private void setupItems() {
         // Black glass separator (row 2: slots 10-16)
         ItemStack blackGlass = createItem(Material.BLACK_STAINED_GLASS_PANE, "&7", null);
@@ -59,8 +68,29 @@ public class OverwatchStatsGUI implements InventoryHolder {
             inventory.setItem(i, blackGlass);
         }
 
-        Optional<OverwatchStats> statsOpt = plugin.getOverwatchManager().getReviewerStats(targetUUID);
+        // Back Button (Slot 49)
+        inventory.setItem(49, createItem(Material.ARROW, c(cfg.getString("back", "&8←")), null));
+    }
 
+    /** İstatistikleri async okur, ana thread'de doldurur [THR-01][THR-17]. */
+    private void loadAsync() {
+        if (!plugin.isEnabled()) return;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Optional<OverwatchStats> statsOpt;
+            try {
+                statsOpt = plugin.getOverwatchManager().getReviewerStats(targetUUID);
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "[OVERWATCH] Failed to load reviewer stats", t);
+                statsOpt = Optional.empty();
+            }
+            if (!plugin.isEnabled()) return; // kapanıyor: runTask atılamaz [THR-17]
+            final Optional<OverwatchStats> finalStats = statsOpt;
+            Bukkit.getScheduler().runTask(plugin, () -> fill(finalStats));
+        });
+    }
+
+    /** Ana thread: istatistik öğelerini yerleştirir. */
+    private void fill(Optional<OverwatchStats> statsOpt) {
         if (!statsOpt.isPresent()) {
             List<String> noStatsLore = new ArrayList<>();
             noStatsLore.add("");
@@ -70,8 +100,6 @@ public class OverwatchStatsGUI implements InventoryHolder {
 
             inventory.setItem(22, createItem(Material.BARRIER,
                     plugin.getMessageManager().colorize(cfg.getString("no-stats-name", "")), noStatsLore));
-            inventory.setItem(49, createItem(Material.ARROW,
-                    plugin.getMessageManager().colorize(cfg.getString("back", "&8←")), null));
             return;
         }
 
@@ -200,9 +228,6 @@ public class OverwatchStatsGUI implements InventoryHolder {
         xpLore.add(c(cfg.getString("xp-needed", "").replace("%xp%", String.valueOf(needed))));
         xpLore.add("");
         inventory.setItem(33, createItem(Material.EXPERIENCE_BOTTLE, c(cfg.getString("xp-name", "")), xpLore));
-
-        // Back Button (Slot 49)
-        inventory.setItem(49, createItem(Material.ARROW, c(cfg.getString("back", "&8←")), null));
     }
 
     private String c(String text) {
@@ -226,7 +251,7 @@ public class OverwatchStatsGUI implements InventoryHolder {
     }
 
     private String getRankColor(String rank) {
-        switch (rank.toUpperCase()) {
+        switch (rank.toUpperCase(java.util.Locale.ROOT)) {
             case "DIAMOND": return "§b";
             case "GOLD": return "§6";
             case "SILVER": return "§7";

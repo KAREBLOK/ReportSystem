@@ -78,8 +78,7 @@ public class NPCManager {
 
             plugin.debug("[OVERWATCH-NPC] Loaded " + npcs.size() + " NPCs");
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH-NPC] Failed to load NPCs: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH-NPC] Failed to load NPCs", e);
         }
     }
 
@@ -124,8 +123,7 @@ public class NPCManager {
 
             return npcId;
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH-NPC] Failed to create NPC: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH-NPC] Failed to create NPC", e);
             return null;
         }
     }
@@ -142,8 +140,7 @@ public class NPCManager {
             overwatchDAO.deleteNPC(npcId);
             return true;
         } catch (SQLException e) {
-            plugin.getLogger().severe("[OVERWATCH-NPC] Failed to delete NPC: " + e.getMessage());
-            e.printStackTrace();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "[OVERWATCH-NPC] Failed to delete NPC", e);
             return false;
         }
     }
@@ -446,32 +443,74 @@ public class NPCManager {
 
     // ============= Hologram Stats =============
 
+    /** Tek NPC'nin hologram sayaçlarını tazeler (sayaçlar async okunur, yazım ana thread'de). */
     public void updateHologram(String npcId) {
         NPCData npcData = activeNPCs.get(npcId);
         if (npcData == null || npcData.hologramLines == null)
             return;
+        refreshHolograms(Collections.singletonList(npcId));
+    }
 
-        int weeklyReviewed = plugin.getOverwatchManager().getWeeklyReviewedCount();
-        int totalPunished = plugin.getOverwatchManager().getTotalPunishedCount();
-        int pendingQueue = plugin.getOverwatchManager().getPendingQueueCount();
+    /** Tüm NPC hologramlarını tazeler: üç sayaç TEK async görevde okunur [THR-01]. */
+    public void updateAllHolograms() {
+        if (activeNPCs.isEmpty())
+            return;
+        refreshHolograms(new ArrayList<>(activeNPCs.keySet()));
+    }
+
+    /**
+     * Sayaçları (haftalık / cezalı / bekleyen) async thread'de DB'den okur, ardından ana thread'de
+     * verilen NPC'lerin ArmorStand satırlarını günceller [THR-01][THR-17].
+     */
+    private void refreshHolograms(List<String> npcIds) {
+        if (!plugin.isEnabled())
+            return; // kapanışta görev planlanamaz [THR-17]
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            final int weeklyReviewed;
+            final int totalPunished;
+            final int pendingQueue;
+            try {
+                OverwatchManager manager = plugin.getOverwatchManager();
+                if (manager == null)
+                    return;
+                weeklyReviewed = manager.getWeeklyReviewedCount();
+                totalPunished = manager.getTotalPunishedCount();
+                pendingQueue = manager.getPendingQueueCount();
+            } catch (Throwable t) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[OVERWATCH-NPC] Failed to read hologram counters", t);
+                return;
+            }
+            if (!plugin.isEnabled())
+                return; // kapanıyor: runTask atılamaz [THR-17]
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                for (String npcId : npcIds) {
+                    applyHologramCounts(npcId, weeklyReviewed, totalPunished, pendingQueue);
+                }
+            });
+        });
+    }
+
+    /** Ana thread: tek NPC'nin sayaç satırlarını yazar (NPC silinmiş / entity geçersizse atlar). */
+    private void applyHologramCounts(String npcId, int weeklyReviewed, int totalPunished, int pendingQueue) {
+        NPCData npcData = activeNPCs.get(npcId);
+        if (npcData == null || npcData.hologramLines == null)
+            return;
 
         List<ArmorStand> lines = npcData.hologramLines;
         if (lines.size() >= 5) {
-            lines.get(1).setCustomName(plugin.getMessageManager().colorize(
-                    plugin.getMessageManager().getMessage("overwatch.npc.hologram.weekly-reviewed")
-                            .replace("%count%", String.valueOf(weeklyReviewed))));
-            lines.get(2).setCustomName(plugin.getMessageManager().colorize(
-                    plugin.getMessageManager().getMessage("overwatch.npc.hologram.total-punished")
-                            .replace("%count%", String.valueOf(totalPunished))));
-            lines.get(3).setCustomName(plugin.getMessageManager().colorize(
-                    plugin.getMessageManager().getMessage("overwatch.npc.hologram.pending-queue")
-                            .replace("%count%", String.valueOf(pendingQueue))));
+            setLineIfValid(lines.get(1), plugin.getMessageManager().getMessage("overwatch.npc.hologram.weekly-reviewed")
+                    .replace("%count%", String.valueOf(weeklyReviewed)));
+            setLineIfValid(lines.get(2), plugin.getMessageManager().getMessage("overwatch.npc.hologram.total-punished")
+                    .replace("%count%", String.valueOf(totalPunished)));
+            setLineIfValid(lines.get(3), plugin.getMessageManager().getMessage("overwatch.npc.hologram.pending-queue")
+                    .replace("%count%", String.valueOf(pendingQueue)));
         }
     }
 
-    public void updateAllHolograms() {
-        for (String npcId : activeNPCs.keySet()) {
-            updateHologram(npcId);
+    private void setLineIfValid(ArmorStand line, String text) {
+        if (line != null && line.isValid()) {
+            line.setCustomName(plugin.getMessageManager().colorize(text));
         }
     }
 

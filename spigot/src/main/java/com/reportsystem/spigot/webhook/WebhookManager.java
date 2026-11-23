@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 
 import java.awt.Color;
 import java.time.Instant;
+import java.util.Locale;
 
 /**
  * Manager for Discord webhook notifications
@@ -39,7 +40,7 @@ public class WebhookManager {
 
         this.enabled = config.getBoolean("discord-webhook.enabled", false);
         this.webhookUrl = config.getString("discord-webhook.url", "");
-        this.language = config.getString("general.language", "en").toLowerCase();
+        this.language = com.reportsystem.spigot.config.ConfigManager.normalizeLanguage(config.getString("general.language", "en"));
         this.sendNewReport = config.getBoolean("discord-webhook.events.new-report", true);
         this.sendReportClosed = config.getBoolean("discord-webhook.events.report-closed", true);
         this.sendPunishment = config.getBoolean("discord-webhook.events.punishment", true);
@@ -535,7 +536,7 @@ public class WebhookManager {
      * Get emoji for status
      */
     private String getStatusEmoji(String status) {
-        switch (status.toUpperCase()) {
+        switch (status.toUpperCase(Locale.ROOT)) {
             case "PENDING":
                 return "⏳";
             case "ACCEPTED":
@@ -555,7 +556,7 @@ public class WebhookManager {
      * Get translated status name based on language
      */
     private String getStatusName(String status) {
-        String key = "reports.status.name." + status.toLowerCase();
+        String key = "reports.status.name." + status.toLowerCase(Locale.ROOT);
         String translated = plugin.getMessageManager().getMessage(key);
 
         // If translation not found, return the original status
@@ -572,12 +573,12 @@ public class WebhookManager {
      * Get translated punishment type name based on language
      */
     private String getPunishmentTypeName(String punishmentType) {
-        String key = "webhook.punishment-type." + punishmentType.toLowerCase();
+        String key = "webhook.punishment-type." + punishmentType.toLowerCase(Locale.ROOT);
         String translated = plugin.getMessageManager().getMessage(key);
 
         // If translation not found, return the original type in uppercase
         if (translated == null || translated.isEmpty() || translated.startsWith("Missing message:")) {
-            return punishmentType.toUpperCase();
+            return punishmentType.toUpperCase(Locale.ROOT);
         }
 
         // Remove Minecraft color codes

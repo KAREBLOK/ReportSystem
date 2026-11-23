@@ -1,30 +1,30 @@
 package com.reportsystem.bungee.punishment.providers;
 
+import com.reportsystem.common.punishment.DurationFormat;
+import com.reportsystem.common.punishment.PunishmentCommandSanitizer;
 import com.reportsystem.bungee.punishment.BungeePunishmentManager.PunishmentProvider;
 import net.md_5.bungee.api.ProxyServer;
 
 public class LiteBansBungeeProvider implements PunishmentProvider {
 
-    /**
-     * Komut enjeksiyonunu önlemek için input string'ini temizler.
-     * Sadece alfanumerik, boşluk ve temel noktalama işaretlerine izin verir.
-     */
-    private String sanitizeInput(String input) {
-        if (input == null) return "";
-        return input.replaceAll("[^a-zA-Z0-9çÇğĞıİöÖşŞüÜ .,_\\-]", "").trim();
+    /** Geçersiz oyuncu adı: komut ÇALIŞTIRILMAZ (ad silinip başka oyuncuya dönüşmesin) [CRA-02]. */
+    private boolean rejectName(String playerName) {
+        ProxyServer.getInstance().getLogger().warning("[LiteBans] Invalid player name rejected, command not sent: " + PunishmentCommandSanitizer.logSafe(playerName));
+        return false;
     }
 
     @Override
     public boolean ban(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         String command;
         if (duration > 0) {
             // Süreyi LiteBans formatına çevir
-            String timeString = convertDuration(duration);
-            command = String.format("litebans:tempban %s %s %s -s", safePlayer, timeString, safeReason);
+            String timeString = DurationFormat.toLiteBans(duration);
+            command = PunishmentCommandSanitizer.command("litebans:tempban", safePlayer, timeString, safeReason, "-s");
         } else {
-            command = String.format("litebans:ban %s %s -s", safePlayer, safeReason);
+            command = PunishmentCommandSanitizer.command("litebans:ban", safePlayer, safeReason, "-s");
         }
 
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
@@ -35,14 +35,15 @@ public class LiteBansBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean mute(String playerName, String reason, String punisher, long duration) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         String command;
         if (duration > 0) {
-            String timeString = convertDuration(duration);
-            command = String.format("litebans:tempmute %s %s %s -s", safePlayer, timeString, safeReason);
+            String timeString = DurationFormat.toLiteBans(duration);
+            command = PunishmentCommandSanitizer.command("litebans:tempmute", safePlayer, timeString, safeReason, "-s");
         } else {
-            command = String.format("litebans:mute %s %s -s", safePlayer, safeReason);
+            command = PunishmentCommandSanitizer.command("litebans:mute", safePlayer, safeReason, "-s");
         }
 
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
@@ -53,9 +54,10 @@ public class LiteBansBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean kick(String playerName, String reason, String punisher) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
-        String command = String.format("litebans:kick %s %s", safePlayer, safeReason);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        String command = PunishmentCommandSanitizer.command("litebans:kick", safePlayer, safeReason);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
                 ProxyServer.getInstance().getConsole(), command
         );
@@ -64,9 +66,10 @@ public class LiteBansBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean warn(String playerName, String reason, String punisher) {
-        String safeReason = sanitizeInput(reason);
-        String safePlayer = sanitizeInput(playerName);
-        String command = String.format("litebans:warn %s %s", safePlayer, safeReason);
+        String safeReason = PunishmentCommandSanitizer.reason(reason);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
+        String command = PunishmentCommandSanitizer.command("litebans:warn", safePlayer, safeReason);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
                 ProxyServer.getInstance().getConsole(), command
         );
@@ -75,44 +78,33 @@ public class LiteBansBungeeProvider implements PunishmentProvider {
 
     @Override
     public boolean unban(String playerName) {
-        String safePlayer = sanitizeInput(playerName);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
-                ProxyServer.getInstance().getConsole(), "litebans:unban " + safePlayer
+                ProxyServer.getInstance().getConsole(), PunishmentCommandSanitizer.command("litebans:unban", safePlayer)
         );
         return true;
     }
 
     @Override
     public boolean unmute(String playerName) {
-        String safePlayer = sanitizeInput(playerName);
+        String safePlayer = PunishmentCommandSanitizer.name(playerName);
+        if (safePlayer == null) return rejectName(playerName);
         ProxyServer.getInstance().getPluginManager().dispatchCommand(
-                ProxyServer.getInstance().getConsole(), "litebans:unmute " + safePlayer
+                ProxyServer.getInstance().getConsole(), PunishmentCommandSanitizer.command("litebans:unmute", safePlayer)
         );
         return true;
     }
 
     @Override
     public boolean isBanned(String playerName) {
-        // LiteBans API kullanılabilirse daha iyi olur
-        // Şimdilik false dönüyoruz
+        // LiteBans cezayı kendisi uygular; API bağımlılığı bilinçli olarak eklenmedi (H-12)
         return false;
     }
 
     @Override
     public boolean isMuted(String playerName) {
-        // LiteBans API kullanılabilirse daha iyi olur
+        // LiteBans cezayı kendisi uygular; API bağımlılığı bilinçli olarak eklenmedi (H-12)
         return false;
-    }
-
-    private String convertDuration(long millis) {
-        long seconds = millis / 1000;
-        long minutes = seconds / 60;
-        long hours = minutes / 60;
-        long days = hours / 24;
-
-        if (days > 0) return days + "d";
-        if (hours > 0) return hours + "h";
-        if (minutes > 0) return minutes + "m";
-        return seconds + "s";
     }
 }
